@@ -35,8 +35,6 @@ type CloudProvider interface {
 	TerminateRunningInstances() []*Instance
 }
 
-var Dispatchers = make(map[string]Dispatcher)
-
 type Notification struct {
 	Instances []*Instance `json:"Instances"`
 }

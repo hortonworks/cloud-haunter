@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 	"github.com/tbruyelle/hipchat-go/hipchat"
 	"net/url"
@@ -22,7 +22,7 @@ func init() {
 	room = os.Getenv("HIPCHAT_ROOM")
 	if len(token) > 0 && len(server) > 0 && len(room) > 0 {
 		log.Infof("[HIPCHAT] register hipchat to send notifications to server: %s and room: %s", server, room)
-		types.Dispatchers["hipchat"] = new(Hipchat)
+		ctx.Dispatchers["hipchat"] = new(Hipchat)
 		client = hipchat.NewClient(token)
 		if serverUrl, err := url.Parse(server); err != nil {
 			log.Errorf("[HIPCHAT] invalid url: %s, err: %s", server, err.Error())
@@ -36,7 +36,7 @@ type Hipchat struct {
 }
 
 func (h *Hipchat) Send(notification types.Notification) error {
-	if context.DRY_RUN {
+	if ctx.DRY_RUN {
 		log.Infof("[HIPCHAT] dry-run set, no notification sent")
 	} else {
 		var buffer bytes.Buffer
@@ -51,7 +51,7 @@ func (h *Hipchat) Send(notification types.Notification) error {
 			MessageFormat: "text",
 		})
 		if err != nil {
-			log.Errorf("[HIPCHAT] failed to send notification, err: %s", err.Error())
+			return err
 		}
 	}
 	return nil
