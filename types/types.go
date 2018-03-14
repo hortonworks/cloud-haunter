@@ -18,10 +18,14 @@ const (
 var Operations = make(map[OpType]Operation)
 
 type Operation interface {
-	Execute()
+	Execute([]CloudType)
 }
 
 type CloudType string
+
+func (ct CloudType) String() string {
+	return string(ct)
+}
 
 const (
 	AWS   = CloudType("AWS")

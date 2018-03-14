@@ -14,12 +14,16 @@ func init() {
 type LongRunning struct {
 }
 
-func (o LongRunning) Execute() {
-	for name, provider := range types.CloudProviders {
+func (o LongRunning) Execute(clouds []types.CloudType) {
+	for _, cloud := range clouds {
+		provider, ok := types.CloudProviders[cloud]
+		if !ok {
+			panic("Cloud provider not supported")
+		}
 		instances := provider.GetRunningInstances()
 		longRunningInstances := getInstancesRunningLongerThan(instances, 24*time.Hour)
 		for _, instance := range longRunningInstances {
-			log.Infof("[%s] Instance %s is running for more than: %s", name, instance.Name, time.Since(instance.Created))
+			log.Infof("[%s] Instance %s is running for more than: %s", cloud.String(), instance.Name, time.Since(instance.Created))
 		}
 	}
 }

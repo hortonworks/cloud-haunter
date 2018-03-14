@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/hortonworks/cloud-cost-reducer/aws"
@@ -21,12 +22,13 @@ func main() {
 	}()
 
 	help := flag.Bool("h", false, "print help")
-	opType := flag.String("op", "help", "type of operation")
+	opType := flag.String("o", types.HELP.String(), "type of operation")
+	cloudType := flag.String("c", "", "type of cloud")
 
 	flag.Parse()
 
 	if *help {
-		opType = &(&types.S{S: "help"}).S
+		opType = &(&types.S{S: types.HELP.String()}).S
 	}
 
 	op := func() types.Operation {
@@ -40,5 +42,16 @@ func main() {
 	if op == nil {
 		panic("Operation is not supported.")
 	}
-	op.Execute()
+
+	clouds := []types.CloudType{}
+	for t := range types.CloudProviders {
+		if len(*cloudType) == 0 || t.String() == strings.ToUpper(*cloudType) {
+			clouds = append(clouds, t)
+		}
+	}
+	if len(clouds) == 0 {
+		panic("Cloud provider not found.")
+	}
+
+	op.Execute(clouds)
 }

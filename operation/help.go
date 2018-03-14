@@ -9,9 +9,13 @@ func init() {
 type Help struct {
 }
 
-func (o Help) Execute() {
+func (o Help) Execute(clouds []types.CloudType) {
 	println("Supported operations:")
 	for ot := range types.Operations {
-		println("-op=" + ot.String())
+		println("-o=" + ot.String())
+	}
+	println("Supported cloud providers:")
+	for ct := range types.CloudProviders {
+		println("-c=" + ct.String())
 	}
 }
