@@ -1,19 +1,14 @@
 package main
 
 import (
-	log "github.com/Sirupsen/logrus"
-	"github.com/hortonworks/cloud-cost-reducer/aws"
-	"github.com/hortonworks/cloud-cost-reducer/gcp"
-	"github.com/hortonworks/cloud-cost-reducer/types"
 	"time"
-	"github.com/hortonworks/cloud-cost-reducer/azure"
-)
 
-func init() {
-	aws.Init()
-	gcp.Init()
-	azure.Init()
-}
+	log "github.com/Sirupsen/logrus"
+	_ "github.com/hortonworks/cloud-cost-reducer/aws"
+	_ "github.com/hortonworks/cloud-cost-reducer/azure"
+	_ "github.com/hortonworks/cloud-cost-reducer/gcp"
+	"github.com/hortonworks/cloud-cost-reducer/types"
+)
 
 func main() {
 	for name, provider := range types.CloudProviders {

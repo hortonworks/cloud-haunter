@@ -2,11 +2,12 @@ package azure
 
 import (
 	"context"
+	"os"
+
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/types"
-	"os"
 )
 
 var (
@@ -14,7 +15,7 @@ var (
 	vmClient       compute.VirtualMachinesClient
 )
 
-func Init() {
+func init() {
 	subscriptionId = os.Getenv("AZURE_SUBSCRIPTION_ID")
 	if len(subscriptionId) > 0 {
 		log.Infof("[AZURE] Trying to register as provider")

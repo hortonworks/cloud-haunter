@@ -5,11 +5,12 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/types"
 
 	"context"
-	"golang.org/x/oauth2/google"
-	"google.golang.org/api/compute/v1"
 	"os"
 	"strconv"
 	"time"
+
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/compute/v1"
 )
 
 var (
@@ -17,7 +18,7 @@ var (
 	computeClient *compute.Service
 )
 
-func Init() {
+func init() {
 	projectId = os.Getenv("GOOGLE_PROJECT_ID")
 	if len(projectId) > 0 {
 		log.Infof("[GCP] Trying to register as provider")

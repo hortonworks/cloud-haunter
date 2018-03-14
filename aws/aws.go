@@ -1,12 +1,13 @@
 package aws
 
 import (
+	"sync"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/hortonworks/cloud-cost-reducer/types"
-	"sync"
 )
 
 var (
@@ -14,7 +15,7 @@ var (
 	regionClients = make(map[string]*ec2.EC2, 0)
 )
 
-func Init() {
+func init() {
 	log.Infof("[AWS] Trying to register as provider")
 	var err error
 	regions, err = getRegions()
