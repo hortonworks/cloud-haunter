@@ -95,9 +95,21 @@
   version = "v1.0.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/google/go-querystring"
+  packages = ["query"]
+  revision = "53e6ce116135b80d037921a7fdd5138cf32d7a8a"
+
+[[projects]]
   name = "github.com/jmespath/go-jmespath"
   packages = ["."]
   revision = "0b12d6b5"
+
+[[projects]]
+  name = "github.com/tbruyelle/hipchat-go"
+  packages = ["hipchat"]
+  revision = "749fb9e14beb9995f677c101a754393cecb64b0f"
+  version = "v1.2"
 
 [[projects]]
   branch = "master"
@@ -170,6 +182,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d147d3004e227fecb33d8a780219ec6cf88d154d26fba2c6d14069b07bfcf5e2"
+  inputs-digest = "9e6fd0697cb7d1e3093c5586c1d3d1840f12cf4b74e73d7d816b4a8337570b01"
   solver-name = "gps-cdcl"
   solver-version = 1

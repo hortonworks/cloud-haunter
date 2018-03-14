@@ -3,12 +3,14 @@ package aws
 import (
 	"sync"
 
+	"crypto/tls"
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
+	"net/http"
 )
 
 var (
@@ -60,12 +62,22 @@ func getRegions() ([]string, error) {
 func newEc2Client(region *string) (*ec2.EC2, error) {
 	var awsSession *session.Session
 	var err error
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
 	if region != nil && len(*region) > 0 {
-		awsSession, err = session.NewSession(&aws.Config{
-			Region: aws.String(*region)})
+		awsSession, err = session.NewSession(
+			&aws.Config{
+				Region:     aws.String(*region),
+				HTTPClient: httpClient,
+			})
 	} else {
-		awsSession, err = session.NewSession(&aws.Config{
-			Region: aws.String("eu-west-1")})
+		awsSession, err = session.NewSession(
+			&aws.Config{
+				Region:     aws.String("eu-west-1"),
+				HTTPClient: httpClient,
+			})
 	}
 	if err != nil {
 		return nil, err
@@ -88,9 +100,10 @@ func (p *AwsProvider) GetRunningInstances() []*types.Instance {
 			for _, res := range instanceResult.Reservations {
 				for _, inst := range res.Instances {
 					instances = append(instances, &types.Instance{
-						Id:      *inst.InstanceId,
-						Name:    getTagValue("Name", inst.Tags),
-						Created: *inst.LaunchTime,
+						Id:        *inst.InstanceId,
+						Name:      getTagValue("Name", inst.Tags),
+						Created:   *inst.LaunchTime,
+						CloudType: types.AWS,
 					})
 				}
 			}

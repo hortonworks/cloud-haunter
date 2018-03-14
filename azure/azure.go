@@ -54,8 +54,9 @@ func (p *AzureProvider) GetRunningInstances() []*types.Instance {
 	}
 	for _, inst := range result.Values() {
 		instances = append(instances, &types.Instance{
-			Name: *inst.Name,
-			Id:   *inst.ID,
+			Name:      *inst.Name,
+			Id:        *inst.ID,
+			CloudType: types.AZURE,
 		})
 	}
 	return instances

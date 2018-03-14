@@ -10,6 +10,7 @@ import (
 	_ "github.com/hortonworks/cloud-cost-reducer/azure"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	_ "github.com/hortonworks/cloud-cost-reducer/gcp"
+	_ "github.com/hortonworks/cloud-cost-reducer/hipchat"
 	_ "github.com/hortonworks/cloud-cost-reducer/operation"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
