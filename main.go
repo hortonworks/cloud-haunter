@@ -1,31 +1,44 @@
 package main
 
 import (
-	"time"
+	"flag"
+	"os"
 
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/hortonworks/cloud-cost-reducer/aws"
 	_ "github.com/hortonworks/cloud-cost-reducer/azure"
 	_ "github.com/hortonworks/cloud-cost-reducer/gcp"
+	_ "github.com/hortonworks/cloud-cost-reducer/operation"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
 func main() {
-	for name, provider := range types.CloudProviders {
-		instances := provider.GetRunningInstances()
-		longRunningInstances := getInstancesRunningLongerThan(instances, 24*time.Hour)
-		for _, instance := range longRunningInstances {
-			log.Infof("[%s] Instance %s is running for more than: %s", name, instance.Name, time.Since(instance.Created))
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error(r)
+			os.Exit(1)
 		}
-	}
-}
+	}()
 
-func getInstancesRunningLongerThan(instances []*types.Instance, period time.Duration) []*types.Instance {
-	filtered := make([]*types.Instance, 0)
-	for _, instance := range instances {
-		if instance.Created.Add(period).Before(time.Now()) {
-			filtered = append(filtered, instance)
-		}
+	help := flag.Bool("h", false, "print help")
+	opType := flag.String("op", "help", "type of operation")
+
+	flag.Parse()
+
+	if *help {
+		opType = &(&types.S{S: "help"}).S
 	}
-	return filtered
+
+	op := func() types.Operation {
+		for ot := range types.Operations {
+			if ot.String() == *opType {
+				return types.Operations[ot]
+			}
+		}
+		return nil
+	}()
+	if op == nil {
+		panic("Operation is not supported.")
+	}
+	op.Execute()
 }

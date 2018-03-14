@@ -4,6 +4,23 @@ import (
 	"time"
 )
 
+type OpType string
+
+func (ot OpType) String() string {
+	return string(ot)
+}
+
+const (
+	HELP        = OpType("help")
+	LONGRUNNING = OpType("longrunning")
+)
+
+var Operations = make(map[OpType]Operation)
+
+type Operation interface {
+	Execute()
+}
+
 type CloudType string
 
 const (
@@ -26,3 +43,7 @@ type Instance struct {
 }
 
 type Tags map[string]string
+
+type S struct {
+	S string
+}
