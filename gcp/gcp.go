@@ -2,9 +2,10 @@ package gcp
 
 import (
 	log "github.com/Sirupsen/logrus"
+	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 
-	"context"
+	ctx "context"
 	"os"
 	"strconv"
 	"time"
@@ -22,7 +23,7 @@ func init() {
 	projectId = os.Getenv("GOOGLE_PROJECT_ID")
 	if len(projectId) > 0 {
 		log.Infof("[GCP] Trying to register as provider")
-		httpClient, err := google.DefaultClient(context.Background(), compute.CloudPlatformScope)
+		httpClient, err := google.DefaultClient(ctx.Background(), compute.CloudPlatformScope)
 		if err != nil {
 			log.Errorf("[GCP] Failed to authenticate, err: %s", err.Error())
 			return
@@ -32,7 +33,7 @@ func init() {
 			log.Errorf("[GCP] Failed to authenticate, err: %s", err.Error())
 			return
 		}
-		types.CloudProviders[types.GCP] = new(GcpProvider)
+		context.CloudProviders[types.GCP] = new(GcpProvider)
 		log.Info("[GCP] Successfully registered as provider")
 	} else {
 		log.Warn("[GCP] GOOGLE_PROJECT_ID environment variable is missing")
@@ -74,4 +75,8 @@ func (p *GcpProvider) GetRunningInstances() []*types.Instance {
 		}
 	}
 	return instances
+}
+
+func (a GcpProvider) TerminateRunningInstances() []*types.Instance {
+	panic("Termination not supported.")
 }

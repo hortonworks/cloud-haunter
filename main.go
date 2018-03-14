@@ -8,6 +8,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/hortonworks/cloud-cost-reducer/aws"
 	_ "github.com/hortonworks/cloud-cost-reducer/azure"
+	"github.com/hortonworks/cloud-cost-reducer/context"
 	_ "github.com/hortonworks/cloud-cost-reducer/gcp"
 	_ "github.com/hortonworks/cloud-cost-reducer/operation"
 	"github.com/hortonworks/cloud-cost-reducer/types"
@@ -24,17 +25,20 @@ func main() {
 	help := flag.Bool("h", false, "print help")
 	opType := flag.String("o", types.HELP.String(), "type of operation")
 	cloudType := flag.String("c", "", "type of cloud")
+	dryRun := flag.Bool("d", false, "dry run")
 
 	flag.Parse()
+
+	context.DRY_RUN = *dryRun
 
 	if *help {
 		opType = &(&types.S{S: types.HELP.String()}).S
 	}
 
 	op := func() types.Operation {
-		for ot := range types.Operations {
+		for ot := range context.Operations {
 			if ot.String() == *opType {
-				return types.Operations[ot]
+				return context.Operations[ot]
 			}
 		}
 		return nil
@@ -44,7 +48,7 @@ func main() {
 	}
 
 	clouds := []types.CloudType{}
-	for t := range types.CloudProviders {
+	for t := range context.CloudProviders {
 		if len(*cloudType) == 0 || t.String() == strings.ToUpper(*cloudType) {
 			clouds = append(clouds, t)
 		}

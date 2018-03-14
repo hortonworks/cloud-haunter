@@ -1,8 +1,6 @@
 package types
 
-import (
-	"time"
-)
+import "time"
 
 type OpType string
 
@@ -13,9 +11,8 @@ func (ot OpType) String() string {
 const (
 	HELP        = OpType("help")
 	LONGRUNNING = OpType("longrunning")
+	TERMINATION = OpType("termination")
 )
-
-var Operations = make(map[OpType]Operation)
 
 type Operation interface {
 	Execute([]CloudType)
@@ -33,10 +30,9 @@ const (
 	AZURE = CloudType("AZURE")
 )
 
-var CloudProviders = make(map[CloudType]CloudProvider)
-
 type CloudProvider interface {
 	GetRunningInstances() []*Instance
+	TerminateRunningInstances() []*Instance
 }
 
 type Instance struct {

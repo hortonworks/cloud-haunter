@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
@@ -31,7 +32,7 @@ func init() {
 			regionClients[region] = client
 		}
 	}
-	types.CloudProviders[types.AWS] = new(AwsProvider)
+	context.CloudProviders[types.AWS] = new(AwsProvider)
 	log.Infof("[AWS] Successfully registered as provider")
 }
 
@@ -106,4 +107,8 @@ func getTagValue(key string, tags []*ec2.Tag) string {
 		}
 	}
 	return ""
+}
+
+func (a AwsProvider) TerminateRunningInstances() []*types.Instance {
+	panic("Termination not supported.")
 }

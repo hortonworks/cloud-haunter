@@ -4,11 +4,12 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
 func init() {
-	types.Operations[types.LONGRUNNING] = LongRunning{}
+	context.Operations[types.LONGRUNNING] = LongRunning{}
 }
 
 type LongRunning struct {
@@ -16,7 +17,7 @@ type LongRunning struct {
 
 func (o LongRunning) Execute(clouds []types.CloudType) {
 	for _, cloud := range clouds {
-		provider, ok := types.CloudProviders[cloud]
+		provider, ok := context.CloudProviders[cloud]
 		if !ok {
 			panic("Cloud provider not supported")
 		}

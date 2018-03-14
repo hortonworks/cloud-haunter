@@ -11,6 +11,7 @@
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "services/compute/mgmt/2017-12-01/compute",
+    "services/resources/mgmt/2017-05-10/resources",
     "version"
   ]
   revision = "3d4fb879f52e48c1bd997665cabd82fb4ecad987"
@@ -169,6 +170,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7933f322bea13f305ca13ee753882a28a517362f10e5af68bb5151b2e4dc5987"
+  inputs-digest = "d147d3004e227fecb33d8a780219ec6cf88d154d26fba2c6d14069b07bfcf5e2"
   solver-name = "gps-cdcl"
   solver-version = 1
