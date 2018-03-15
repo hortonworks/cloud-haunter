@@ -66,13 +66,15 @@ func (p *GcpProvider) GetRunningInstances() []*types.Instance {
 	}
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
-			timestamp, _ := strconv.ParseInt(inst.CreationTimestamp, 10, 64)
-			instances = append(instances, &types.Instance{
-				Name:      inst.Name,
-				Id:        strconv.Itoa(int(inst.Id)),
-				Created:   time.Unix(timestamp, 0),
-				CloudType: types.GCP,
-			})
+			if inst.Status == "RUNNING" {
+				timestamp, _ := strconv.ParseInt(inst.CreationTimestamp, 10, 64)
+				instances = append(instances, &types.Instance{
+					Name:      inst.Name,
+					Id:        strconv.Itoa(int(inst.Id)),
+					Created:   time.Unix(timestamp, 0),
+					CloudType: types.GCP,
+				})
+			}
 		}
 	}
 	return instances

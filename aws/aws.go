@@ -99,12 +99,15 @@ func (p *AwsProvider) GetRunningInstances() []*types.Instance {
 			}
 			for _, res := range instanceResult.Reservations {
 				for _, inst := range res.Instances {
-					instances = append(instances, &types.Instance{
-						Id:        *inst.InstanceId,
-						Name:      getTagValue("Name", inst.Tags),
-						Created:   *inst.LaunchTime,
-						CloudType: types.AWS,
-					})
+					state := inst.State.Name
+					if state != nil && len(*state) > 0 && *state == ec2.InstanceStateNameRunning {
+						instances = append(instances, &types.Instance{
+							Id:        *inst.InstanceId,
+							Name:      getTagValue("Name", inst.Tags),
+							Created:   *inst.LaunchTime,
+							CloudType: types.AWS,
+						})
+					}
 				}
 			}
 		}(region)
