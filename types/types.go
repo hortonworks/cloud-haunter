@@ -35,12 +35,12 @@ type CloudProvider interface {
 	TerminateRunningInstances() []*Instance
 }
 
-type Notification struct {
-	Instances []*Instance `json:"Instances"`
+type Message interface {
+	Message() string
 }
 
 type Dispatcher interface {
-	Send(notification Notification) error
+	Send(message Message) error
 }
 
 type Instance struct {
