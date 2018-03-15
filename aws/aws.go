@@ -92,22 +92,24 @@ func (p *AwsProvider) GetRunningInstances() []*types.Instance {
 		wg.Add(1)
 		go func(region string) {
 			defer wg.Done()
-			instanceResult, e := regionClients[region].DescribeInstances(&ec2.DescribeInstancesInput{})
+			filterName := "instance-state-name"
+			filterValue := ec2.InstanceStateNameRunning
+			runningFilter := []*ec2.Filter{{Name: &filterName, Values: []*string{&filterValue}}}
+			instanceResult, e := regionClients[region].DescribeInstances(&ec2.DescribeInstancesInput{
+				Filters: runningFilter,
+			})
 			if e != nil {
 				log.Errorf("[AWS] Failed to fetch the running instances in region: %s, err: %s", region, e)
 				return
 			}
 			for _, res := range instanceResult.Reservations {
 				for _, inst := range res.Instances {
-					state := inst.State.Name
-					if state != nil && len(*state) > 0 && *state == ec2.InstanceStateNameRunning {
-						instances = append(instances, &types.Instance{
-							Id:        *inst.InstanceId,
-							Name:      getTagValue("Name", inst.Tags),
-							Created:   *inst.LaunchTime,
-							CloudType: types.AWS,
-						})
-					}
+					instances = append(instances, &types.Instance{
+						Id:        *inst.InstanceId,
+						Name:      getTagValue("Name", inst.Tags),
+						Created:   *inst.LaunchTime,
+						CloudType: types.AWS,
+					})
 				}
 			}
 		}(region)
