@@ -104,11 +104,13 @@ func (p *AwsProvider) GetRunningInstances() []*types.Instance {
 			}
 			for _, res := range instanceResult.Reservations {
 				for _, inst := range res.Instances {
+					tags := getTags(inst.Tags)
 					instances = append(instances, &types.Instance{
 						Id:        *inst.InstanceId,
-						Name:      getTagValue("Name", inst.Tags),
+						Name:      tags["Name"],
 						Created:   *inst.LaunchTime,
 						CloudType: types.AWS,
+						Tags:      tags,
 					})
 				}
 			}
@@ -118,13 +120,12 @@ func (p *AwsProvider) GetRunningInstances() []*types.Instance {
 	return instances
 }
 
-func getTagValue(key string, tags []*ec2.Tag) string {
-	for _, tag := range tags {
-		if *tag.Key == key {
-			return *tag.Value
-		}
+func getTags(ec2Tags []*ec2.Tag) types.Tags {
+	tags := make(types.Tags, 0)
+	for _, t := range ec2Tags {
+		tags[*t.Key] = *t.Value
 	}
-	return ""
+	return tags
 }
 
 func (a AwsProvider) TerminateRunningInstances() []*types.Instance {

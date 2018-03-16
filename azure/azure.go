@@ -60,9 +60,18 @@ func (p *AzureProvider) GetRunningInstances() []*types.Instance {
 			Name:      *inst.Name,
 			Id:        *inst.ID, // TODO missing Created type
 			CloudType: types.AZURE,
+			Tags:      getTags(inst.Tags),
 		})
 	}
 	return instances
+}
+
+func getTags(azureTags map[string]*string) types.Tags {
+	tags := make(types.Tags, 0)
+	for k, v := range azureTags {
+		tags[k] = *v
+	}
+	return tags
 }
 
 func (a AzureProvider) TerminateRunningInstances() []*types.Instance {
