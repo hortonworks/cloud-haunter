@@ -1,6 +1,7 @@
 package operation
 
 import (
+	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
@@ -18,6 +19,10 @@ func (o Termination) Execute(clouds []types.CloudType) {
 		if !ok {
 			panic("Cloud provider not supported")
 		}
-		provider.TerminateRunningInstances()
+		ownerLessInstances := provider.TerminateRunningInstances()
+		for _, instance := range ownerLessInstances {
+			log.Infof("[%s] Instance %s is running without Owner tag", cloud.String(), instance.Name)
+		}
+
 	}
 }

@@ -19,6 +19,8 @@ var (
 	resClient      resources.Client
 )
 
+var typesToCollect = map[string]bool{"Microsoft.Compute/virtualMachines": true}
+
 func init() {
 	subscriptionId = os.Getenv("AZURE_SUBSCRIPTION_ID")
 	if len(subscriptionId) > 0 {
@@ -53,9 +55,10 @@ func (p *AzureProvider) GetRunningInstances() []*types.Instance {
 		return instances
 	}
 	for _, inst := range result.Values() {
+		// TODO list only running instances
 		instances = append(instances, &types.Instance{
 			Name:      *inst.Name,
-			Id:        *inst.ID,
+			Id:        *inst.ID, // TODO missing Created type
 			CloudType: types.AZURE,
 		})
 	}
@@ -70,15 +73,23 @@ func (a AzureProvider) TerminateRunningInstances() []*types.Instance {
 		return instances
 	}
 	for _, g := range groups.Values() {
-		println(*g.Name)
-		// resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil)
-		// if err != nil {
-		// 	log.Warn("[AZURE] Failed to fetch the resources for %s, err: %s", *g.Name, err.Error())
-		// 	continue
-		// }
-		// for _, r := range resources.Values() {
-		// 	println("\t" + *r.Name + "\t" + *r.Kind)
-		// }
+		resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil)
+		if err != nil {
+			log.Warn("[AZURE] Failed to fetch the resources for %s, err: %s", *g.Name, err.Error())
+			continue
+		}
+		for _, r := range resources.Values() {
+			if _, ok := typesToCollect[*r.Type]; ok {
+				if _, ok := r.Tags["Owner"]; !ok {
+					// TODO list only running instances
+					instances = append(instances, &types.Instance{
+						Name:      *r.Name,
+						Id:        *r.ID, // TODO missing Created type
+						CloudType: types.AZURE,
+					})
+				}
+			}
+		}
 	}
 
 	return instances
