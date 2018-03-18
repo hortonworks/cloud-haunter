@@ -1,6 +1,8 @@
 package gcp
 
 import (
+	"strings"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
@@ -59,27 +61,89 @@ func getRegions() ([]string, error) {
 
 func (p *GcpProvider) GetRunningInstances() []*types.Instance {
 	instances := make([]*types.Instance, 0)
-	instanceList, err := computeClient.Instances.AggregatedList(projectId).Do()
+	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
 		return instances
 	}
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
-			if inst.Status == "RUNNING" {
-				timestamp, _ := strconv.ParseInt(inst.CreationTimestamp, 10, 64)
-				instances = append(instances, &types.Instance{
-					Name:      inst.Name,
-					Id:        strconv.Itoa(int(inst.Id)),
-					Created:   time.Unix(timestamp, 0),
-					CloudType: types.GCP,
-				})
-			}
+			instances = append(instances, newInstance(inst))
 		}
 	}
 	return instances
 }
 
 func (a GcpProvider) TerminateRunningInstances() []*types.Instance {
-	panic("Termination not supported.")
+	instances := make([]*types.Instance, 0)
+	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
+	if err != nil {
+		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
+		return instances
+	}
+
+	instanceGroups, err := computeClient.InstanceGroups.AggregatedList(projectId).Do()
+	if err != nil {
+		log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
+		return instances
+	}
+
+	instancesToDelete := []*compute.Instance{}
+	instanceGroupsToDelete := map[*compute.InstanceGroup]bool{}
+
+	for _, items := range instanceList.Items {
+		for _, inst := range items.Instances {
+			groupFound := false
+			if _, ok := inst.Labels["owner"]; !ok {
+				for _, i := range instanceGroups.Items {
+					for _, group := range i.InstanceGroups {
+						if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.Name+"-") == 0 {
+							instanceGroupsToDelete[group], groupFound = true, true
+						}
+					}
+				}
+				if !groupFound {
+					instancesToDelete = append(instancesToDelete, inst)
+				}
+				instances = append(instances, newInstance(inst))
+			}
+		}
+	}
+
+	for group, _ := range instanceGroupsToDelete {
+		zone := getZone(group.Zone)
+		log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
+		if !context.DRY_RUN {
+			_, err := computeClient.InstanceGroups.Delete(projectId, zone, group.Name).Do()
+			if err != nil {
+				log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
+			}
+		}
+	}
+	for _, inst := range instancesToDelete {
+		zone := getZone(inst.Zone)
+		log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
+		if !context.DRY_RUN {
+			_, err := computeClient.Instances.Delete(projectId, zone, inst.Name).Do()
+			if err != nil {
+				log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
+			}
+		}
+	}
+	return instances
+}
+
+func getZone(url string) string {
+	parts := strings.Split(url, "/")
+	return parts[len(parts)-1]
+}
+
+func newInstance(inst *compute.Instance) *types.Instance {
+	timestamp, _ := strconv.ParseInt(inst.CreationTimestamp, 10, 64)
+	return &types.Instance{
+		Name:      inst.Name,
+		Id:        strconv.Itoa(int(inst.Id)),
+		Created:   time.Unix(timestamp, 0),
+		CloudType: types.GCP,
+	}
 }

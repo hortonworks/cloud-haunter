@@ -82,7 +82,7 @@ func (a AzureProvider) TerminateRunningInstances() []*types.Instance {
 		return instances
 	}
 	for _, g := range groups.Values() {
-		resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil)
+		resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil) // TODO maybe we can filter for (running) instances
 		if err != nil {
 			log.Warn("[AZURE] Failed to fetch the resources for %s, err: %s", *g.Name, err.Error())
 			continue
