@@ -82,21 +82,21 @@ func (a GcpProvider) TerminateRunningInstances() []*types.Instance {
 		return instances
 	}
 
-	instanceGroups, err := computeClient.InstanceGroups.AggregatedList(projectId).Do()
+	instanceGroups, err := computeClient.InstanceGroupManagers.AggregatedList(projectId).Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
 		return instances
 	}
 
 	instancesToDelete := []*compute.Instance{}
-	instanceGroupsToDelete := map[*compute.InstanceGroup]bool{}
+	instanceGroupsToDelete := map[*compute.InstanceGroupManager]bool{}
 
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
 			groupFound := false
 			if _, ok := inst.Labels["owner"]; !ok {
 				for _, i := range instanceGroups.Items {
-					for _, group := range i.InstanceGroups {
+					for _, group := range i.InstanceGroupManagers {
 						if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.Name+"-") == 0 {
 							instanceGroupsToDelete[group], groupFound = true, true
 						}
@@ -114,7 +114,7 @@ func (a GcpProvider) TerminateRunningInstances() []*types.Instance {
 		zone := getZone(group.Zone)
 		log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
 		if !context.DRY_RUN {
-			_, err := computeClient.InstanceGroups.Delete(projectId, zone, group.Name).Do()
+			_, err := computeClient.InstanceGroupManagers.Delete(projectId, zone, group.Name).Do()
 			if err != nil {
 				log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
 			}
