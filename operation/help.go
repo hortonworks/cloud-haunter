@@ -17,6 +17,10 @@ func (o Help) Execute(clouds []types.CloudType) {
 	for ot := range context.Operations {
 		println("\t-o=" + ot.String())
 	}
+	println("Supported actions:")
+	for a := range context.Actions {
+		println("\t-a=" + a.String())
+	}
 	println("Supported cloud providers:")
 	for ct := range context.CloudProviders {
 		println("\t-c=" + ct.String())

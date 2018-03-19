@@ -7,13 +7,13 @@ import (
 )
 
 func init() {
-	context.Operations[types.TERMINATION] = Termination{}
+	context.Operations[types.OWNERLESS] = Ownerless{}
 }
 
-type Termination struct {
+type Ownerless struct {
 }
 
-func (o Termination) Execute(clouds []types.CloudType) {
+func (o Ownerless) Execute(clouds []types.CloudType) {
 	for _, cloud := range clouds {
 		provider, ok := context.CloudProviders[cloud]
 		if !ok {

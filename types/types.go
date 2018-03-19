@@ -2,39 +2,6 @@ package types
 
 import "time"
 
-type OpType string
-
-func (ot OpType) String() string {
-	return string(ot)
-}
-
-const (
-	HELP        = OpType("help")
-	LONGRUNNING = OpType("longrunning")
-	TERMINATION = OpType("termination")
-)
-
-type Operation interface {
-	Execute([]CloudType)
-}
-
-type CloudType string
-
-func (ct CloudType) String() string {
-	return string(ct)
-}
-
-const (
-	AWS   = CloudType("AWS")
-	GCP   = CloudType("GCP")
-	AZURE = CloudType("AZURE")
-)
-
-type CloudProvider interface {
-	GetRunningInstances() ([]*Instance, error)
-	TerminateRunningInstances() ([]*Instance, error)
-}
-
 type Message interface {
 	Message() string
 }
@@ -55,4 +22,8 @@ type Tags map[string]string
 
 type S struct {
 	S string
+}
+
+type ToString interface {
+	String() string
 }
