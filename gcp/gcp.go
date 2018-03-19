@@ -100,27 +100,26 @@ func (a GcpProvider) TerminateRunningInstances() ([]*types.Instance, error) {
 			instances = append(instances, newInstance(inst))
 		}
 	}
-
-	for group, _ := range instanceGroupsToDelete {
-		zone := getZone(group.Zone)
-		log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
-		if !context.DryRun {
-			_, err := computeClient.InstanceGroupManagers.Delete(projectId, zone, group.Name).Do()
-			if err != nil {
-				log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
-			}
-		}
-	}
-	for _, inst := range instancesToDelete {
-		zone := getZone(inst.Zone)
-		log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
-		if !context.DryRun {
-			_, err := computeClient.Instances.Delete(projectId, zone, inst.Name).Do()
-			if err != nil {
-				log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
-			}
-		}
-	}
+	// for group, _ := range instanceGroupsToDelete {
+	// 	zone := getZone(group.Zone)
+	// 	log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
+	// 	if !context.DryRun {
+	// 		_, err := computeClient.InstanceGroupManagers.Delete(projectId, zone, group.Name).Do()
+	// 		if err != nil {
+	// 			log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
+	// 		}
+	// 	}
+	// }
+	// for _, inst := range instancesToDelete {
+	// 	zone := getZone(inst.Zone)
+	// 	log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
+	// 	if !context.DryRun {
+	// 		_, err := computeClient.Instances.Delete(projectId, zone, inst.Name).Do()
+	// 		if err != nil {
+	// 			log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
+	// 		}
+	// 	}
+	// }
 	return instances, nil
 }
 

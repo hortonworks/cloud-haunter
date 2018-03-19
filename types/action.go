@@ -7,9 +7,10 @@ func (ot ActionType) String() string {
 }
 
 const (
-	LOG = ActionType("log")
+	LOG          = ActionType("log")
+	NOTIFICATION = ActionType("notification")
 )
 
 type Action interface {
-	Execute()
+	Execute(string, []*Instance)
 }

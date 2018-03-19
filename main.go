@@ -25,7 +25,7 @@ func main() {
 	}()
 
 	help := flag.Bool("h", false, "print help")
-	opType := flag.String("o", types.HELP.String(), "type of operation [help]")
+	opType := flag.String("o", "", "type of operation")
 	actionType := flag.String("a", "", "type of action")
 	cloudType := flag.String("c", "", "type of cloud")
 	dryRun := flag.Bool("d", false, "dry run")
@@ -35,7 +35,8 @@ func main() {
 	context.DryRun = *dryRun
 
 	if *help {
-		opType = &(&types.S{S: types.HELP.String()}).S
+		printHelp()
+		os.Exit(0)
 	}
 
 	op := func() types.Operation {
@@ -58,6 +59,9 @@ func main() {
 		}
 		return nil
 	}()
+	if action == nil {
+		panic("Action is not supported.")
+	}
 
 	clouds := []types.CloudType{}
 	for t := range context.CloudProviders {
@@ -69,9 +73,33 @@ func main() {
 		panic("Cloud provider not found.")
 	}
 
-	op.Execute(clouds)
+	action.Execute(*opType, op.Execute(clouds))
+}
 
-	if action != nil {
-		action.Execute()
+func printHelp() {
+	println(`NAME:
+   Cloud Cost Reducer
+USAGE:
+   ccr -o=operation -a=action [-c=cloud]
+   
+VERSION:`)
+	println(context.Version)
+	println(`
+AUTHOR(S):
+   Hortonworks
+   
+OPERATIONS:`)
+	for ot := range context.Operations {
+		println("\t-o=" + ot.String())
 	}
+	println("ACTIONS:")
+	for a := range context.Actions {
+		println("\t-a=" + a.String())
+	}
+	println("CLOUDS:")
+	for ct := range context.CloudProviders {
+		println("\t-c=" + ct.String())
+	}
+	println("Dry run:\n\t-d")
+	println("Print help:\n\t-p")
 }

@@ -7,11 +7,10 @@ func (ot OpType) String() string {
 }
 
 const (
-	HELP        = OpType("help")
 	LONGRUNNING = OpType("longrunning")
 	OWNERLESS   = OpType("ownerless")
 )
 
 type Operation interface {
-	Execute([]CloudType)
+	Execute([]CloudType) []*Instance
 }

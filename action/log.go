@@ -1,6 +1,9 @@
 package action
 
 import (
+	"strings"
+
+	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
@@ -12,6 +15,9 @@ func init() {
 type LogAction struct {
 }
 
-func (la LogAction) Execute() {
-	println(999999)
+func (a LogAction) Execute(op string, instances []*types.Instance) {
+	capitalOp := strings.ToUpper(op)
+	for _, inst := range instances {
+		log.Infof("[%s] %t", capitalOp, inst)
+	}
 }
