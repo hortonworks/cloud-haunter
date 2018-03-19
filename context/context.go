@@ -2,7 +2,12 @@ package context
 
 import "github.com/hortonworks/cloud-cost-reducer/types"
 
-var DRY_RUN = false
+var (
+	Version   string
+	BuildTime string
+)
+
+var DryRun = false
 
 var Operations = make(map[types.OpType]types.Operation)
 

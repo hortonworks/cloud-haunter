@@ -1,12 +1,13 @@
 package hipchat
 
 import (
+	"net/url"
+	"os"
+
 	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 	"github.com/tbruyelle/hipchat-go/hipchat"
-	"net/url"
-	"os"
 )
 
 var (
@@ -34,7 +35,7 @@ type Hipchat struct {
 }
 
 func (h *Hipchat) Send(message types.Message) error {
-	if ctx.DRY_RUN {
+	if ctx.DryRun {
 		log.Infof("[HIPCHAT] dry-run set, no notification sent")
 	} else {
 		_, err := client.Room.Notification(room, &hipchat.NotificationRequest{

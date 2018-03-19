@@ -30,7 +30,7 @@ func main() {
 
 	flag.Parse()
 
-	context.DRY_RUN = *dryRun
+	context.DryRun = *dryRun
 
 	if *help {
 		opType = &(&types.S{S: types.HELP.String()}).S

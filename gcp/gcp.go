@@ -16,8 +16,8 @@ import (
 	"google.golang.org/api/compute/v1"
 )
 
-const (
-	IGNORE_LABEL = "cloud-cost-reducer-ignore"
+var (
+	IgnoreLabel string
 )
 
 var (
@@ -58,7 +58,7 @@ func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 	}
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
-			_, label := inst.Labels[IGNORE_LABEL]
+			_, label := inst.Labels[IgnoreLabel]
 			if !label {
 				instances = append(instances, newInstance(inst))
 			}
@@ -106,7 +106,7 @@ func (a GcpProvider) TerminateRunningInstances() ([]*types.Instance, error) {
 	for group, _ := range instanceGroupsToDelete {
 		zone := getZone(group.Zone)
 		log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
-		if !context.DRY_RUN {
+		if !context.DryRun {
 			_, err := computeClient.InstanceGroupManagers.Delete(projectId, zone, group.Name).Do()
 			if err != nil {
 				log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
@@ -116,7 +116,7 @@ func (a GcpProvider) TerminateRunningInstances() ([]*types.Instance, error) {
 	for _, inst := range instancesToDelete {
 		zone := getZone(inst.Zone)
 		log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
-		if !context.DRY_RUN {
+		if !context.DryRun {
 			_, err := computeClient.Instances.Delete(projectId, zone, inst.Name).Do()
 			if err != nil {
 				log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
