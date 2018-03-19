@@ -1,8 +1,6 @@
 package aws
 
 import (
-	"sync"
-
 	"crypto/tls"
 	"net/http"
 
@@ -87,12 +85,14 @@ func newEc2Client(region *string) (*ec2.EC2, error) {
 }
 
 func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
-	instances := make([]*types.Instance, 0)
-	var wg sync.WaitGroup
+	instChan := make(chan *types.Instance, 5)
+	doneChan := make(chan bool, 0)
+
 	for _, region := range regions {
-		wg.Add(1)
 		go func(region string) {
-			defer wg.Done()
+			defer func() {
+				doneChan <- true
+			}()
 			filterName := "instance-state-name"
 			filterValue := ec2.InstanceStateNameRunning
 			runningFilter := []*ec2.Filter{{Name: &filterName, Values: []*string{&filterValue}}}
@@ -106,18 +106,31 @@ func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
 			for _, res := range instanceResult.Reservations {
 				for _, inst := range res.Instances {
 					tags := getTags(inst.Tags)
-					instances = append(instances, &types.Instance{
+					instChan <- &types.Instance{
 						Id:        *inst.InstanceId,
 						Name:      tags["Name"],
 						Created:   *inst.LaunchTime,
 						CloudType: types.AWS,
 						Tags:      tags,
-					})
+					}
 				}
 			}
 		}(region)
 	}
-	wg.Wait()
+
+	instances := []*types.Instance{}
+	regionsLeft := len(regions)
+	for regionsLeft != 0 {
+		select {
+		case inst, ok := <-instChan:
+			if ok {
+				instances = append(instances, inst)
+			}
+		case <-doneChan:
+			regionsLeft -= 1
+		}
+	}
+
 	return instances, nil
 }
 
