@@ -5,6 +5,8 @@ PKG_BASE=github.com/hortonworks/cloud-cost-reducer
 BUILD_TIME=$(shell date +%FT%T)
 LDFLAGS=-X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.BuildTime=${BUILD_TIME}
 
+GCP_OWNER_LABEL?=owner
+LDFLAGS+= -X $(PKG_BASE)/gcp.OwnerLabel=$(GCP_OWNER_LABEL)
 GCP_IGNORE_LABEL?=cloud-cost-reducer-ignore
 LDFLAGS+= -X $(PKG_BASE)/gcp.IgnoreLabel=$(GCP_IGNORE_LABEL)
 

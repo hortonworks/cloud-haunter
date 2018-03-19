@@ -17,10 +17,8 @@ import (
 )
 
 var (
-	IgnoreLabel string
-)
-
-var (
+	IgnoreLabel   string
+	OwnerLabel    string
 	projectId     string
 	computeClient *compute.Service
 )
@@ -58,8 +56,7 @@ func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 	}
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
-			_, label := inst.Labels[IgnoreLabel]
-			if !label {
+			if !isAnyMatch(inst.Labels, IgnoreLabel) {
 				instances = append(instances, newInstance(inst))
 			}
 		}
@@ -86,20 +83,21 @@ func (a GcpProvider) TerminateRunningInstances() ([]*types.Instance, error) {
 
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
+			if isAnyMatch(inst.Labels, OwnerLabel, IgnoreLabel) {
+				continue
+			}
 			groupFound := false
-			if _, ok := inst.Labels["owner"]; !ok {
-				for _, i := range instanceGroups.Items {
-					for _, group := range i.InstanceGroupManagers {
-						if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.BaseInstanceName+"-") == 0 {
-							instanceGroupsToDelete[group], groupFound = true, true
-						}
+			for _, i := range instanceGroups.Items {
+				for _, group := range i.InstanceGroupManagers {
+					if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.BaseInstanceName+"-") == 0 {
+						instanceGroupsToDelete[group], groupFound = true, true
 					}
 				}
-				if !groupFound {
-					instancesToDelete = append(instancesToDelete, inst)
-				}
-				instances = append(instances, newInstance(inst))
 			}
+			if !groupFound {
+				instancesToDelete = append(instancesToDelete, inst)
+			}
+			instances = append(instances, newInstance(inst))
 		}
 	}
 
@@ -143,6 +141,15 @@ func getRegions() ([]string, error) {
 func getZone(url string) string {
 	parts := strings.Split(url, "/")
 	return parts[len(parts)-1]
+}
+
+func isAnyMatch(labels map[string]string, ignores ...string) bool {
+	for _, label := range ignores {
+		if _, ok := labels[label]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func convertTime(stringTime string) time.Time {
