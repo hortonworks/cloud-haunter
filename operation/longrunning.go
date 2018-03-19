@@ -9,10 +9,22 @@ import (
 	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
+	"os"
 )
+
+var runningPeriod = 24 * time.Hour
 
 func init() {
 	ctx.Operations[types.LONGRUNNING] = LongRunning{}
+	running := os.Getenv("RUNNING_PERIOD")
+	if len(running) > 0 {
+		if duration, err := time.ParseDuration(running); err != nil {
+			log.Warnf("[LONGRUNNING] err: %s", err)
+		} else {
+			runningPeriod = duration
+		}
+	}
+	log.Infof("[LONGRUNNING] running period set to: %s", runningPeriod)
 }
 
 type LongRunning struct {
@@ -42,7 +54,7 @@ func (o LongRunning) Execute(clouds []types.CloudType) {
 		if err != nil {
 			continue
 		}
-		longRunningInstances = append(longRunningInstances, getInstancesRunningLongerThan(instances, 24*time.Hour)...)
+		longRunningInstances = append(longRunningInstances, getInstancesRunningLongerThan(instances, runningPeriod)...)
 	}
 	for _, instance := range longRunningInstances {
 		log.Infof("[%s] Instance %s is running for more than: %s", instance.CloudType, instance.Name, time.Since(instance.Created))
