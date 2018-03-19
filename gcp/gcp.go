@@ -166,5 +166,6 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		Id:        strconv.Itoa(int(inst.Id)),
 		Created:   convertTime(inst.CreationTimestamp),
 		CloudType: types.GCP,
+		Tags:      inst.Labels,
 	}
 }
