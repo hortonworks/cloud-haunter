@@ -19,9 +19,12 @@ func (o Termination) Execute(clouds []types.CloudType) {
 		if !ok {
 			panic("Cloud provider not supported")
 		}
-		ownerLessInstances := provider.TerminateRunningInstances()
+		ownerLessInstances, err := provider.TerminateRunningInstances()
+		if err != nil {
+			continue
+		}
 		for _, instance := range ownerLessInstances {
-			log.Infof("[%s] Instance %s is running without Owner tag", cloud.String(), instance.Name)
+			log.Infof("[%s] Instance %s was running without Owner tag", cloud.String(), instance.Name)
 		}
 
 	}

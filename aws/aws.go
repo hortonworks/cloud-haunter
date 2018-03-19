@@ -4,13 +4,14 @@ import (
 	"sync"
 
 	"crypto/tls"
+	"net/http"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
-	"net/http"
 )
 
 var (
@@ -85,7 +86,7 @@ func newEc2Client(region *string) (*ec2.EC2, error) {
 	return ec2.New(awsSession), nil
 }
 
-func (p *AwsProvider) GetRunningInstances() []*types.Instance {
+func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	var wg sync.WaitGroup
 	for _, region := range regions {
@@ -117,7 +118,7 @@ func (p *AwsProvider) GetRunningInstances() []*types.Instance {
 		}(region)
 	}
 	wg.Wait()
-	return instances
+	return instances, nil
 }
 
 func getTags(ec2Tags []*ec2.Tag) types.Tags {
@@ -128,6 +129,6 @@ func getTags(ec2Tags []*ec2.Tag) types.Tags {
 	return tags
 }
 
-func (a AwsProvider) TerminateRunningInstances() []*types.Instance {
+func (a AwsProvider) TerminateRunningInstances() ([]*types.Instance, error) {
 	panic("Termination not supported.")
 }

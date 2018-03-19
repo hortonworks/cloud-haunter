@@ -47,12 +47,12 @@ func init() {
 type AzureProvider struct {
 }
 
-func (p *AzureProvider) GetRunningInstances() []*types.Instance {
+func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	result, err := vmClient.ListAll(ctx.Background())
 	if err != nil {
 		log.Errorf("[AZURE] Failed to fetch the running instances, err: %s", err.Error())
-		return instances
+		return nil, err
 	}
 	for _, inst := range result.Values() {
 		// TODO list only running instances
@@ -63,7 +63,7 @@ func (p *AzureProvider) GetRunningInstances() []*types.Instance {
 			Tags:      getTags(inst.Tags),
 		})
 	}
-	return instances
+	return instances, nil
 }
 
 func getTags(azureTags map[string]*string) types.Tags {
@@ -74,12 +74,12 @@ func getTags(azureTags map[string]*string) types.Tags {
 	return tags
 }
 
-func (a AzureProvider) TerminateRunningInstances() []*types.Instance {
+func (a AzureProvider) TerminateRunningInstances() ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	groups, err := rgClient.List(ctx.Background(), "", nil)
 	if err != nil {
 		log.Errorf("[AZURE] Failed to fetch the existing resource groups, err: %s", err.Error())
-		return instances
+		return nil, err
 	}
 	for _, g := range groups.Values() {
 		resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil) // TODO maybe we can filter for (running) instances
@@ -101,5 +101,5 @@ func (a AzureProvider) TerminateRunningInstances() []*types.Instance {
 		}
 	}
 
-	return instances
+	return instances, nil
 }

@@ -5,6 +5,7 @@ import (
 
 	"bytes"
 	"fmt"
+
 	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
@@ -37,7 +38,10 @@ func (o LongRunning) Execute(clouds []types.CloudType) {
 		if !ok {
 			panic("Cloud provider not supported")
 		}
-		instances := provider.GetRunningInstances()
+		instances, err := provider.GetRunningInstances()
+		if err != nil {
+			continue
+		}
 		longRunningInstances = append(longRunningInstances, getInstancesRunningLongerThan(instances, 24*time.Hour)...)
 	}
 	for _, instance := range longRunningInstances {

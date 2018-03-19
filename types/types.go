@@ -31,8 +31,8 @@ const (
 )
 
 type CloudProvider interface {
-	GetRunningInstances() []*Instance
-	TerminateRunningInstances() []*Instance
+	GetRunningInstances() ([]*Instance, error)
+	TerminateRunningInstances() ([]*Instance, error)
 }
 
 type Message interface {

@@ -45,47 +45,33 @@ func init() {
 type GcpProvider struct {
 }
 
-func getRegions() ([]string, error) {
-	regionList, err := computeClient.Regions.List(projectId).Do()
-	if err != nil {
-		return nil, err
-	}
-
-	regions := make([]string, 0)
-	for _, region := range regionList.Items {
-		regions = append(regions, region.Name)
-	}
-	log.Infof("[GCP] Available regions: %v", regions)
-	return regions, nil
-}
-
-func (p *GcpProvider) GetRunningInstances() []*types.Instance {
+func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
-		return instances
+		return nil, err
 	}
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
 			instances = append(instances, newInstance(inst))
 		}
 	}
-	return instances
+	return instances, nil
 }
 
-func (a GcpProvider) TerminateRunningInstances() []*types.Instance {
+func (a GcpProvider) TerminateRunningInstances() ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
-		return instances
+		return nil, err
 	}
 
 	instanceGroups, err := computeClient.InstanceGroupManagers.AggregatedList(projectId).Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
-		return instances
+		return nil, err
 	}
 
 	instancesToDelete := []*compute.Instance{}
@@ -130,7 +116,21 @@ func (a GcpProvider) TerminateRunningInstances() []*types.Instance {
 			}
 		}
 	}
-	return instances
+	return instances, nil
+}
+
+func getRegions() ([]string, error) {
+	regionList, err := computeClient.Regions.List(projectId).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	regions := make([]string, 0)
+	for _, region := range regionList.Items {
+		regions = append(regions, region.Name)
+	}
+	log.Infof("[GCP] Available regions: %v", regions)
+	return regions, nil
 }
 
 func getZone(url string) string {
