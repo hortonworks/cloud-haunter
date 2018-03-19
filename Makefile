@@ -1,4 +1,4 @@
-BINARY=cr
+BINARY=ccr
 
 VERSION?=$(shell git describe --tags --abbrev=0)-snapshot
 PKG_BASE=github.com/hortonworks/cloud-cost-reducer
