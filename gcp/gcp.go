@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	PATIENCE_TIME = int64(86400)
-	IGNORE_LABEL  = "cloud-cost-reducer-ignore"
+	IGNORE_LABEL = "cloud-cost-reducer-ignore"
 )
 
 var (
@@ -57,12 +56,10 @@ func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
 	}
-	now := time.Now().Unix()
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
-			diff := now - getTimeStamp(inst.CreationTimestamp)
 			_, label := inst.Labels[IGNORE_LABEL]
-			if !label && diff > PATIENCE_TIME {
+			if !label {
 				instances = append(instances, newInstance(inst))
 			}
 		}
@@ -148,17 +145,19 @@ func getZone(url string) string {
 	return parts[len(parts)-1]
 }
 
-func getTimeStamp(stamp string) int64 {
-	s, _ := strconv.ParseInt(stamp, 10, 64)
-	return s
+func convertTime(stringTime string) time.Time {
+	convertedTime, err := time.Parse(time.RFC3339, stringTime)
+	if err != nil {
+		log.Warnf("[GCP] cannot convert time: %s, err: %s", stringTime, err.Error())
+	}
+	return convertedTime
 }
 
 func newInstance(inst *compute.Instance) *types.Instance {
-	timestamp := getTimeStamp(inst.CreationTimestamp)
 	return &types.Instance{
 		Name:      inst.Name,
 		Id:        strconv.Itoa(int(inst.Id)),
-		Created:   time.Unix(timestamp, 0),
+		Created:   convertTime(inst.CreationTimestamp),
 		CloudType: types.GCP,
 	}
 }
