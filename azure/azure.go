@@ -74,7 +74,7 @@ func getTags(azureTags map[string]*string) types.Tags {
 	return tags
 }
 
-func (a AzureProvider) TerminateRunningInstances() ([]*types.Instance, error) {
+func (a AzureProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	groups, err := rgClient.List(ctx.Background(), "", nil)
 	if err != nil {

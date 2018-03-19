@@ -14,5 +14,5 @@ const (
 
 type CloudProvider interface {
 	GetRunningInstances() ([]*Instance, error)
-	TerminateRunningInstances() ([]*Instance, error)
+	GetOwnerLessInstances() ([]*Instance, error)
 }

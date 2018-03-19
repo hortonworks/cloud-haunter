@@ -20,14 +20,14 @@ func (o Ownerless) Execute(clouds []types.CloudType) []*types.Instance {
 		if !ok {
 			panic("Cloud provider not supported")
 		}
-		instances, err := provider.TerminateRunningInstances()
+		instances, err := provider.GetOwnerLessInstances()
 		if err != nil {
 			continue
 		}
 		allInstances = append(allInstances, instances...)
 	}
 	for _, instance := range allInstances {
-		log.Infof("[%s] Instance %s is running withput owner tag", instance.CloudType, instance.Name)
+		log.Infof("[%s] Instance %s is running without owner tag", instance.CloudType, instance.Name)
 	}
 	return allInstances
 }

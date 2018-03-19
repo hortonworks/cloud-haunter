@@ -84,8 +84,7 @@ USAGE:
    
 VERSION:`)
 	println(context.Version)
-	println(`
-AUTHOR(S):
+	println(`AUTHOR(S):
    Hortonworks
    
 OPERATIONS:`)
