@@ -26,7 +26,7 @@ func main() {
 
 	help := flag.Bool("h", false, "print help")
 	opType := flag.String("o", "", "type of operation")
-	actionType := flag.String("a", "", "type of action")
+	actionType := flag.String("a", "log", "type of action")
 	cloudType := flag.String("c", "", "type of cloud")
 	dryRun := flag.Bool("d", false, "dry run")
 
@@ -100,6 +100,6 @@ OPERATIONS:`)
 	for ct := range context.CloudProviders {
 		println("\t-c=" + ct.String())
 	}
-	println("Dry run:\n\t-d")
-	println("Print help:\n\t-p")
+	println("DRY RUN:\n\t-d")
+	println("HELP:\n\t-p")
 }

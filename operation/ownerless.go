@@ -1,6 +1,7 @@
 package operation
 
 import (
+	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
@@ -24,6 +25,9 @@ func (o Ownerless) Execute(clouds []types.CloudType) []*types.Instance {
 			continue
 		}
 		allInstances = append(allInstances, instances...)
+	}
+	for _, instance := range allInstances {
+		log.Infof("[%s] Instance %s is running withput owner tag", instance.CloudType, instance.Name)
 	}
 	return allInstances
 }

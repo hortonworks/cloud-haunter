@@ -9,7 +9,7 @@ var (
 	BuildTime string
 )
 
-var DryRun = true
+var DryRun = false
 
 var Operations = make(map[types.OpType]types.Operation)
 
