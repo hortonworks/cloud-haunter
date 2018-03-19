@@ -57,7 +57,7 @@ func (o LongRunning) Execute(clouds []types.CloudType) {
 		longRunningInstances = append(longRunningInstances, getInstancesRunningLongerThan(instances, runningPeriod)...)
 	}
 	for _, instance := range longRunningInstances {
-		log.Infof("[%s] Instance %s is running for more than: %s", instance.CloudType, instance.Name, time.Since(instance.Created))
+		log.Infof("[%s] Instance %s is running for more than: %.1f hours", instance.CloudType, instance.Name, time.Since(instance.Created).Hours())
 	}
 	if len(longRunningInstances) > 0 {
 		message := longRunningInstancesMessage{instances: longRunningInstances}
