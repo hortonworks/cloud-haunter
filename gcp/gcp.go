@@ -52,9 +52,12 @@ func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
 	}
+	now := time.Now().Unix()
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
-			instances = append(instances, newInstance(inst))
+			if diff := now - getTimeStamp(inst.CreationTimestamp); diff > 86400 {
+				instances = append(instances, newInstance(inst))
+			}
 		}
 	}
 	return instances, nil
@@ -83,7 +86,7 @@ func (a GcpProvider) TerminateRunningInstances() ([]*types.Instance, error) {
 			if _, ok := inst.Labels["owner"]; !ok {
 				for _, i := range instanceGroups.Items {
 					for _, group := range i.InstanceGroupManagers {
-						if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.Name+"-") == 0 {
+						if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.BaseInstanceName+"-") == 0 {
 							instanceGroupsToDelete[group], groupFound = true, true
 						}
 					}
@@ -138,8 +141,13 @@ func getZone(url string) string {
 	return parts[len(parts)-1]
 }
 
+func getTimeStamp(stamp string) int64 {
+	s, _ := strconv.ParseInt(stamp, 10, 64)
+	return s
+}
+
 func newInstance(inst *compute.Instance) *types.Instance {
-	timestamp, _ := strconv.ParseInt(inst.CreationTimestamp, 10, 64)
+	timestamp := getTimeStamp(inst.CreationTimestamp)
 	return &types.Instance{
 		Name:      inst.Name,
 		Id:        strconv.Itoa(int(inst.Id)),
