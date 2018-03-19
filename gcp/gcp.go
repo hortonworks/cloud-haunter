@@ -16,6 +16,11 @@ import (
 	"google.golang.org/api/compute/v1"
 )
 
+const (
+	PATIENCE_TIME = int64(86400)
+	IGNORE_LABEL  = "cloud-cost-reducer-ignore"
+)
+
 var (
 	projectId     string
 	computeClient *compute.Service
@@ -55,7 +60,9 @@ func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 	now := time.Now().Unix()
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
-			if diff := now - getTimeStamp(inst.CreationTimestamp); diff > 86400 {
+			diff := now - getTimeStamp(inst.CreationTimestamp)
+			_, label := inst.Labels[IGNORE_LABEL]
+			if !label && diff > PATIENCE_TIME {
 				instances = append(instances, newInstance(inst))
 			}
 		}
