@@ -1,5 +1,6 @@
 BINARY=ccr
 
+BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 VERSION?=$(shell git describe --tags --abbrev=0)-snapshot
 PKG_BASE=github.com/hortonworks/cloud-cost-reducer
 BUILD_TIME=$(shell date +%FT%T)
@@ -17,7 +18,7 @@ all: deps build
 deps: deps-errcheck
 	go get -u github.com/golang/dep/cmd/dep
 	# go get -u golang.org/x/tools/cmd/goimports
-	go get -u github.com/kisielk/errcheck
+	go get -u github.com/keyki/gh-release/...
 
 deps-errcheck:
 	go get -u github.com/kisielk/errcheck
@@ -45,3 +46,9 @@ build-darwin:
 
 build-linux:
 	GOOS=linux CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Linux/${BINARY} main.go
+
+release: build
+	rm -rf release && mkdir release
+	tar -zcf release/$(BINARY)_$(VERSION)_Linux_$(shell uname -m).tgz -C build/Linux $(BINARY)
+	tar -zcf release/$(BINARY)_$(VERSION)_Darwin_$(shell uname -m).tgz -C build/Darwin $(BINARY)
+	gh-release create hortonworks/cloud-cost-reducer $(VERSION) $(BRANCH) v$(VERSION)
