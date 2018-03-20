@@ -19,7 +19,7 @@ import (
 
 var (
 	IgnoreLabel   string = "cloud-cost-reducer-ignore"
-	OwnerLabel    string = "ownerr"
+	OwnerLabel    string = "owner"
 	projectId     string
 	computeClient *compute.Service
 )

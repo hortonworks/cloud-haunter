@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net/http"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
@@ -87,13 +88,12 @@ func newEc2Client(region *string) (*ec2.EC2, error) {
 
 func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
 	instChan := make(chan *types.Instance, 5)
-	doneChan := make(chan bool, 0)
-
+	wg := sync.WaitGroup{}
+	wg.Add(len(regions))
 	for _, region := range regions {
 		go func(region string) {
-			defer func() {
-				doneChan <- true
-			}()
+			defer wg.Done()
+
 			filterName := "instance-state-name"
 			filterValue := ec2.InstanceStateNameRunning
 			runningFilter := []*ec2.Filter{{Name: &filterName, Values: []*string{&filterValue}}}
@@ -118,20 +118,14 @@ func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
 			}
 		}(region)
 	}
-
+	go func() {
+		wg.Wait()
+		close(instChan)
+	}()
 	instances := []*types.Instance{}
-	regionsLeft := len(regions)
-	for regionsLeft != 0 {
-		select {
-		case inst, ok := <-instChan:
-			if ok {
-				instances = append(instances, inst)
-			}
-		case <-doneChan:
-			regionsLeft -= 1
-		}
+	for inst := range instChan {
+		instances = append(instances, inst)
 	}
-
 	return instances, nil
 }
 

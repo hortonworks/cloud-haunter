@@ -29,26 +29,16 @@ type LongRunning struct {
 }
 
 func (o LongRunning) Execute(clouds []types.CloudType) []*types.Instance {
-	var allInstances = make([]*types.Instance, 0)
-	for _, cloud := range clouds {
-		provider, ok := ctx.CloudProviders[cloud]
-		if !ok {
-			panic("Cloud provider not supported")
-		}
-		instances, err := provider.GetRunningInstances()
-		if err != nil {
-			log.Errorf("[LONGRUNNING] Failed to collect long running instances, err: %s", err.Error())
-			continue
-		}
-		allInstances = append(allInstances, getInstancesRunningLongerThan(instances, runningPeriod)...)
-	}
-	return allInstances
+	instsChan, errChan := collectInstances(clouds, func(provider types.CloudProvider) ([]*types.Instance, error) {
+		return provider.GetRunningInstances()
+	})
+	return waitForInstances(instsChan, errChan, "[LONGRUNNING] Failed to collect long running instances", getInstancesRunningLongerThan)
 }
 
-func getInstancesRunningLongerThan(instances []*types.Instance, period time.Duration) []*types.Instance {
+func getInstancesRunningLongerThan(instances []*types.Instance) []*types.Instance {
 	filtered := make([]*types.Instance, 0)
 	for _, instance := range instances {
-		if instance.Created.Add(period).Before(time.Now()) {
+		if instance.Created.Add(runningPeriod).Before(time.Now()) {
 			filtered = append(filtered, instance)
 		}
 	}
