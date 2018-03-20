@@ -70,3 +70,35 @@ func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
 func (a AzureProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
 	panic("Operation not supported.")
 }
+
+func (a AzureProvider) TerminateInstances([]*types.Instance) error {
+	panic("Operation not supported.")
+	// AZURE
+	// instances := make([]*types.Instance, 0)
+	// groups, err := rgClient.List(ctx.Background(), "", nil)
+	// if err != nil {
+	// 	log.Errorf("[AZURE] Failed to fetch the existing resource groups, err: %s", err.Error())
+	// 	return nil, err
+	// }
+	// for _, g := range groups.Values() {
+	// 	resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil) // TODO maybe we can filter for (running) instances
+	// 	if err != nil {
+	// 		log.Warn("[AZURE] Failed to fetch the resources for %s, err: %s", *g.Name, err.Error())
+	// 		continue
+	// 	}
+	// 	for _, r := range resources.Values() {
+	// 		if _, ok := typesToCollect[*r.Type]; ok {
+	// 			if _, ok := r.Tags["Owner"]; !ok {
+	// 				instances = append(instances, &types.Instance{
+	// 					Name:      *r.Name,
+	// 					Id:        *r.ID,
+	// 					CloudType: types.AZURE,
+	// 					Tags:      utils.ConvertTags(r.Tags),
+	// 				})
+	// 			}
+	// 		}
+	// 	}
+	// }
+
+	// return instances, nil
+}

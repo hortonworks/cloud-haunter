@@ -145,3 +145,7 @@ func getTags(ec2Tags []*ec2.Tag) types.Tags {
 func (a AwsProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
 	panic("Operation not supported.")
 }
+
+func (a AwsProvider) TerminateInstances([]*types.Instance) error {
+	panic("Operation not supported.")
+}

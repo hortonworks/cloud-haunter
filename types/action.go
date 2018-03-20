@@ -9,10 +9,11 @@ func (ot ActionType) String() string {
 const (
 	LOG_ACTION          = ActionType("log")
 	NOTIFICATION_ACTION = ActionType("notification")
+	TERMINATION_ACTION  = ActionType("termination")
 )
 
 type Action interface {
-	Execute(string, []*Instance)
+	Execute([]*Instance)
 }
 
 type Message interface {

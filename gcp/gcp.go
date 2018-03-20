@@ -55,6 +55,53 @@ func (a GcpProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
 	return getRunningInstancesFilterByLabel(OwnerLabel, IgnoreLabel)
 }
 
+func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
+	instanceGroups, err := computeClient.InstanceGroupManagers.AggregatedList(projectId).Do()
+	if err != nil {
+		log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
+		return err
+	}
+
+	instancesToDelete := []*types.Instance{}
+	instanceGroupsToDelete := map[*compute.InstanceGroupManager]bool{}
+
+	for _, inst := range instances {
+		groupFound := false
+		for _, i := range instanceGroups.Items {
+			for _, group := range i.InstanceGroupManagers {
+				if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.BaseInstanceName+"-") == 0 {
+					instanceGroupsToDelete[group], groupFound = true, true
+				}
+			}
+		}
+		if !groupFound {
+			instancesToDelete = append(instancesToDelete, inst)
+		}
+	}
+
+	for group, _ := range instanceGroupsToDelete {
+		zone := getZone(group.Zone)
+		if !context.DryRun {
+			log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
+			_, err := computeClient.InstanceGroupManagers.Delete(projectId, zone, group.Name).Do()
+			if err != nil {
+				log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
+			}
+		}
+	}
+	for _, inst := range instancesToDelete {
+		zone := inst.Metadata["zone"].(string)
+		if !context.DryRun {
+			log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
+			_, err := computeClient.Instances.Delete(projectId, zone, inst.Name).Do()
+			if err != nil {
+				log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
+			}
+		}
+	}
+	return nil
+}
+
 func getRunningInstancesFilterByLabel(ignoreLabels ...string) ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
@@ -102,5 +149,6 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		Created:   created,
 		CloudType: types.GCP,
 		Tags:      inst.Labels,
+		Metadata:  map[string]interface{}{"zone": getZone(inst.Zone)},
 	}
 }

@@ -73,7 +73,7 @@ func main() {
 		panic("Cloud provider not found.")
 	}
 
-	action.Execute(*opType, op.Execute(clouds))
+	action.Execute(op.Execute(clouds))
 }
 
 func printHelp() {

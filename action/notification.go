@@ -17,7 +17,7 @@ func init() {
 type NotificationAction struct {
 }
 
-func (a NotificationAction) Execute(op string, instances []*types.Instance) {
+func (a NotificationAction) Execute(instances []*types.Instance) {
 	if len(instances) > 0 {
 		message := instancesMessage{instances: instances}
 		for name, dispatcher := range ctx.Dispatchers {

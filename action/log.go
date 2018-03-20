@@ -2,7 +2,6 @@ package action
 
 import (
 	"encoding/json"
-	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
@@ -16,10 +15,9 @@ func init() {
 type LogAction struct {
 }
 
-func (a LogAction) Execute(op string, instances []*types.Instance) {
-	capitalOp := strings.ToUpper(op)
+func (a LogAction) Execute(instances []*types.Instance) {
 	for _, inst := range instances {
 		out, _ := json.Marshal(inst)
-		log.Infof("[%s] %s", capitalOp, string(out))
+		log.Infof("[%s] %s", inst.CloudType, string(out))
 	}
 }
