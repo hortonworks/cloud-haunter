@@ -2,6 +2,7 @@ package aws
 
 import (
 	"crypto/tls"
+	"errors"
 	"net/http"
 
 	log "github.com/Sirupsen/logrus"
@@ -143,9 +144,9 @@ func getTags(ec2Tags []*ec2.Tag) types.Tags {
 }
 
 func (a AwsProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
-	panic("Operation not supported.")
+	return nil, errors.New("[AWS] Ownerless operation not supported")
 }
 
 func (a AwsProvider) TerminateInstances([]*types.Instance) error {
-	panic("Operation not supported.")
+	return errors.New("[AWS] Termination not supported")
 }

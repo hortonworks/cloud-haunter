@@ -2,6 +2,7 @@ package azure
 
 import (
 	ctx "context"
+	"errors"
 	"os"
 
 	"github.com/hortonworks/cloud-cost-reducer/utils"
@@ -68,11 +69,11 @@ func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
 }
 
 func (a AzureProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
-	panic("Operation not supported.")
+	return nil, errors.New("[AZURE] Ownerless operation not supported")
 }
 
 func (a AzureProvider) TerminateInstances([]*types.Instance) error {
-	panic("Operation not supported.")
+	return errors.New("[AZURE] Termination not supported")
 	// AZURE
 	// instances := make([]*types.Instance, 0)
 	// groups, err := rgClient.List(ctx.Background(), "", nil)
