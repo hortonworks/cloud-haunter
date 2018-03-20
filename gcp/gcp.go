@@ -6,19 +6,19 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
+	"github.com/hortonworks/cloud-cost-reducer/utils"
 
 	ctx "context"
 	"os"
 	"strconv"
-	"time"
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/compute/v1"
 )
 
 var (
-	IgnoreLabel   string
-	OwnerLabel    string
+	IgnoreLabel   string = "cloud-cost-reducer-ignore"
+	OwnerLabel    string = "owner"
 	projectId     string
 	computeClient *compute.Service
 )
@@ -48,24 +48,14 @@ type GcpProvider struct {
 }
 
 func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
-	instances := make([]*types.Instance, 0)
-	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
-	if err != nil {
-		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
-		return nil, err
-	}
-	for _, items := range instanceList.Items {
-		for _, inst := range items.Instances {
-			if !isAnyMatch(inst.Labels, IgnoreLabel) {
-				instances = append(instances, newInstance(inst))
-			}
-		}
-	}
-	return instances, nil
+	return getRunningInstancesFilterByLabel(IgnoreLabel)
 }
 
-// TODO code duplication
 func (a GcpProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
+	return getRunningInstancesFilterByLabel(OwnerLabel, IgnoreLabel)
+}
+
+func getRunningInstancesFilterByLabel(ignoreLabels ...string) ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
 	if err != nil {
@@ -74,7 +64,7 @@ func (a GcpProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
 	}
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
-			if !isAnyMatch(inst.Labels, OwnerLabel, IgnoreLabel) {
+			if !utils.IsAnyMatch(inst.Labels, ignoreLabels...) {
 				instances = append(instances, newInstance(inst))
 			}
 		}
@@ -101,28 +91,15 @@ func getZone(url string) string {
 	return parts[len(parts)-1]
 }
 
-func isAnyMatch(labels map[string]string, ignores ...string) bool {
-	for _, label := range ignores {
-		if _, ok := labels[label]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-func convertTime(stringTime string) time.Time {
-	convertedTime, err := time.Parse(time.RFC3339, stringTime)
-	if err != nil {
-		log.Warnf("[GCP] cannot convert time: %s, err: %s", stringTime, err.Error())
-	}
-	return convertedTime
-}
-
 func newInstance(inst *compute.Instance) *types.Instance {
+	created, err := utils.ConvertTimeRFC3339(inst.CreationTimestamp)
+	if err != nil {
+		log.Warnf("[GCP] cannot convert time: %s, err: %s", inst.CreationTimestamp, err.Error())
+	}
 	return &types.Instance{
 		Name:      inst.Name,
 		Id:        strconv.Itoa(int(inst.Id)),
-		Created:   convertTime(inst.CreationTimestamp),
+		Created:   created,
 		CloudType: types.GCP,
 		Tags:      inst.Labels,
 	}

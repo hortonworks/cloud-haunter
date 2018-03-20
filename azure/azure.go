@@ -4,6 +4,8 @@ import (
 	ctx "context"
 	"os"
 
+	"github.com/hortonworks/cloud-cost-reducer/utils"
+
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2017-05-10/resources"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
@@ -55,23 +57,14 @@ func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
 		return nil, err
 	}
 	for _, inst := range result.Values() {
-		// TODO list only running instances
 		instances = append(instances, &types.Instance{
 			Name:      *inst.Name,
-			Id:        *inst.ID, // TODO missing Created type
+			Id:        *inst.ID,
 			CloudType: types.AZURE,
-			Tags:      getTags(inst.Tags),
+			Tags:      utils.ConvertTags(inst.Tags),
 		})
 	}
 	return instances, nil
-}
-
-func getTags(azureTags map[string]*string) types.Tags {
-	tags := make(types.Tags, 0)
-	for k, v := range azureTags {
-		tags[k] = *v
-	}
-	return tags
 }
 
 func (a AzureProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
@@ -90,11 +83,11 @@ func (a AzureProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
 		for _, r := range resources.Values() {
 			if _, ok := typesToCollect[*r.Type]; ok {
 				if _, ok := r.Tags["Owner"]; !ok {
-					// TODO list only running instances
 					instances = append(instances, &types.Instance{
 						Name:      *r.Name,
-						Id:        *r.ID, // TODO missing Created type
+						Id:        *r.ID,
 						CloudType: types.AZURE,
+						Tags:      utils.ConvertTags(r.Tags),
 					})
 				}
 			}

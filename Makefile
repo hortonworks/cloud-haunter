@@ -12,6 +12,8 @@ LDFLAGS+= -X $(PKG_BASE)/gcp.IgnoreLabel=$(GCP_IGNORE_LABEL)
 
 GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.git/*")
 
+all: build-linux
+
 deps: deps-errcheck
 	go get -u github.com/golang/dep/cmd/dep
 	# go get -u golang.org/x/tools/cmd/goimports
