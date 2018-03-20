@@ -104,7 +104,7 @@ func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
 				return
 			}
 			for _, res := range instanceResult.Reservations {
-				for _, inst := range res.Instances {
+				for _, inst := range res.Instances { // TODO filter by ignore tag
 					tags := getTags(inst.Tags)
 					instChan <- &types.Instance{
 						Id:        *inst.InstanceId,

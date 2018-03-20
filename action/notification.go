@@ -11,20 +11,7 @@ import (
 )
 
 func init() {
-	context.Actions[types.NOTIFICATION] = new(NotificationAction)
-}
-
-type instancesMessage struct {
-	instances []*types.Instance
-}
-
-func (m *instancesMessage) Message() string {
-	var buffer bytes.Buffer
-	buffer.WriteString("/code\n")
-	for _, instance := range m.instances {
-		buffer.WriteString(fmt.Sprintf("[%s] instance name: %s created: %s\n", instance.CloudType, instance.Name, instance.Created))
-	}
-	return buffer.String()
+	context.Actions[types.NOTIFICATION_ACTION] = new(NotificationAction)
 }
 
 type NotificationAction struct {
@@ -39,4 +26,17 @@ func (a NotificationAction) Execute(op string, instances []*types.Instance) {
 			}
 		}
 	}
+}
+
+type instancesMessage struct {
+	instances []*types.Instance
+}
+
+func (m *instancesMessage) Message() string {
+	var buffer bytes.Buffer
+	buffer.WriteString("/code\n")
+	for _, instance := range m.instances {
+		buffer.WriteString(fmt.Sprintf("[%s] instance name: %s created: %s\n", instance.CloudType, instance.Name, instance.Created))
+	}
+	return buffer.String()
 }

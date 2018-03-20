@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	context.Actions[types.LOG] = new(LogAction)
+	context.Actions[types.LOG_ACTION] = new(LogAction)
 }
 
 type LogAction struct {
