@@ -37,13 +37,10 @@ func (o LongRunning) Execute(clouds []types.CloudType) []*types.Instance {
 		}
 		instances, err := provider.GetRunningInstances()
 		if err != nil {
-			log.Errorf("[LONGRUNNING] Failed to collect long running instances on %s, err: %s", cloud.String(), err.Error())
+			log.Errorf("[LONGRUNNING] Failed to collect long running instances, err: %s", err.Error())
 			continue
 		}
 		allInstances = append(allInstances, getInstancesRunningLongerThan(instances, runningPeriod)...)
-	}
-	for _, instance := range allInstances {
-		log.Infof("[%s] Instance %s is running for more than: %.1f hours", instance.CloudType, instance.Name, time.Since(instance.Created).Hours())
 	}
 	return allInstances
 }

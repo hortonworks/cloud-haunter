@@ -22,13 +22,10 @@ func (o Ownerless) Execute(clouds []types.CloudType) []*types.Instance {
 		}
 		instances, err := provider.GetOwnerLessInstances()
 		if err != nil {
-			log.Errorf("[OWNERLESS] Failed to collect owner less instances on %s, err: %s", cloud.String(), err.Error())
+			log.Errorf("[OWNERLESS] Failed to collect owner less instances, err: %s", err.Error())
 			continue
 		}
 		allInstances = append(allInstances, instances...)
-	}
-	for _, instance := range allInstances {
-		log.Infof("[%s] Instance %s is running without owner tag", instance.CloudType, instance.Name)
 	}
 	return allInstances
 }

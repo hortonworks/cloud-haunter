@@ -3,6 +3,7 @@ package action
 import (
 	"bytes"
 	"fmt"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
@@ -20,11 +21,18 @@ type NotificationAction struct {
 func (a NotificationAction) Execute(instances []*types.Instance) {
 	if len(instances) > 0 {
 		message := instancesMessage{instances: instances}
-		for name, dispatcher := range ctx.Dispatchers {
-			if err := dispatcher.Send(&message); err != nil {
-				log.Errorf("[%s] Failed to send message, err: %s", name, err.Error())
-			}
+		wg := sync.WaitGroup{}
+		wg.Add(len(ctx.Dispatchers))
+		for n, d := range ctx.Dispatchers {
+			go func(name string, dispatcher types.Dispatcher) {
+				defer wg.Done()
+
+				if err := dispatcher.Send(&message); err != nil {
+					log.Errorf("[%s] Failed to send message, err: %s", name, err.Error())
+				}
+			}(n, d)
 		}
+		wg.Wait()
 	}
 }
 

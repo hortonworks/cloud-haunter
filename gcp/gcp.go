@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"strings"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
@@ -18,7 +19,7 @@ import (
 
 var (
 	IgnoreLabel   string = "cloud-cost-reducer-ignore"
-	OwnerLabel    string = "owner"
+	OwnerLabel    string = "ownerr"
 	projectId     string
 	computeClient *compute.Service
 )
@@ -79,26 +80,38 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 		}
 	}
 
-	for group, _ := range instanceGroupsToDelete {
-		zone := getZone(group.Zone)
-		if !context.DryRun {
-			log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
-			_, err := computeClient.InstanceGroupManagers.Delete(projectId, zone, group.Name).Do()
-			if err != nil {
-				log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
+	wg := sync.WaitGroup{}
+	wg.Add(len(instanceGroupsToDelete))
+	for g, _ := range instanceGroupsToDelete {
+		go func(group *compute.InstanceGroupManager) {
+			defer wg.Done()
+
+			zone := getZone(group.Zone)
+			if !context.DryRun {
+				log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
+				_, err := computeClient.InstanceGroupManagers.Delete(projectId, zone, group.Name).Do()
+				if err != nil {
+					log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
+				}
 			}
-		}
+		}(g)
 	}
-	for _, inst := range instancesToDelete {
-		zone := inst.Metadata["zone"].(string)
-		if !context.DryRun {
-			log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
-			_, err := computeClient.Instances.Delete(projectId, zone, inst.Name).Do()
-			if err != nil {
-				log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
+	wg.Add(len(instancesToDelete))
+	for _, i := range instancesToDelete {
+		go func(inst *types.Instance) {
+			defer wg.Done()
+
+			zone := inst.Metadata["zone"].(string)
+			if !context.DryRun {
+				log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
+				_, err := computeClient.Instances.Delete(projectId, zone, inst.Name).Do()
+				if err != nil {
+					log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
+				}
 			}
-		}
+		}(i)
 	}
+	wg.Wait()
 	return nil
 }
 

@@ -18,9 +18,8 @@ type TerminationAction struct {
 func (a TerminationAction) Execute(allInstances []*types.Instance) {
 	wg := sync.WaitGroup{}
 	wg.Add(len(context.CloudProviders))
-
 	for t, p := range context.CloudProviders {
-		go func(cType types.CloudType, cProvider types.CloudProvider) {
+		go func(cType types.CloudType, provider types.CloudProvider) {
 			defer wg.Done()
 
 			instances := []*types.Instance{}
@@ -30,13 +29,11 @@ func (a TerminationAction) Execute(allInstances []*types.Instance) {
 				}
 			}
 			if len(instances) > 0 {
-				err := cProvider.TerminateInstances(instances)
-				if err != nil {
+				if err := provider.TerminateInstances(instances); err != nil {
 					log.Errorf("[TERMINATION] Failed to terminate instances on %s, err: %s", cType.String(), err.Error())
 				}
 			}
 		}(t, p)
 	}
-
 	wg.Wait()
 }

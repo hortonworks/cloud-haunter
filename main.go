@@ -89,15 +89,15 @@ VERSION:`)
    
 OPERATIONS:`)
 	for ot := range context.Operations {
-		println("\t-o=" + ot.String())
+		println("\t-o " + ot.String())
 	}
 	println("ACTIONS:")
 	for a := range context.Actions {
-		println("\t-a=" + a.String())
+		println("\t-a " + a.String())
 	}
 	println("CLOUDS:")
 	for ct := range context.CloudProviders {
-		println("\t-c=" + ct.String())
+		println("\t-c " + ct.String())
 	}
 	println("DRY RUN:\n\t-d")
 	println("HELP:\n\t-p")
