@@ -37,6 +37,7 @@ func (o LongRunning) Execute(clouds []types.CloudType) []*types.Instance {
 		}
 		instances, err := provider.GetRunningInstances()
 		if err != nil {
+			log.Errorf("[LONGRUNNING] Failed to collect long running instances on %s, err: %s", cloud.String(), err.Error())
 			continue
 		}
 		allInstances = append(allInstances, getInstancesRunningLongerThan(instances, runningPeriod)...)

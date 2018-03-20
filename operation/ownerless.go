@@ -22,6 +22,7 @@ func (o Ownerless) Execute(clouds []types.CloudType) []*types.Instance {
 		}
 		instances, err := provider.GetOwnerLessInstances()
 		if err != nil {
+			log.Errorf("[OWNERLESS] Failed to collect owner less instances on %s, err: %s", cloud.String(), err.Error())
 			continue
 		}
 		allInstances = append(allInstances, instances...)
