@@ -52,3 +52,7 @@ release: build
 	tar -zcf release/$(BINARY)_$(VERSION)_Linux_$(shell uname -m).tgz -C build/Linux $(BINARY)
 	tar -zcf release/$(BINARY)_$(VERSION)_Darwin_$(shell uname -m).tgz -C build/Darwin $(BINARY)
 	gh-release create hortonworks/cloud-cost-reducer $(VERSION) $(BRANCH) v$(VERSION)
+
+download:
+	curl -LOs https://github.com/hortonworks/cloud-cost-reducer/releases/download/v$(VERSION)/ccr_$(VERSION)_$(shell uname)_x86_64.tgz
+	tar -xvf ccr_$(VERSION)_$(shell uname)_x86_64.tgz
