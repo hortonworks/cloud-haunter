@@ -8,7 +8,6 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/utils"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
-	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2017-05-10/resources"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
@@ -16,34 +15,36 @@ import (
 )
 
 var (
+	IgnoreLabel    string = "cloud-cost-reducer-ignore"
 	subscriptionId string
 	vmClient       compute.VirtualMachinesClient
-	rgClient       resources.GroupsClient
-	resClient      resources.Client
+	// rgClient       resources.GroupsClient
+	// resClient      resources.Client
+	typesToCollect = map[string]bool{"Microsoft.Compute/virtualMachines": true}
 )
 
-var typesToCollect = map[string]bool{"Microsoft.Compute/virtualMachines": true}
-
 func init() {
-	subscriptionId = os.Getenv("AZURE_SUBSCRIPTION_ID")
-	if len(subscriptionId) > 0 {
-		log.Infof("[AZURE] Trying to register as provider")
+	context.CloudProviders[types.AZURE] = func() types.CloudProvider {
+		prepare()
+		return new(AzureProvider)
+	}
+}
+
+func prepare() {
+	if len(vmClient.SubscriptionID) == 0 {
+		subscriptionId = os.Getenv("AZURE_SUBSCRIPTION_ID")
+		if len(subscriptionId) == 0 {
+			panic("[AZURE] AZURE_SUBSCRIPTION_ID environment variable is missing")
+		}
+		log.Infof("[AZURE] Trying to prepare")
 		authorization, err := auth.NewAuthorizerFromEnvironment()
 		if err != nil {
-			log.Errorf("[AZURE] Failed to authenticate, err: %s", err.Error())
-			return
+			panic("[AZURE] Failed to authenticate, err: " + err.Error())
 		}
 		vmClient = compute.NewVirtualMachinesClient(subscriptionId)
 		vmClient.Authorizer = authorization
-		rgClient = resources.NewGroupsClient(subscriptionId)
-		rgClient.Authorizer = authorization
-		resClient = resources.NewClient(subscriptionId)
-		resClient.Authorizer = authorization
 
-		context.CloudProviders[types.AZURE] = new(AzureProvider)
-		log.Info("[AZURE] Successfully registered as provider")
-	} else {
-		log.Warn("[AZURE] AZURE_SUBSCRIPTION_ID environment variable is missing")
+		log.Info("[AZURE] Successfully prepared")
 	}
 }
 
@@ -57,24 +58,19 @@ func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
 		log.Errorf("[AZURE] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
 	}
-	for _, inst := range result.Values() { // TODO filter by ignore tag
-		instances = append(instances, &types.Instance{
-			Name:      *inst.Name,
-			Id:        *inst.ID,
-			CloudType: types.AZURE,
-			Tags:      utils.ConvertTags(inst.Tags),
-		})
+	for _, inst := range result.Values() {
+		instances = append(instances, newInstance(inst))
 	}
 	return instances, nil
-}
-
-func (a AzureProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
-	return nil, errors.New("[AZURE] Ownerless operation not supported")
 }
 
 func (a AzureProvider) TerminateInstances([]*types.Instance) error {
 	return errors.New("[AZURE] Termination not supported")
 	// AZURE
+	// rgClient = resources.NewGroupsClient(subscriptionId)
+	// 	rgClient.Authorizer = authorization
+	// 	resClient = resources.NewClient(subscriptionId)
+	// 	resClient.Authorizer = authorization
 	// instances := make([]*types.Instance, 0)
 	// groups, err := rgClient.List(ctx.Background(), "", nil)
 	// if err != nil {
@@ -102,4 +98,13 @@ func (a AzureProvider) TerminateInstances([]*types.Instance) error {
 	// }
 
 	// return instances, nil
+}
+
+func newInstance(inst compute.VirtualMachine) *types.Instance {
+	return &types.Instance{
+		Name:      *inst.Name,
+		Id:        *inst.ID,
+		CloudType: types.AZURE,
+		Tags:      utils.ConvertTags(inst.Tags),
+	}
 }

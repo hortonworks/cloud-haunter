@@ -6,10 +6,20 @@ PKG_BASE=github.com/hortonworks/cloud-cost-reducer
 BUILD_TIME=$(shell date +%FT%T)
 LDFLAGS=-X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.BuildTime=${BUILD_TIME}
 
-GCP_OWNER_LABEL?=owner
-LDFLAGS+= -X $(PKG_BASE)/gcp.OwnerLabel=$(GCP_OWNER_LABEL)
+AWS_IGNORE_LABEL?=cloud-cost-reducer-ignore
+LDFLAGS+= -X $(PKG_BASE)/context.AwsIgnoreLabel=$(AWS_IGNORE_LABEL)
+AWS_OWNER_LABEL?=Owner
+LDFLAGS+= -X $(PKG_BASE)/contextgcp.AwsOwnerLabel=$(AWS_OWNER_LABEL)
+
+AZURE_IGNORE_LABEL?=cloud-cost-reducer-ignore
+LDFLAGS+= -X $(PKG_BASE)/context.AzureIgnoreLabel=$(AZURE_IGNORE_LABEL)
+AZURE_OWNER_LABEL?=Owner
+LDFLAGS+= -X $(PKG_BASE)/contextgcp.AzureOwnerLabel=$(AZURE_OWNER_LABEL)
+
 GCP_IGNORE_LABEL?=cloud-cost-reducer-ignore
-LDFLAGS+= -X $(PKG_BASE)/gcp.IgnoreLabel=$(GCP_IGNORE_LABEL)
+LDFLAGS+= -X $(PKG_BASE)/context.GcpIgnoreLabel=$(GCP_IGNORE_LABEL)
+GCP_OWNER_LABEL?=owner
+LDFLAGS+= -X $(PKG_BASE)/contextgcp.GcpOwnerLabel=$(GCP_OWNER_LABEL)
 
 GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.git/*")
 

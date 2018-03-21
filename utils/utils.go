@@ -6,8 +6,8 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
-func IsAnyMatch(haystack map[string]string, needle ...string) bool {
-	for _, k := range needle {
+func IsAnyMatch(haystack types.Tags, needles ...string) bool {
+	for _, k := range needles {
 		if _, ok := haystack[k]; ok {
 			return true
 		}

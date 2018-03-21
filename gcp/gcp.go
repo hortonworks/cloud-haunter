@@ -18,30 +18,34 @@ import (
 )
 
 var (
-	IgnoreLabel   string = "cloud-cost-reducer-ignore"
-	OwnerLabel    string = "owner"
 	projectId     string
 	computeClient *compute.Service
 )
 
 func init() {
-	projectId = os.Getenv("GOOGLE_PROJECT_ID")
-	if len(projectId) > 0 {
-		log.Infof("[GCP] Trying to register as provider")
+	context.CloudProviders[types.GCP] = func() types.CloudProvider {
+		prepare()
+		return new(GcpProvider)
+	}
+}
+
+func prepare() {
+	if computeClient == nil {
+		projectId = os.Getenv("GOOGLE_PROJECT_ID")
+		if len(projectId) == 0 {
+			panic("[GCP] GOOGLE_PROJECT_ID environment variable is missing")
+		}
+		log.Infof("[GCP] Trying to prepare")
 		httpClient, err := google.DefaultClient(ctx.Background(), compute.CloudPlatformScope)
 		if err != nil {
-			log.Errorf("[GCP] Failed to authenticate, err: %s", err.Error())
-			return
+			panic("[GCP] Failed to authenticate, err: " + err.Error())
 		}
 		computeClient, err = compute.New(httpClient)
 		if err != nil {
-			log.Errorf("[GCP] Failed to authenticate, err: %s", err.Error())
-			return
+			panic("[GCP] Failed to authenticate, err: " + err.Error())
 		}
-		context.CloudProviders[types.GCP] = new(GcpProvider)
-		log.Info("[GCP] Successfully registered as provider")
-	} else {
-		log.Warn("[GCP] GOOGLE_PROJECT_ID environment variable is missing")
+
+		log.Info("[GCP] Successfully prepared")
 	}
 }
 
@@ -49,11 +53,18 @@ type GcpProvider struct {
 }
 
 func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
-	return getRunningInstancesFilterByLabel(IgnoreLabel)
-}
-
-func (a GcpProvider) GetOwnerLessInstances() ([]*types.Instance, error) {
-	return getRunningInstancesFilterByLabel(OwnerLabel, IgnoreLabel)
+	instances := make([]*types.Instance, 0)
+	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
+	if err != nil {
+		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
+		return nil, err
+	}
+	for _, items := range instanceList.Items {
+		for _, inst := range items.Instances {
+			instances = append(instances, newInstance(inst))
+		}
+	}
+	return instances, nil
 }
 
 func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
@@ -113,23 +124,6 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 	}
 	wg.Wait()
 	return nil
-}
-
-func getRunningInstancesFilterByLabel(ignoreLabels ...string) ([]*types.Instance, error) {
-	instances := make([]*types.Instance, 0)
-	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
-	if err != nil {
-		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
-		return nil, err
-	}
-	for _, items := range instanceList.Items {
-		for _, inst := range items.Instances {
-			if !utils.IsAnyMatch(inst.Labels, ignoreLabels...) {
-				instances = append(instances, newInstance(inst))
-			}
-		}
-	}
-	return instances, nil
 }
 
 func getRegions() ([]string, error) {

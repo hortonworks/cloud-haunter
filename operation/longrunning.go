@@ -8,6 +8,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
+	"github.com/hortonworks/cloud-cost-reducer/utils"
 )
 
 var runningPeriod = 24 * time.Hour
@@ -29,18 +30,14 @@ type LongRunning struct {
 }
 
 func (o LongRunning) Execute(clouds []types.CloudType) []*types.Instance {
-	instsChan, errChan := collectInstances(clouds, func(provider types.CloudProvider) ([]*types.Instance, error) {
-		return provider.GetRunningInstances()
-	})
-	return waitForInstances(instsChan, errChan, "[LONGRUNNING] Failed to collect long running instances", getInstancesRunningLongerThan)
+	instsChan, errChan := collectRunningInstances(clouds)
+	instances := waitForInstances(instsChan, errChan, "[LONGRUNNING] Failed to collect long running instances")
+	return filterInstancesRunningLongerThan(instances)
 }
 
-func getInstancesRunningLongerThan(instances []*types.Instance) []*types.Instance {
-	filtered := make([]*types.Instance, 0)
-	for _, instance := range instances {
-		if instance.Created.Add(runningPeriod).Before(time.Now()) {
-			filtered = append(filtered, instance)
-		}
-	}
-	return filtered
+func filterInstancesRunningLongerThan(instances []*types.Instance) []*types.Instance {
+	return filter(instances, func(inst *types.Instance) bool {
+		ignoreLabel, ok := ctx.IgnoreLabels[inst.CloudType]
+		return (!ok || !utils.IsAnyMatch(inst.Tags, ignoreLabel)) && inst.Created.Add(runningPeriod).Before(time.Now())
+	})
 }

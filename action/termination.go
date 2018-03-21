@@ -33,7 +33,7 @@ func (a TerminationAction) Execute(allInstances []*types.Instance) {
 					log.Errorf("[TERMINATION] Failed to terminate instances on %s, err: %s", cType.String(), err.Error())
 				}
 			}
-		}(t, p)
+		}(t, p())
 	}
 	wg.Wait()
 }

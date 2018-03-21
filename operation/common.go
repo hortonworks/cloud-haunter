@@ -8,8 +8,7 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
-func collectInstances(clouds []types.CloudType,
-	getInstances func(types.CloudProvider) ([]*types.Instance, error)) (chan []*types.Instance, chan error) {
+func collectRunningInstances(clouds []types.CloudType) (chan []*types.Instance, chan error) {
 	instsChan := make(chan []*types.Instance, 10)
 	errChan := make(chan error, 5)
 	wg := sync.WaitGroup{}
@@ -18,8 +17,8 @@ func collectInstances(clouds []types.CloudType,
 		go func(cloud types.CloudType) {
 			defer wg.Done()
 
-			provider := context.CloudProviders[cloud]
-			instances, err := getInstances(provider)
+			provider := context.CloudProviders[cloud]()
+			instances, err := provider.GetRunningInstances()
 			if err != nil {
 				errChan <- err
 			}
@@ -34,8 +33,7 @@ func collectInstances(clouds []types.CloudType,
 	return instsChan, errChan
 }
 
-func waitForInstances(instsChan chan []*types.Instance, errChan chan error, errorMsg string,
-	filter func([]*types.Instance) []*types.Instance) []*types.Instance {
+func waitForInstances(instsChan chan []*types.Instance, errChan chan error, errorMsg string) []*types.Instance {
 	var allInstances = make([]*types.Instance, 0)
 	exit := false
 	for !exit {
@@ -44,9 +42,6 @@ func waitForInstances(instsChan chan []*types.Instance, errChan chan error, erro
 			if !ok {
 				exit = true
 				break
-			}
-			if filter != nil {
-				instances = filter(instances)
 			}
 			allInstances = append(allInstances, instances...)
 		case err, ok := <-errChan:
@@ -58,4 +53,14 @@ func waitForInstances(instsChan chan []*types.Instance, errChan chan error, erro
 		}
 	}
 	return allInstances
+}
+
+func filter(instances []*types.Instance, isNeeded func(*types.Instance) bool) []*types.Instance {
+	filtered := []*types.Instance{}
+	for _, inst := range instances {
+		if isNeeded(inst) {
+			filtered = append(filtered, inst)
+		}
+	}
+	return filtered
 }
