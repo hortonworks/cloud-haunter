@@ -1,6 +1,7 @@
 package hipchat
 
 import (
+	"encoding/json"
 	"net/url"
 	"os"
 
@@ -37,6 +38,8 @@ type Hipchat struct {
 func (h *Hipchat) Send(message types.Message) error {
 	if ctx.DryRun {
 		log.Infof("[HIPCHAT] dry-run set, no notification sent")
+		out, _ := json.Marshal(message)
+		log.Infof("[HIPCHAT] %s", string(out))
 	} else {
 		_, err := client.Room.Notification(room, &hipchat.NotificationRequest{
 			Message:       message.Message(),
