@@ -15,7 +15,7 @@ func init() {
 type TerminationAction struct {
 }
 
-func (a TerminationAction) Execute(allInstances []*types.Instance) {
+func (a TerminationAction) Execute(op *types.OpType, allInstances []*types.Instance) {
 	wg := sync.WaitGroup{}
 	wg.Add(len(context.CloudProviders))
 	for t, p := range context.CloudProviders {

@@ -39,10 +39,10 @@ func main() {
 		os.Exit(0)
 	}
 
-	op := func() types.Operation {
+	op := func() *types.OpType {
 		for i := range context.Operations {
 			if i.String() == *opType {
-				return context.Operations[i]
+				return &i
 			}
 		}
 		return nil
@@ -73,7 +73,7 @@ func main() {
 		panic("Cloud provider not found.")
 	}
 
-	action.Execute(op.Execute(clouds))
+	action.Execute(op, context.Operations[*op].Execute(clouds))
 }
 
 func printHelp() {

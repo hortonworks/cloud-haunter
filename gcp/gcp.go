@@ -156,6 +156,7 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		Created:   created,
 		CloudType: types.GCP,
 		Tags:      inst.Labels,
+		Owner:     inst.Labels[context.GcpOwnerLabel],
 		Metadata:  map[string]interface{}{"zone": getZone(inst.Zone)},
 	}
 }

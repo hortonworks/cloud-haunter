@@ -149,5 +149,6 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		Created:   *inst.LaunchTime,
 		CloudType: types.AWS,
 		Tags:      tags,
+		Owner:     tags[context.AwsOwnerLabel],
 	}
 }

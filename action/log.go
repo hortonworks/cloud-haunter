@@ -15,7 +15,7 @@ func init() {
 type LogAction struct {
 }
 
-func (a LogAction) Execute(instances []*types.Instance) {
+func (a LogAction) Execute(op *types.OpType, instances []*types.Instance) {
 	for _, inst := range instances {
 		out, _ := json.Marshal(inst)
 		log.Infof("[%s] %s", inst.CloudType, string(out))

@@ -42,9 +42,9 @@ func (h *Hipchat) Send(message types.Message) error {
 		log.Infof("[HIPCHAT] %s", string(out))
 	} else {
 		_, err := client.Room.Notification(room, &hipchat.NotificationRequest{
-			Message:       message.Message(),
+			Message:       message.HTMLMessage(),
 			Color:         "green",
-			MessageFormat: "text",
+			MessageFormat: "html",
 		})
 		if err != nil {
 			return err

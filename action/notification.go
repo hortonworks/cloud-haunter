@@ -18,9 +18,9 @@ func init() {
 type NotificationAction struct {
 }
 
-func (a NotificationAction) Execute(instances []*types.Instance) {
+func (a NotificationAction) Execute(op *types.OpType, instances []*types.Instance) {
 	if len(instances) > 0 {
-		message := instancesMessage{Instances: instances}
+		message := instancesMessage{instances, op}
 		wg := sync.WaitGroup{}
 		wg.Add(len(ctx.Dispatchers))
 		for n, d := range ctx.Dispatchers {
@@ -38,13 +38,19 @@ func (a NotificationAction) Execute(instances []*types.Instance) {
 
 type instancesMessage struct {
 	Instances []*types.Instance `json:"Instances"`
+	op        *types.OpType
 }
 
-func (m *instancesMessage) Message() string {
+func (m *instancesMessage) HTMLMessage() string {
 	var buffer bytes.Buffer
-	buffer.WriteString("/code\n")
-	for _, instance := range m.Instances {
-		buffer.WriteString(fmt.Sprintf("[%s] instance name: %s created: %s\n", instance.CloudType, instance.Name, instance.Created))
+	buffer.WriteString(fmt.Sprintf("<b>Operation: %s</b><ul>", m.op.String()))
+	for _, inst := range m.Instances {
+		owner := inst.Owner
+		if len(owner) == 0 {
+			owner = "???"
+		}
+		buffer.WriteString(fmt.Sprintf("<li>[%s] instance name: <b>%s</b> created: %s owner: <b>%s</b></li>", inst.CloudType, inst.Name, inst.Created, owner))
 	}
+	buffer.WriteString("</ul>")
 	return buffer.String()
 }

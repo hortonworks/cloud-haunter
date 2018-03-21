@@ -101,10 +101,12 @@ func (a AzureProvider) TerminateInstances([]*types.Instance) error {
 }
 
 func newInstance(inst compute.VirtualMachine) *types.Instance {
+	tags := utils.ConvertTags(inst.Tags)
 	return &types.Instance{
 		Name:      *inst.Name,
 		Id:        *inst.ID,
 		CloudType: types.AZURE,
-		Tags:      utils.ConvertTags(inst.Tags),
+		Tags:      tags,
+		Owner:     tags[context.AzureOwnerLabel],
 	}
 }

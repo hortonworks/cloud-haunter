@@ -13,11 +13,11 @@ const (
 )
 
 type Action interface {
-	Execute([]*Instance)
+	Execute(*OpType, []*Instance)
 }
 
 type Message interface {
-	Message() string
+	HTMLMessage() string
 }
 
 type Dispatcher interface {
