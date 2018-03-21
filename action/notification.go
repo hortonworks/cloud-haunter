@@ -41,16 +41,16 @@ type instancesMessage struct {
 	op        *types.OpType
 }
 
-func (m *instancesMessage) HTMLMessage() string {
+func (m *instancesMessage) Message() string {
 	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("<b>Operation: %s</b><ul>", m.op.String()))
+	buffer.WriteString("/code\n")
+	buffer.WriteString(fmt.Sprintf("Operation: %s\n", m.op.String()))
 	for _, inst := range m.Instances {
 		owner := inst.Owner
 		if len(owner) == 0 {
 			owner = "???"
 		}
-		buffer.WriteString(fmt.Sprintf("<li>[%s] instance name: <b>%s</b> created: %s owner: <b>%s</b></li>", inst.CloudType, inst.Name, inst.Created, owner))
+		buffer.WriteString(fmt.Sprintf("[%s] instance name: %s created: %s owner: %s\n", inst.CloudType, inst.Name, inst.Created, owner))
 	}
-	buffer.WriteString("</ul>")
 	return buffer.String()
 }
