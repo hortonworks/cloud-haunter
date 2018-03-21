@@ -57,8 +57,8 @@ build-darwin:
 build-linux:
 	GOOS=linux CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Linux/${BINARY} main.go
 
-release: build
-	rm -rf release && mkdir release
+gh-release: build
+	rm -rf release ; mkdir release
 	tar -zcf release/$(BINARY)_$(VERSION)_Linux_$(shell uname -m).tgz -C build/Linux $(BINARY)
 	tar -zcf release/$(BINARY)_$(VERSION)_Darwin_$(shell uname -m).tgz -C build/Darwin $(BINARY)
 	gh-release create hortonworks/cloud-cost-reducer $(VERSION) $(BRANCH) v$(VERSION)
