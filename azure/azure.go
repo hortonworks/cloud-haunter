@@ -4,6 +4,7 @@ import (
 	ctx "context"
 	"errors"
 	"os"
+	"time"
 
 	"github.com/hortonworks/cloud-cost-reducer/utils"
 
@@ -59,7 +60,7 @@ func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
 		return nil, err
 	}
 	for _, inst := range result.Values() {
-		instances = append(instances, newInstance(inst))
+		instances = append(instances, newInstance(inst, getCreationTimeFromTags, utils.ConvertTags))
 	}
 	return instances, nil
 }
@@ -100,13 +101,26 @@ func (a AzureProvider) TerminateInstances([]*types.Instance) error {
 	// return instances, nil
 }
 
-func newInstance(inst compute.VirtualMachine) *types.Instance {
-	tags := utils.ConvertTags(inst.Tags)
+func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(tagMap map[string]*string) types.Tags) *types.Instance {
+	tags := convertTags(inst.Tags)
+
 	return &types.Instance{
 		Name:      *inst.Name,
 		Id:        *inst.ID,
+		Created:   getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 		CloudType: types.AZURE,
 		Tags:      tags,
 		Owner:     tags[context.AzureOwnerLabel],
 	}
+}
+
+type getCreationTimeFromTagsFuncSignature func(types.Tags, func(unixTimestamp string) time.Time) time.Time
+
+func getCreationTimeFromTags(tags types.Tags, convertTimeUnix func(unixTimestamp string) time.Time) time.Time {
+	createTime := convertTimeUnix("0")
+	cbCreationTimestamp, ok := tags[context.CreationTimeLabel]
+	if ok {
+		createTime = convertTimeUnix(cbCreationTimestamp)
+	}
+	return createTime
 }
