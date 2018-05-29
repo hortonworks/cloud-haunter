@@ -28,7 +28,7 @@ all: deps build
 deps: deps-errcheck
 	go get -u github.com/golang/dep/cmd/dep
 	# go get -u golang.org/x/tools/cmd/goimports
-	go get -u github.com/keyki/gh-release/...
+	go get -u github.com/keyki/glu
 
 deps-errcheck:
 	go get -u github.com/kisielk/errcheck
@@ -57,11 +57,9 @@ build-darwin:
 build-linux:
 	GOOS=linux CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Linux/${BINARY} main.go
 
-gh-release: build
-	rm -rf release ; mkdir release
-	tar -zcf release/$(BINARY)_$(VERSION)_Linux_$(shell uname -m).tgz -C build/Linux $(BINARY)
-	tar -zcf release/$(BINARY)_$(VERSION)_Darwin_$(shell uname -m).tgz -C build/Darwin $(BINARY)
-	gh-release create hortonworks/cloud-cost-reducer $(VERSION) $(BRANCH) v$(VERSION)
+release: deps build
+	rm -rf release
+	glu release
 
 download:
 	curl -LOs https://github.com/hortonworks/cloud-cost-reducer/releases/download/v$(VERSION)/ccr_$(VERSION)_$(shell uname)_x86_64.tgz
