@@ -11,7 +11,6 @@
   name = "github.com/Azure/azure-sdk-for-go"
   packages = [
     "services/compute/mgmt/2017-12-01/compute",
-    "services/resources/mgmt/2017-05-10/resources",
     "version"
   ]
   revision = "3d4fb879f52e48c1bd997665cabd82fb4ecad987"
@@ -71,6 +70,12 @@
   version = "v1.13.11"
 
 [[projects]]
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
+  version = "v1.1.0"
+
+[[projects]]
   name = "github.com/dgrijalva/jwt-go"
   packages = ["."]
   revision = "06ea1031745cb8b3dab3f6a236daf2b0aa468b7e"
@@ -104,6 +109,18 @@
   name = "github.com/jmespath/go-jmespath"
   packages = ["."]
   revision = "0b12d6b5"
+
+[[projects]]
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
+
+[[projects]]
+  name = "github.com/stretchr/testify"
+  packages = ["assert"]
+  revision = "12b6f73e6084dad08a7c6e575284b177ecafbc71"
+  version = "v1.2.1"
 
 [[projects]]
   name = "github.com/tbruyelle/hipchat-go"
@@ -182,6 +199,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9e6fd0697cb7d1e3093c5586c1d3d1840f12cf4b74e73d7d816b4a8337570b01"
+  inputs-digest = "dba7824155aabb1aaeb6f0191aeb81b08883eeaf72ed9a47b3748674aa74e0bc"
   solver-name = "gps-cdcl"
   solver-version = 1

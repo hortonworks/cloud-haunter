@@ -49,7 +49,7 @@ func (m *instancesMessage) HTMLMessage() string {
 		if len(owner) == 0 {
 			owner = "???"
 		}
-		buffer.WriteString(fmt.Sprintf("<li>[%s] instance name: <b>%s</b> created: %s owner: <b>%s</b></li>", inst.CloudType, inst.Name, inst.Created, owner))
+		buffer.WriteString(fmt.Sprintf("<li>[%s] instance name: <b>%s</b> created: %s owner: <b>%s</b> region: <b>%s</b></li>", inst.CloudType, inst.Name, inst.Created, owner, inst.Region))
 	}
 	buffer.WriteString("</ul>")
 	return buffer.String()

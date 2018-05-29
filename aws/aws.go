@@ -150,5 +150,13 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		CloudType: types.AWS,
 		Tags:      tags,
 		Owner:     tags[context.AwsOwnerLabel],
+		Region:    getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
 	}
+}
+
+func getRegionFromAvailabilityZone(az *string) string {
+	if az == nil || len(*az) < 1 {
+		return ""
+	}
+	return (*az)[0 : len(*az)-1]
 }

@@ -158,5 +158,12 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		Tags:      inst.Labels,
 		Owner:     inst.Labels[context.GcpOwnerLabel],
 		Metadata:  map[string]interface{}{"zone": getZone(inst.Zone)},
+		Region:    getRegionFromZoneUrl(&inst.Zone),
 	}
+}
+
+func getRegionFromZoneUrl(zoneUrl *string) string {
+	zoneUrlParts := strings.Split(*zoneUrl, "/")
+	zone := zoneUrlParts[len(zoneUrlParts)-1]
+	return zone[:len(zone)-2]
 }

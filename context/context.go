@@ -15,6 +15,8 @@ var (
 	AwsOwnerLabel   string = "Owner"
 	AzureOwnerLabel string = "Owner"
 	GcpOwnerLabel   string = "owner"
+
+	CreationTimeLabel string = "cb-creation-timestamp"
 )
 
 var DryRun = false

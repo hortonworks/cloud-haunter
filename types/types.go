@@ -10,6 +10,7 @@ type Instance struct {
 	Owner     string                 `json:"Owner"`
 	CloudType CloudType              `json:"CloudType"`
 	Metadata  map[string]interface{} `json:"Metadata"`
+	Region    string                 `json:"Region"`
 }
 
 type Tags map[string]string
