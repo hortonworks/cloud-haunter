@@ -111,6 +111,7 @@ func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreatio
 		CloudType: types.AZURE,
 		Tags:      tags,
 		Owner:     tags[context.AzureOwnerLabel],
+		Region:    *inst.Location,
 	}
 }
 

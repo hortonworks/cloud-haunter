@@ -54,7 +54,8 @@ func Test_givenGetCreationTimeFromTagsReturnsCreationTime_whenNewInstance_thenCr
 func setupInstance() *compute.VirtualMachine {
 	var instanceName = "testInstance"
 	var instanceID = "id-1234"
-	return &compute.VirtualMachine{Name: &instanceName, ID: &instanceID}
+	var instanceLocation = "testLocation"
+	return &compute.VirtualMachine{Name: &instanceName, ID: &instanceID, Location: &instanceLocation}
 }
 
 func getStubConvertTimeUnix(testValues *timeTestValues) (*CallInfo, func(string) time.Time) {
