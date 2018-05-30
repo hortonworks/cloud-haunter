@@ -17,7 +17,7 @@ type Action interface {
 }
 
 type Message interface {
-	HTMLMessage() string
+	TextMessage() string
 }
 
 type Dispatcher interface {
