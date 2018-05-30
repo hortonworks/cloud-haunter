@@ -62,5 +62,5 @@ release: deps build
 	glu release
 
 download:
-	curl -LOs https://github.com/hortonworks/cloud-cost-reducer/releases/download/v$(VERSION)/ccr_$(VERSION)_$(shell uname)_x86_64.tgz
+	curl -LOs https://github.com/hortonworks/cloud-cost-reducer/releases/download/v$(VERSION)/cloud-cost-reducer_$(VERSION)_$(shell uname)_x86_64.tgz
 	tar -xvf ccr_$(VERSION)_$(shell uname)_x86_64.tgz
