@@ -8,8 +8,8 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
-func collectRunningInstances(clouds []types.CloudType) (chan []*types.Instance, chan error) {
-	instsChan := make(chan []*types.Instance, 10)
+func collect(clouds []types.CloudType, getter func(types.CloudProvider) ([]types.CloudItem, error)) (chan []types.CloudItem, chan error) {
+	itemsChan := make(chan []types.CloudItem, 10)
 	errChan := make(chan error, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(clouds))
@@ -17,33 +17,32 @@ func collectRunningInstances(clouds []types.CloudType) (chan []*types.Instance, 
 		go func(cloud types.CloudType) {
 			defer wg.Done()
 
-			provider := context.CloudProviders[cloud]()
-			instances, err := provider.GetRunningInstances()
+			items, err := getter(context.CloudProviders[cloud]())
 			if err != nil {
 				errChan <- err
 			}
-			instsChan <- instances
+			itemsChan <- items
 		}(c)
 	}
 	go func() {
 		wg.Wait()
-		close(instsChan)
+		close(itemsChan)
 		close(errChan)
 	}()
-	return instsChan, errChan
+	return itemsChan, errChan
 }
 
-func waitForInstances(instsChan chan []*types.Instance, errChan chan error, errorMsg string) []*types.Instance {
-	var allInstances = make([]*types.Instance, 0)
+func wait(itemsChan chan []types.CloudItem, errChan chan error, errorMsg string) []types.CloudItem {
+	allItems := make([]types.CloudItem, 0)
 	exit := false
 	for !exit {
 		select {
-		case instances, ok := <-instsChan:
+		case items, ok := <-itemsChan:
 			if !ok {
 				exit = true
 				break
 			}
-			allInstances = append(allInstances, instances...)
+			allItems = append(allItems, items...)
 		case err, ok := <-errChan:
 			if !ok {
 				exit = true
@@ -52,15 +51,33 @@ func waitForInstances(instsChan chan []*types.Instance, errChan chan error, erro
 			log.Errorf(errorMsg+", err: %s", err.Error())
 		}
 	}
-	return allInstances
+	return allItems
 }
 
-func filter(instances []*types.Instance, isNeeded func(*types.Instance) bool) []*types.Instance {
-	filtered := []*types.Instance{}
-	for _, inst := range instances {
-		if isNeeded(inst) {
-			filtered = append(filtered, inst)
+func filter(items []types.CloudItem, isNeeded func(types.CloudItem) bool) []types.CloudItem {
+	filtered := []types.CloudItem{}
+	for _, item := range items {
+		if isNeeded(item) {
+			filtered = append(filtered, item)
 		}
 	}
 	return filtered
+}
+
+func collectRunningInstances(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
+	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
+		instances, err := provider.GetRunningInstances()
+		if err != nil {
+			return nil, err
+		}
+		return convertInstancesToCloudItems(instances), nil
+	})
+}
+
+func convertInstancesToCloudItems(instances []*types.Instance) []types.CloudItem {
+	items := []types.CloudItem{}
+	for _, inst := range instances {
+		items = append(items, inst)
+	}
+	return items
 }

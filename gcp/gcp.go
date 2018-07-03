@@ -1,6 +1,7 @@
 package gcp
 
 import (
+	"errors"
 	"strings"
 	"sync"
 
@@ -93,7 +94,7 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(instanceGroupsToDelete))
-	for g, _ := range instanceGroupsToDelete {
+	for g := range instanceGroupsToDelete {
 		go func(group *compute.InstanceGroupManager) {
 			defer wg.Done()
 
@@ -124,6 +125,10 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 	}
 	wg.Wait()
 	return nil
+}
+
+func (a GcpProvider) GetAccesses() ([]*types.Access, error) {
+	return nil, errors.New("[GCP] Access not supported")
 }
 
 func getRegions() ([]string, error) {

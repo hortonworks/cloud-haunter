@@ -13,11 +13,11 @@ const (
 )
 
 type Action interface {
-	Execute(*OpType, []*Instance)
+	Execute(*OpType, []CloudItem)
 }
 
 type Message interface {
-	TextMessage() string
+	TextMessage(header string) string
 }
 
 type Dispatcher interface {

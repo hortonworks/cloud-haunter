@@ -101,6 +101,10 @@ func (a AzureProvider) TerminateInstances([]*types.Instance) error {
 	// return instances, nil
 }
 
+func (a AzureProvider) GetAccesses() ([]*types.Access, error) {
+	return nil, errors.New("[AZURE] Access not supported")
+}
+
 func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(tagMap map[string]*string) types.Tags) *types.Instance {
 	tags := convertTags(inst.Tags)
 

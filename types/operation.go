@@ -9,8 +9,9 @@ func (ot OpType) String() string {
 const (
 	LONGRUNNING = OpType("longrunning")
 	OWNERLESS   = OpType("ownerless")
+	OLDACCESS   = OpType("oldaccess")
 )
 
 type Operation interface {
-	Execute([]CloudType) []*Instance
+	Execute([]CloudType) []CloudItem
 }

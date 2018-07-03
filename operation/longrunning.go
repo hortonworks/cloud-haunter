@@ -29,15 +29,16 @@ func init() {
 type LongRunning struct {
 }
 
-func (o LongRunning) Execute(clouds []types.CloudType) []*types.Instance {
-	instsChan, errChan := collectRunningInstances(clouds)
-	instances := waitForInstances(instsChan, errChan, "[LONGRUNNING] Failed to collect long running instances")
-	return filterInstancesRunningLongerThan(instances)
+func (o LongRunning) Execute(clouds []types.CloudType) []types.CloudItem {
+	itemsChan, errChan := collectRunningInstances(clouds)
+	items := wait(itemsChan, errChan, "[LONGRUNNING] Failed to collect long running instances")
+	return o.filter(items)
 }
 
-func filterInstancesRunningLongerThan(instances []*types.Instance) []*types.Instance {
-	return filter(instances, func(inst *types.Instance) bool {
-		ignoreLabel, ok := ctx.IgnoreLabels[inst.CloudType]
-		return (!ok || !utils.IsAnyMatch(inst.Tags, ignoreLabel)) && inst.Created.Add(runningPeriod).Before(time.Now())
+func (o LongRunning) filter(items []types.CloudItem) []types.CloudItem {
+	return filter(items, func(item types.CloudItem) bool {
+		ignoreLabel, ok := ctx.IgnoreLabels[item.GetCloudType()]
+		inst := item.(types.Instance)
+		return (!ok || !utils.IsAnyMatch(inst.Tags, ignoreLabel)) && item.GetCreated().Add(runningPeriod).Before(time.Now())
 	})
 }
