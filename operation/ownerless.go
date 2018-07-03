@@ -13,21 +13,22 @@ func init() {
 type Ownerless struct {
 }
 
-func (o Ownerless) Execute(clouds []types.CloudType) []*types.Instance {
-	instsChan, errChan := collectRunningInstances(clouds)
-	instances := waitForInstances(instsChan, errChan, "[OWNERLESS] Failed to collect owner less instances")
-	return filterInstancesWithoutOwner(instances)
+func (o Ownerless) Execute(clouds []types.CloudType) []types.CloudItem {
+	itemsChan, errChan := collectRunningInstances(clouds)
+	items := wait(itemsChan, errChan, "[OWNERLESS] Failed to collect owner less instances")
+	return o.filter(items)
 }
 
-func filterInstancesWithoutOwner(instances []*types.Instance) []*types.Instance {
-	return filter(instances, func(inst *types.Instance) bool {
+func (o Ownerless) filter(items []types.CloudItem) []types.CloudItem {
+	return filter(items, func(item types.CloudItem) bool {
 		labels := []string{}
-		if label, ok := context.IgnoreLabels[inst.CloudType]; ok {
+		if label, ok := context.IgnoreLabels[item.GetCloudType()]; ok {
 			labels = append(labels, label)
 		}
-		if label, ok := context.OwnerLabels[inst.CloudType]; ok {
+		if label, ok := context.OwnerLabels[item.GetCloudType()]; ok {
 			labels = append(labels, label)
 		}
+		inst := item.(types.Instance)
 		return !utils.IsAnyMatch(inst.Tags, labels...)
 	})
 }

@@ -1,6 +1,7 @@
 package action
 
 import (
+	"fmt"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
@@ -15,7 +16,7 @@ func init() {
 type TerminationAction struct {
 }
 
-func (a TerminationAction) Execute(op *types.OpType, allInstances []*types.Instance) {
+func (a TerminationAction) Execute(op *types.OpType, items []types.CloudItem) {
 	wg := sync.WaitGroup{}
 	wg.Add(len(context.CloudProviders))
 	for t, p := range context.CloudProviders {
@@ -23,9 +24,15 @@ func (a TerminationAction) Execute(op *types.OpType, allInstances []*types.Insta
 			defer wg.Done()
 
 			instances := []*types.Instance{}
-			for _, inst := range allInstances {
-				if inst.CloudType == cType {
-					instances = append(instances, inst)
+			for _, item := range items {
+				switch t := item.GetItem().(type) {
+				case types.Instance:
+					if item.GetCloudType() == cType {
+						var inst types.Instance = item.(types.Instance)
+						instances = append(instances, &inst)
+					}
+				default:
+					panic(fmt.Sprintf("[TERMINATION] Operation on type %T not allowed", t))
 				}
 			}
 			if len(instances) > 0 {

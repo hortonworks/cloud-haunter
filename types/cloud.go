@@ -15,4 +15,5 @@ const (
 type CloudProvider interface {
 	GetRunningInstances() ([]*Instance, error)
 	TerminateInstances([]*Instance) error
+	GetAccesses() ([]*Access, error)
 }

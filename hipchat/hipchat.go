@@ -42,7 +42,7 @@ func (h *Hipchat) Send(message types.Message) error {
 		log.Infof("[HIPCHAT] %s", string(out))
 	} else {
 		_, err := client.Room.Notification(room, &hipchat.NotificationRequest{
-			Message:       message.TextMessage(),
+			Message:       message.TextMessage("/code\n"),
 			Color:         "green",
 			MessageFormat: "text",
 		})

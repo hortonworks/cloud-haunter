@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
@@ -89,17 +90,39 @@ func (a AwsProvider) TerminateInstances([]*types.Instance) error {
 	return errors.New("[AWS] Termination not supported")
 }
 
+func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
+	client, err := newIamClient()
+	if err != nil {
+		return nil, err
+	}
+	req := &iam.ListAccessKeysInput{MaxItems: &(&types.I64{I: 1000}).I}
+	resp, err := client.ListAccessKeys(req)
+	if err != nil {
+		return nil, err
+	}
+	accesses := []*types.Access{}
+	for _, akm := range resp.AccessKeyMetadata {
+		if *akm.Status == "Active" {
+			accesses = append(accesses, &types.Access{
+				CloudType: types.AWS,
+				Name:      *akm.AccessKeyId,
+				Owner:     *akm.UserName,
+				Created:   *akm.CreateDate,
+			})
+		}
+	}
+	return accesses, nil
+}
+
 func getRegions() ([]string, error) {
 	client, err := newEc2Client(nil)
 	if err != nil {
 		return nil, err
 	}
-
 	regionResult, e := client.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if e != nil {
 		return nil, e
 	}
-
 	regions := make([]string, 0)
 	for _, region := range regionResult.Regions {
 		regions = append(regions, *region.RegionName)
@@ -107,30 +130,37 @@ func getRegions() ([]string, error) {
 	return regions, nil
 }
 
-func newEc2Client(region *string) (*ec2.EC2, error) {
-	var awsSession *session.Session
-	var err error
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}}
-	if region != nil && len(*region) > 0 {
-		awsSession, err = session.NewSession(
-			&aws.Config{
-				Region:     aws.String(*region),
-				HTTPClient: httpClient,
-			})
-	} else {
-		awsSession, err = session.NewSession(
-			&aws.Config{
-				Region:     aws.String("eu-west-1"),
-				HTTPClient: httpClient,
-			})
+func newIamClient() (*iam.IAM, error) {
+	awsSession, err := newSession(nil)
+	if err != nil {
+		return nil, err
 	}
+	return iam.New(awsSession), nil
+}
+
+func newEc2Client(region *string) (*ec2.EC2, error) {
+	if region == nil || len(*region) == 0 {
+		region = &(&types.S{S: "eu-west-1"}).S
+	}
+	awsSession, err := newSession(func(config *aws.Config) {
+		config.Region = region
+	})
 	if err != nil {
 		return nil, err
 	}
 	return ec2.New(awsSession), nil
+}
+
+func newSession(configure func(*aws.Config)) (*session.Session, error) {
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
+	config := aws.Config{HTTPClient: httpClient}
+	if configure != nil {
+		configure(&config)
+	}
+	return session.NewSession(&config)
 }
 
 func getTags(ec2Tags []*ec2.Tag) types.Tags {
