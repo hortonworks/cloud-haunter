@@ -54,11 +54,17 @@ type GcpProvider struct {
 }
 
 func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
+	if context.DryRun {
+		log.Debug("[GCP] Fetching instanes")
+	}
 	instances := make([]*types.Instance, 0)
 	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
+	}
+	if context.DryRun {
+		log.Debugf("[GCP] Processing instances: [%s]", instanceList.Items)
 	}
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
@@ -69,6 +75,9 @@ func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 }
 
 func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
+	if context.DryRun {
+		log.Debug("[GCP] Terminating instanes")
+	}
 	instanceGroups, err := computeClient.InstanceGroupManagers.AggregatedList(projectId).Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
@@ -79,6 +88,9 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 	instanceGroupsToDelete := map[*compute.InstanceGroupManager]bool{}
 
 	for _, inst := range instances {
+		if context.DryRun {
+			log.Debugf("[GCP] Terminating instane: %s", inst.GetName())
+		}
 		groupFound := false
 		for _, i := range instanceGroups.Items {
 			for _, group := range i.InstanceGroupManagers {
@@ -92,6 +104,9 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 		}
 	}
 
+	if context.DryRun {
+		log.Debugf("[GCP] Instance groups to terminate: [%s]", instanceGroupsToDelete)
+	}
 	wg := sync.WaitGroup{}
 	wg.Add(len(instanceGroupsToDelete))
 	for g := range instanceGroupsToDelete {
@@ -107,6 +122,9 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 				}
 			}
 		}(g)
+	}
+	if context.DryRun {
+		log.Debugf("[GCP] Instances to terminate: [%s]", instancesToDelete)
 	}
 	wg.Add(len(instancesToDelete))
 	for _, i := range instancesToDelete {

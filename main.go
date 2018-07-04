@@ -39,6 +39,10 @@ func main() {
 		os.Exit(0)
 	}
 
+	if context.DryRun {
+		log.SetLevel(log.DebugLevel)
+	}
+
 	op := func() *types.OpType {
 		for i := range context.Operations {
 			if i.String() == *opType {

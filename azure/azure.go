@@ -53,6 +53,9 @@ type AzureProvider struct {
 }
 
 func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
+	if context.DryRun {
+		log.Debug("[AZURE] Fetching instances")
+	}
 	instances := make([]*types.Instance, 0)
 	result, err := vmClient.ListAll(ctx.Background())
 	if err != nil {
@@ -60,7 +63,11 @@ func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
 		return nil, err
 	}
 	for _, inst := range result.Values() {
-		instances = append(instances, newInstance(inst, getCreationTimeFromTags, utils.ConvertTags))
+		newInstance := newInstance(inst, getCreationTimeFromTags, utils.ConvertTags)
+		if context.DryRun {
+			log.Debugf("[AZURE] Converted instance: [%s]", newInstance)
+		}
+		instances = append(instances, newInstance)
 	}
 	return instances, nil
 }

@@ -51,10 +51,16 @@ type AwsProvider struct {
 }
 
 func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
+	if context.DryRun {
+		log.Debug("[AWS] Fetching instanes")
+	}
 	instChan := make(chan *types.Instance, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(regions))
 	for _, region := range regions {
+		if context.DryRun {
+			log.Debugf("[AWS] Fetching instanes from: %s", region)
+		}
 		go func(region string) {
 			defer wg.Done()
 
@@ -67,6 +73,9 @@ func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
 			if e != nil {
 				log.Errorf("[AWS] Failed to fetch the running instances in region: %s, err: %s", region, e)
 				return
+			}
+			if context.DryRun {
+				log.Debugf("[AWS] Processing instances: [%s] in region: %s", instanceResult.Reservations, region)
 			}
 			for _, res := range instanceResult.Reservations {
 				for _, inst := range res.Instances {
@@ -91,6 +100,9 @@ func (a AwsProvider) TerminateInstances([]*types.Instance) error {
 }
 
 func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
+	if context.DryRun {
+		log.Debug("[AWS] Fetching access keys")
+	}
 	client, err := newIamClient()
 	if err != nil {
 		return nil, err
@@ -99,6 +111,9 @@ func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
 	resp, err := client.ListAccessKeys(req)
 	if err != nil {
 		return nil, err
+	}
+	if context.DryRun {
+		log.Debugf("[AWS] Processing access keys: [%s]", resp.AccessKeyMetadata)
 	}
 	accesses := []*types.Access{}
 	for _, akm := range resp.AccessKeyMetadata {
