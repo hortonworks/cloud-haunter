@@ -47,7 +47,7 @@ func (m *instancesMessage) TextMessage(header string) string {
 	for _, item := range m.CloudItems {
 		switch item.GetItem().(type) {
 		case types.Instance:
-			var inst types.Instance = item.(types.Instance)
+			var inst types.Instance = item.GetItem().(types.Instance)
 			buffer.WriteString(fmt.Sprintf("[%s] instance name: %s created: %s owner: %s region: %s\n", item.GetCloudType(), item.GetName(), item.GetCreated(), item.GetOwner(), inst.Region))
 		default:
 			buffer.WriteString(fmt.Sprintf("[%s] %s: %s created: %s owner: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), item.GetCreated(), item.GetOwner()))

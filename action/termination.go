@@ -28,7 +28,7 @@ func (a TerminationAction) Execute(op *types.OpType, items []types.CloudItem) {
 				switch t := item.GetItem().(type) {
 				case types.Instance:
 					if item.GetCloudType() == cType {
-						var inst types.Instance = item.(types.Instance)
+						var inst types.Instance = item.GetItem().(types.Instance)
 						instances = append(instances, &inst)
 					}
 				default:

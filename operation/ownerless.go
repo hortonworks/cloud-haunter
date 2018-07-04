@@ -28,7 +28,7 @@ func (o Ownerless) filter(items []types.CloudItem) []types.CloudItem {
 		if label, ok := context.OwnerLabels[item.GetCloudType()]; ok {
 			labels = append(labels, label)
 		}
-		inst := item.(types.Instance)
+		inst := item.(*types.Instance)
 		return !utils.IsAnyMatch(inst.Tags, labels...)
 	})
 }

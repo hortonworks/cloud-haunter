@@ -57,7 +57,7 @@ build-darwin:
 build-linux:
 	GOOS=linux CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Linux/${BINARY} main.go
 
-release: deps build
+release: build
 	rm -rf release
 	glu release
 

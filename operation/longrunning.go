@@ -38,7 +38,7 @@ func (o LongRunning) Execute(clouds []types.CloudType) []types.CloudItem {
 func (o LongRunning) filter(items []types.CloudItem) []types.CloudItem {
 	return filter(items, func(item types.CloudItem) bool {
 		ignoreLabel, ok := ctx.IgnoreLabels[item.GetCloudType()]
-		inst := item.(types.Instance)
+		inst := item.(*types.Instance)
 		return (!ok || !utils.IsAnyMatch(inst.Tags, ignoreLabel)) && item.GetCreated().Add(runningPeriod).Before(time.Now())
 	})
 }
