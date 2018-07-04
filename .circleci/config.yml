@@ -30,8 +30,8 @@ jobs:
           command: make test
 
       - run:
-        name: "Building binaries"
-        command: make _build
+          name: "Building binaries"
+          command: make _build
 
       - save_cache:
           key: pkg-cache
