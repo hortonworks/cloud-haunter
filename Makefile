@@ -33,8 +33,13 @@ deps: deps-errcheck
 deps-errcheck:
 	go get -u github.com/kisielk/errcheck
 
+_check: errcheck formatcheck vet
+
+formatcheck:
+	([ -z "$(shell gofmt -d $(GOFILES_NOVENDOR))" ]) || (echo "Source is unformatted"; exit 1)
+
 format:
-	@gofmt -w ${GOFILES_NOVENDOR}
+	gofmt -w $(GOFILES_NOVENDOR)
 
 vet:
 	go vet ./...
@@ -45,7 +50,12 @@ test:
 errcheck:
 	errcheck -ignoretests ./...
 
-build: errcheck format vet test build-darwin build-linux
+_build: build-darwin build-linux
+
+build: _check test _build
+
+cleanup:
+	rm -rf release
 
 build-docker:
 	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
@@ -57,8 +67,7 @@ build-darwin:
 build-linux:
 	GOOS=linux CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Linux/${BINARY} main.go
 
-release: build
-	rm -rf release
+release: cleanup build
 	glu release
 
 download:
