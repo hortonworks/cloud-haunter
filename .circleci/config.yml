@@ -3,7 +3,7 @@ jobs:
   build:
     docker:
       # CircleCI Go images available at: https://hub.docker.com/r/circleci/golang/
-      - image: circleci/golang:1.10
+      - image: circleci/golang:1.10.3
     working_directory: /go/src/github.com/hortonworks/cloud-cost-reducer
 
     environment:
@@ -19,7 +19,7 @@ jobs:
 
       - run:
           name: Downloading dependencies
-          command: make deps
+          command: make deps-errcheck
 
       - run:
           name: Analyzing code
@@ -27,11 +27,11 @@ jobs:
 
       - run:
           name: Run unit tests
-          command: |
-            trap "go-junit-report <${TEST_RESULTS}/go-test.out > ${TEST_RESULTS}/go-test-report.xml" EXIT
-            make test | tee ${TEST_RESULTS}/go-test.out
+          command: make test
 
-      - run: make _build
+      - run:
+        name: "Building binaries"
+        command: make _build
 
       - save_cache:
           key: pkg-cache
