@@ -18,15 +18,6 @@ type CallInfo struct {
 	invocations []string
 }
 
-func Test_givenValidUnixTimeStamp_whenConvertTimeUnix_thenReturnsConvertedToTime(t *testing.T) {
-
-	var unixTimestamp = "1527244797"
-	convertedTime := ConvertTimeUnix(unixTimestamp)
-
-	assert := assert.New(t)
-	assert.Equal(convertedTime, time.Date(2018, 5, 25, 12, 39, 57, 0, time.Local))
-}
-
 func Test_givenNotAnIntUnixTimeStamp_whenConvertTimeUnix_thenReturnsEpochZeroTime(t *testing.T) {
 
 	var unixTimestamp = "not an int number"

@@ -24,10 +24,10 @@ func ConvertTimeRFC3339(stringTime string) (time.Time, error) {
 
 // ConvertTimeUnix parses a unix timestamp (seconds since epoch start) from string to time.Time
 func ConvertTimeUnix(unixTimestamp string) time.Time {
-	timestamp, err := strconv.ParseInt(string(unixTimestamp), 10, 64)
+	timestamp, err := strconv.ParseInt(unixTimestamp, 10, 64)
 	if err != nil {
 		log.Warnf("[util.ConvertTimeUnix] cannot convert time: %s, err: %s", unixTimestamp, err)
-		return time.Unix(0, 0)
+		timestamp = 0
 	}
 	return time.Unix(timestamp, 0)
 }
