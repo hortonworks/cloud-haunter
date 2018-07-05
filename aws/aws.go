@@ -100,30 +100,46 @@ func (a AwsProvider) TerminateInstances([]*types.Instance) error {
 }
 
 func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
-	if context.DryRun {
-		log.Debug("[AWS] Fetching access keys")
-	}
 	client, err := newIamClient()
 	if err != nil {
 		return nil, err
 	}
-	req := &iam.ListAccessKeysInput{MaxItems: &(&types.I64{I: 1000}).I}
-	resp, err := client.ListAccessKeys(req)
+	if context.DryRun {
+		log.Debug("[AWS] Fetching users")
+	}
+	users, err := client.ListUsers(&iam.ListUsersInput{MaxItems: &(&types.I64{I: 1000}).I})
 	if err != nil {
 		return nil, err
 	}
 	if context.DryRun {
-		log.Debugf("[AWS] Processing access keys: [%s]", resp.AccessKeyMetadata)
+		log.Debugf("[AWS] Processing users: [%s]", users.Users)
 	}
 	accesses := []*types.Access{}
-	for _, akm := range resp.AccessKeyMetadata {
-		if *akm.Status == "Active" {
-			accesses = append(accesses, &types.Access{
-				CloudType: types.AWS,
-				Name:      *akm.AccessKeyId,
-				Owner:     *akm.UserName,
-				Created:   *akm.CreateDate,
-			})
+	for _, u := range users.Users {
+		if context.DryRun {
+			log.Debugf("[AWS] Fetching access keys for: %s", *u.UserName)
+		}
+		req := &iam.ListAccessKeysInput{
+			UserName: u.UserName,
+			MaxItems: &(&types.I64{I: 1000}).I,
+		}
+		resp, err := client.ListAccessKeys(req)
+		if err != nil {
+			return nil, err
+		}
+		if context.DryRun {
+			log.Debugf("[AWS] Processing access keys: [%s]", resp.AccessKeyMetadata)
+		}
+		for _, akm := range resp.AccessKeyMetadata {
+			if *akm.Status == "Active" {
+				accessKey := *akm.AccessKeyId
+				accesses = append(accesses, &types.Access{
+					CloudType: types.AWS,
+					Name:      accessKey[0:4] + "...",
+					Owner:     *akm.UserName,
+					Created:   *akm.CreateDate,
+				})
+			}
 		}
 	}
 	return accesses, nil
