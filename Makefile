@@ -55,7 +55,7 @@ _build: build-darwin build-linux
 build: _check test _build
 
 cleanup:
-	rm -rf release
+	rm -rf release && mkdir release
 
 build-docker:
 	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'

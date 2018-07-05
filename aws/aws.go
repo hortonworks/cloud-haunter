@@ -135,7 +135,7 @@ func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
 				accessKey := *akm.AccessKeyId
 				accesses = append(accesses, &types.Access{
 					CloudType: types.AWS,
-					Name:      accessKey[0:4] + "...",
+					Name:      accessKey[0:10] + "...",
 					Owner:     *akm.UserName,
 					Created:   *akm.CreateDate,
 				})
