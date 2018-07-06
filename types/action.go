@@ -15,11 +15,3 @@ const (
 type Action interface {
 	Execute(*OpType, []CloudItem)
 }
-
-type Message interface {
-	TextMessage(header string) string
-}
-
-type Dispatcher interface {
-	Send(message Message) error
-}

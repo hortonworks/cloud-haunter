@@ -30,15 +30,25 @@ type LongRunning struct {
 }
 
 func (o LongRunning) Execute(clouds []types.CloudType) []types.CloudItem {
+	if ctx.DryRun {
+		log.Debugf("Collecting long running instances on: [%s]", clouds)
+	}
 	itemsChan, errChan := collectRunningInstances(clouds)
 	items := wait(itemsChan, errChan, "[LONGRUNNING] Failed to collect long running instances")
 	return o.filter(items)
 }
 
 func (o LongRunning) filter(items []types.CloudItem) []types.CloudItem {
+	if ctx.DryRun {
+		log.Debugf("Filtering instances (%d): [%s]", len(items), items)
+	}
 	return filter(items, func(item types.CloudItem) bool {
 		ignoreLabel, ok := ctx.IgnoreLabels[item.GetCloudType()]
 		inst := item.(*types.Instance)
-		return (!ok || !utils.IsAnyMatch(inst.Tags, ignoreLabel)) && item.GetCreated().Add(runningPeriod).Before(time.Now())
+		match := (!ok || !utils.IsAnyMatch(inst.Tags, ignoreLabel)) && item.GetCreated().Add(runningPeriod).Before(time.Now())
+		if ctx.DryRun {
+			log.Debugf("Instances: %s match: %b", inst.Name, match)
+		}
+		return match
 	})
 }

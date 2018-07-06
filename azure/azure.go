@@ -65,7 +65,7 @@ func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
 	for _, inst := range result.Values() {
 		newInstance := newInstance(inst, getCreationTimeFromTags, utils.ConvertTags)
 		if context.DryRun {
-			log.Debugf("[AZURE] Converted instance: [%s]", newInstance)
+			log.Debugf("[AZURE] Converted instance: %s", newInstance)
 		}
 		instances = append(instances, newInstance)
 	}

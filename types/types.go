@@ -1,6 +1,8 @@
 package types
 
-import "time"
+import (
+	"time"
+)
 
 type S struct {
 	S string
@@ -17,4 +19,9 @@ type CloudItem interface {
 	GetCreated() time.Time
 	GetItem() interface{}
 	GetType() string
+}
+
+type Dispatcher interface {
+	GetName() string
+	Send(op *OpType, items []CloudItem) error
 }

@@ -64,7 +64,7 @@ func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 		return nil, err
 	}
 	if context.DryRun {
-		log.Debugf("[GCP] Processing instances: [%s]", instanceList.Items)
+		log.Debugf("[GCP] Processing instances (%d): [%s]", len(instanceList.Items), instanceList.Items)
 	}
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
@@ -105,7 +105,7 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 	}
 
 	if context.DryRun {
-		log.Debugf("[GCP] Instance groups to terminate: [%s]", instanceGroupsToDelete)
+		log.Debugf("[GCP] Instance groups to terminate (%d) : [%s]", len(instanceGroupsToDelete), instanceGroupsToDelete)
 	}
 	wg := sync.WaitGroup{}
 	wg.Add(len(instanceGroupsToDelete))
@@ -114,8 +114,10 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 			defer wg.Done()
 
 			zone := getZone(group.Zone)
-			if !context.DryRun {
-				log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
+			log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
+			if context.DryRun {
+				log.Info("[GCP] Skipping group termination on dry run session")
+			} else {
 				_, err := computeClient.InstanceGroupManagers.Delete(projectId, zone, group.Name).Do()
 				if err != nil {
 					log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
@@ -124,7 +126,7 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 		}(g)
 	}
 	if context.DryRun {
-		log.Debugf("[GCP] Instances to terminate: [%s]", instancesToDelete)
+		log.Debugf("[GCP] Instances to terminate (%d): [%s]", len(instancesToDelete), instancesToDelete)
 	}
 	wg.Add(len(instancesToDelete))
 	for _, i := range instancesToDelete {
@@ -132,8 +134,10 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 			defer wg.Done()
 
 			zone := inst.Metadata["zone"].(string)
-			if !context.DryRun {
-				log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
+			log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
+			if context.DryRun {
+				log.Info("[GCP] Skipping instance termination on dry run session")
+			} else {
 				_, err := computeClient.Instances.Delete(projectId, zone, inst.Name).Do()
 				if err != nil {
 					log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
@@ -150,11 +154,16 @@ func (a GcpProvider) GetAccesses() ([]*types.Access, error) {
 }
 
 func getRegions() ([]string, error) {
+	if context.DryRun {
+		log.Debug("[GCP] Fetching regions")
+	}
 	regionList, err := computeClient.Regions.List(projectId).Do()
 	if err != nil {
 		return nil, err
 	}
-
+	if context.DryRun {
+		log.Debugf("[GCP] Processing regions (%d): [%s]", len(regionList.Items), regionList.Items)
+	}
 	regions := make([]string, 0)
 	for _, region := range regionList.Items {
 		regions = append(regions, region.Name)

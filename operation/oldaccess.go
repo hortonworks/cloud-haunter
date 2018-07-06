@@ -3,6 +3,7 @@ package operation
 import (
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
@@ -17,14 +18,24 @@ type OldAccess struct {
 }
 
 func (o OldAccess) Execute(clouds []types.CloudType) []types.CloudItem {
+	if context.DryRun {
+		log.Debugf("Collecting old accesses on: [%s]", clouds)
+	}
 	accessChan, errChan := o.collect(clouds)
 	items := wait(accessChan, errChan, "[OLDACCESS] Failed to collect old accesses")
 	return o.filter(items)
 }
 
 func (o OldAccess) filter(items []types.CloudItem) []types.CloudItem {
+	if context.DryRun {
+		log.Debugf("Filtering accesses (%d): [%s]", len(items), items)
+	}
 	return filter(items, func(item types.CloudItem) bool {
-		return item.GetCreated().Add(availablePeriod).Before(time.Now())
+		match := item.GetCreated().Add(availablePeriod).Before(time.Now())
+		if context.DryRun {
+			log.Debugf("Access: %s match: %b", item.GetName(), match)
+		}
+		return match
 	})
 }
 

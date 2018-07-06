@@ -1,7 +1,8 @@
 package hipchat
 
 import (
-	"encoding/json"
+	"bytes"
+	"fmt"
 	"net/url"
 	"os"
 
@@ -35,14 +36,17 @@ func init() {
 type Hipchat struct {
 }
 
-func (h *Hipchat) Send(message types.Message) error {
+func (h *Hipchat) GetName() string {
+	return "HipChat"
+}
+
+func (h *Hipchat) Send(op *types.OpType, items []types.CloudItem) error {
+	message := h.generateMessage(op, items)
 	if ctx.DryRun {
-		log.Infof("[HIPCHAT] dry-run set, no notification sent")
-		out, _ := json.Marshal(message)
-		log.Infof("[HIPCHAT] %s", string(out))
+		log.Info("[HIPCHAT] Skipping notification on dry run session")
 	} else {
 		_, err := client.Room.Notification(room, &hipchat.NotificationRequest{
-			Message:       message.TextMessage("/code\n"),
+			Message:       message,
 			Color:         "green",
 			MessageFormat: "text",
 		})
@@ -51,4 +55,22 @@ func (h *Hipchat) Send(message types.Message) error {
 		}
 	}
 	return nil
+}
+
+func (h *Hipchat) generateMessage(op *types.OpType, items []types.CloudItem) string {
+	var buffer bytes.Buffer
+	buffer.WriteString("/code\n")
+	for _, item := range items {
+		switch item.GetItem().(type) {
+		case types.Instance:
+			var inst types.Instance = item.GetItem().(types.Instance)
+			buffer.WriteString(fmt.Sprintf("[%s] instance name: %s created: %s owner: %s region: %s\n", item.GetCloudType(), item.GetName(), item.GetCreated(), item.GetOwner(), inst.Region))
+		default:
+			buffer.WriteString(fmt.Sprintf("[%s] %s: %s created: %s owner: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), item.GetCreated(), item.GetOwner()))
+		}
+	}
+	if ctx.DryRun {
+		log.Debugf("[HIPCHAT] Generated message is: %s", buffer.String())
+	}
+	return buffer.String()
 }

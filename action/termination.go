@@ -17,9 +17,15 @@ type TerminationAction struct {
 }
 
 func (a TerminationAction) Execute(op *types.OpType, items []types.CloudItem) {
+	if context.DryRun {
+		log.Debugf("[TERMINATION] Terminating instances (%d): [%s]", len(items), items)
+	}
 	wg := sync.WaitGroup{}
 	wg.Add(len(context.CloudProviders))
 	for t, p := range context.CloudProviders {
+		if context.DryRun {
+			log.Debugf("[TERMINATION] Terminating %s instances", t)
+		}
 		go func(cType types.CloudType, provider types.CloudProvider) {
 			defer wg.Done()
 
@@ -34,6 +40,10 @@ func (a TerminationAction) Execute(op *types.OpType, items []types.CloudItem) {
 				default:
 					panic(fmt.Sprintf("[TERMINATION] Operation on type %T not allowed", t))
 				}
+			}
+			log.Infof("[TERMINATION] Terminating %d instances on %s", len(instances), cType)
+			if context.DryRun {
+				log.Debugf("[TERMINATION] Instances to terminate (%d): [%s]", len(instances), instances)
 			}
 			if len(instances) > 0 {
 				if err := provider.TerminateInstances(instances); err != nil {

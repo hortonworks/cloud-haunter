@@ -75,7 +75,7 @@ func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
 				return
 			}
 			if context.DryRun {
-				log.Debugf("[AWS] Processing instances: [%s] in region: %s", instanceResult.Reservations, region)
+				log.Debugf("[AWS] Processing instances (%d): [%s] in region: %s", len(instanceResult.Reservations), instanceResult.Reservations, region)
 			}
 			for _, res := range instanceResult.Reservations {
 				for _, inst := range res.Instances {
@@ -112,7 +112,7 @@ func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
 		return nil, err
 	}
 	if context.DryRun {
-		log.Debugf("[AWS] Processing users: [%s]", users.Users)
+		log.Debugf("[AWS] Processing users (%d): [%s]", len(users.Users), users.Users)
 	}
 	accesses := []*types.Access{}
 	for _, u := range users.Users {
@@ -128,7 +128,7 @@ func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
 			return nil, err
 		}
 		if context.DryRun {
-			log.Debugf("[AWS] Processing access keys: [%s]", resp.AccessKeyMetadata)
+			log.Debugf("[AWS] Processing access keys (%d): [%s]", len(resp.AccessKeyMetadata), resp.AccessKeyMetadata)
 		}
 		for _, akm := range resp.AccessKeyMetadata {
 			if *akm.Status == "Active" {
@@ -146,6 +146,9 @@ func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
 }
 
 func getRegions() ([]string, error) {
+	if context.DryRun {
+		log.Debug("[AWS] Fetching regions")
+	}
 	client, err := newEc2Client(nil)
 	if err != nil {
 		return nil, err
@@ -154,10 +157,14 @@ func getRegions() ([]string, error) {
 	if e != nil {
 		return nil, e
 	}
+	if context.DryRun {
+		log.Debugf("[AWS] Processing regions (%d): [%s]", len(regionResult.Regions), regionResult.Regions)
+	}
 	regions := make([]string, 0)
 	for _, region := range regionResult.Regions {
 		regions = append(regions, *region.RegionName)
 	}
+	log.Infof("[AWS] Available regions: %v", regions)
 	return regions, nil
 }
 
