@@ -4,18 +4,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hortonworks/cloud-cost-reducer/types"
 	"github.com/stretchr/testify/assert"
 )
 
-var epochZero = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
-
-type timeTestValues struct {
-	timeAsUnixTimeStamp string
-	timeAsTime          time.Time
+func TestIsMatchFound(t *testing.T) {
+	tags := map[string]string{"firsttag": "", "testtag": ""}
+	assert.True(t, IsAnyMatch(tags, "testtag"))
 }
 
-type CallInfo struct {
-	invocations []string
+func TestIsMatchNotFound(t *testing.T) {
+	tags := map[string]string{"firsttag": "", "sectag": ""}
+	assert.False(t, IsAnyMatch(tags, "testtag"))
 }
 
 func Test_givenValidUnixTimeStamp_whenConvertTimeUnix_thenReturnsConvertedToTime(t *testing.T) {
@@ -31,7 +31,13 @@ func Test_givenNotAnIntUnixTimeStamp_whenConvertTimeUnix_thenReturnsEpochZeroTim
 
 	var unixTimestamp = "not an int number"
 	convertedTime := ConvertTimeUnix(unixTimestamp)
+	epochZero := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	assert := assert.New(t)
 	assert.Equal(convertedTime, epochZero.Local())
+}
+
+func TestConvertTags(t *testing.T) {
+	tags := map[string]*string{"firsttag": &(&types.S{S: ""}).S}
+	assert.Equal(t, types.Tags{"firsttag": ""}, ConvertTags(tags))
 }

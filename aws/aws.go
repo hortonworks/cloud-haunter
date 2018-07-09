@@ -16,58 +16,98 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
-var (
-	regions       = make([]string, 0)
-	regionClients = make(map[string]*ec2.EC2, 0)
-)
+var awsProviderImpl = awsProvider{}
 
 func init() {
 	context.CloudProviders[types.AWS] = func() types.CloudProvider {
-		prepare()
-		return new(AwsProvider)
-	}
-}
-
-func prepare() {
-	if len(regionClients) == 0 {
-		log.Infof("[AWS] Trying to prepare")
-		var err error
-		regions, err = getRegions()
-		if err != nil {
-			panic("[AWS] Failed to authenticate, err: " + err.Error())
-		}
-		for _, region := range regions {
-			if client, err := newEc2Client(&region); err != nil {
-				panic(fmt.Sprintf("[AWS] Failed to create client in region %s, err: %s", region, err.Error()))
-			} else {
-				regionClients[region] = client
+		if len(awsProviderImpl.ec2Clients) == 0 {
+			ec2Client, err := newEc2Client("eu-west-1")
+			if err != nil {
+				panic("[AWS] Failed to create ec2 client, err: " + err.Error())
+			}
+			err = awsProviderImpl.initEc2Clietns(func() ([]string, error) {
+				return getRegions(ec2Client)
+			})
+			if err != nil {
+				panic("[AWS] Failed to fetch regions, err: " + err.Error())
 			}
 		}
-		log.Infof("[AWS] Successfully prepared")
+		return awsProviderImpl
 	}
 }
 
-type AwsProvider struct {
+type awsProvider struct {
+	ec2Clients map[string]*ec2.EC2
 }
 
-func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
+func (p *awsProvider) initEc2Clietns(getRegions func() ([]string, error)) error {
+	log.Infof("[AWS] Trying to prepare")
+	regions, err := getRegions()
+	if err != nil {
+		return err
+	}
+	p.ec2Clients = map[string]*ec2.EC2{}
+	for _, region := range regions {
+		if client, err := newEc2Client(region); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create client in region %s, err: %s", region, err.Error()))
+		} else {
+			p.ec2Clients[region] = client
+		}
+	}
+	log.Infof("[AWS] Successfully prepared")
+	return nil
+}
+
+func (p awsProvider) GetRunningInstances() ([]*types.Instance, error) {
+	ec2Clients := map[string]ec2Client{}
+	for k, v := range p.ec2Clients {
+		ec2Clients[k] = v
+	}
+	return getRunningInstances(ec2Clients)
+}
+
+func (a awsProvider) TerminateInstances([]*types.Instance) error {
+	return errors.New("[AWS] Termination not supported")
+}
+
+func (a awsProvider) GetAccesses() ([]*types.Access, error) {
+	iamClient, err := newIamClient()
+	if err != nil {
+		return nil, err
+	}
+	return getAccesses(iamClient)
+}
+
+type ec2Client interface {
+	DescribeRegions(*ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error)
+	DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
+}
+
+type iamClient interface {
+	ListUsers(*iam.ListUsersInput) (*iam.ListUsersOutput, error)
+	ListAccessKeys(*iam.ListAccessKeysInput) (*iam.ListAccessKeysOutput, error)
+}
+
+func getRunningInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, error) {
 	if context.DryRun {
 		log.Debug("[AWS] Fetching instanes")
 	}
 	instChan := make(chan *types.Instance, 5)
 	wg := sync.WaitGroup{}
-	wg.Add(len(regions))
-	for _, region := range regions {
+	wg.Add(len(ec2Clients))
+
+	filterName := "instance-state-name"
+	filterValue := ec2.InstanceStateNameRunning
+	runningFilter := []*ec2.Filter{{Name: &filterName, Values: []*string{&filterValue}}}
+
+	for r, c := range ec2Clients {
 		if context.DryRun {
-			log.Debugf("[AWS] Fetching instanes from: %s", region)
+			log.Debugf("[AWS] Fetching instanes from: %s", r)
 		}
-		go func(region string) {
+		go func(region string, ec2Client ec2Client) {
 			defer wg.Done()
 
-			filterName := "instance-state-name"
-			filterValue := ec2.InstanceStateNameRunning
-			runningFilter := []*ec2.Filter{{Name: &filterName, Values: []*string{&filterValue}}}
-			instanceResult, e := regionClients[region].DescribeInstances(&ec2.DescribeInstancesInput{
+			instanceResult, e := ec2Client.DescribeInstances(&ec2.DescribeInstancesInput{
 				Filters: runningFilter,
 			})
 			if e != nil {
@@ -82,7 +122,7 @@ func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
 					instChan <- newInstance(inst)
 				}
 			}
-		}(region)
+		}(r, c)
 	}
 	go func() {
 		wg.Wait()
@@ -95,19 +135,11 @@ func (p *AwsProvider) GetRunningInstances() ([]*types.Instance, error) {
 	return instances, nil
 }
 
-func (a AwsProvider) TerminateInstances([]*types.Instance) error {
-	return errors.New("[AWS] Termination not supported")
-}
-
-func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
-	client, err := newIamClient()
-	if err != nil {
-		return nil, err
-	}
+func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 	if context.DryRun {
 		log.Debug("[AWS] Fetching users")
 	}
-	users, err := client.ListUsers(&iam.ListUsersInput{MaxItems: &(&types.I64{I: 1000}).I})
+	users, err := iamClient.ListUsers(&iam.ListUsersInput{MaxItems: &(&types.I64{I: 1000}).I})
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +155,7 @@ func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
 			UserName: u.UserName,
 			MaxItems: &(&types.I64{I: 1000}).I,
 		}
-		resp, err := client.ListAccessKeys(req)
+		resp, err := iamClient.ListAccessKeys(req)
 		if err != nil {
 			return nil, err
 		}
@@ -145,15 +177,11 @@ func (a AwsProvider) GetAccesses() ([]*types.Access, error) {
 	return accesses, nil
 }
 
-func getRegions() ([]string, error) {
+func getRegions(ec2Client ec2Client) ([]string, error) {
 	if context.DryRun {
 		log.Debug("[AWS] Fetching regions")
 	}
-	client, err := newEc2Client(nil)
-	if err != nil {
-		return nil, err
-	}
-	regionResult, e := client.DescribeRegions(&ec2.DescribeRegionsInput{})
+	regionResult, e := ec2Client.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if e != nil {
 		return nil, e
 	}
@@ -176,12 +204,9 @@ func newIamClient() (*iam.IAM, error) {
 	return iam.New(awsSession), nil
 }
 
-func newEc2Client(region *string) (*ec2.EC2, error) {
-	if region == nil || len(*region) == 0 {
-		region = &(&types.S{S: "eu-west-1"}).S
-	}
+func newEc2Client(region string) (*ec2.EC2, error) {
 	awsSession, err := newSession(func(config *aws.Config) {
-		config.Region = region
+		config.Region = &region
 	})
 	if err != nil {
 		return nil, err
@@ -201,14 +226,6 @@ func newSession(configure func(*aws.Config)) (*session.Session, error) {
 	return session.NewSession(&config)
 }
 
-func getTags(ec2Tags []*ec2.Tag) types.Tags {
-	tags := make(types.Tags, 0)
-	for _, t := range ec2Tags {
-		tags[*t.Key] = *t.Value
-	}
-	return tags
-}
-
 func newInstance(inst *ec2.Instance) *types.Instance {
 	tags := getTags(inst.Tags)
 	return &types.Instance{
@@ -220,6 +237,14 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		Owner:     tags[context.AwsOwnerLabel],
 		Region:    getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
 	}
+}
+
+func getTags(ec2Tags []*ec2.Tag) types.Tags {
+	tags := make(types.Tags, 0)
+	for _, t := range ec2Tags {
+		tags[*t.Key] = *t.Value
+	}
+	return tags
 }
 
 func getRegionFromAvailabilityZone(az *string) string {
