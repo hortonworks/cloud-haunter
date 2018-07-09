@@ -112,9 +112,8 @@ func (a AzureProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, errors.New("[AZURE] Access not supported")
 }
 
-func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(tagMap map[string]*string) types.Tags) *types.Instance {
+func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(map[string]*string) types.Tags) *types.Instance {
 	tags := convertTags(inst.Tags)
-
 	return &types.Instance{
 		Name:      *inst.Name,
 		Id:        *inst.ID,
@@ -129,10 +128,8 @@ func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreatio
 type getCreationTimeFromTagsFuncSignature func(types.Tags, func(unixTimestamp string) time.Time) time.Time
 
 func getCreationTimeFromTags(tags types.Tags, convertTimeUnix func(unixTimestamp string) time.Time) time.Time {
-	createTime := convertTimeUnix("0")
-	cbCreationTimestamp, ok := tags[context.CreationTimeLabel]
-	if ok {
-		createTime = convertTimeUnix(cbCreationTimestamp)
+	if creationTimestamp, ok := tags[context.CreationTimeLabel]; ok {
+		return convertTimeUnix(creationTimestamp)
 	}
-	return createTime
+	return convertTimeUnix("0")
 }
