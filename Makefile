@@ -45,7 +45,7 @@ vet:
 	go vet ./...
 
 test:
-	go test -timeout 30s -race $$(go list ./... | grep -v /vendor/)
+	go test -timeout 30s -coverprofile coverage -race $$(go list ./... | grep -v /vendor/)
 
 errcheck:
 	errcheck -ignoretests ./...

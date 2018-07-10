@@ -1,6 +1,7 @@
 debug
 debug.test
 build
+coverage
 release
 .vscode
 .idea

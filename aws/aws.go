@@ -31,6 +31,9 @@ func init() {
 				panic("[AWS] Failed to create ec2 client, err: " + err.Error())
 			}
 			err = provider.init(func() ([]string, error) {
+				if context.DryRun {
+					log.Debug("[AWS] Fetching regions")
+				}
 				return getRegions(ec2Client)
 			})
 			if err != nil {
@@ -59,6 +62,9 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 }
 
 func (p awsProvider) GetRunningInstances() ([]*types.Instance, error) {
+	if context.DryRun {
+		log.Debug("[AWS] Fetching instanes")
+	}
 	ec2Clients := map[string]ec2Client{}
 	for k, v := range p.ec2Clients {
 		ec2Clients[k] = v
@@ -71,6 +77,9 @@ func (a awsProvider) TerminateInstances([]*types.Instance) error {
 }
 
 func (a awsProvider) GetAccesses() ([]*types.Access, error) {
+	if context.DryRun {
+		log.Debug("[AWS] Fetching users")
+	}
 	iamClient, err := newIamClient()
 	if err != nil {
 		return nil, err
@@ -89,9 +98,6 @@ type iamClient interface {
 }
 
 func getRunningInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, error) {
-	if context.DryRun {
-		log.Debug("[AWS] Fetching instanes")
-	}
 	instChan := make(chan *types.Instance, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
@@ -136,9 +142,6 @@ func getRunningInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, er
 }
 
 func getAccesses(iamClient iamClient) ([]*types.Access, error) {
-	if context.DryRun {
-		log.Debug("[AWS] Fetching users")
-	}
 	users, err := iamClient.ListUsers(&iam.ListUsersInput{MaxItems: &(&types.I64{I: 1000}).I})
 	if err != nil {
 		return nil, err
@@ -178,9 +181,6 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 }
 
 func getRegions(ec2Client ec2Client) ([]string, error) {
-	if context.DryRun {
-		log.Debug("[AWS] Fetching regions")
-	}
 	regionResult, e := ec2Client.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if e != nil {
 		return nil, e

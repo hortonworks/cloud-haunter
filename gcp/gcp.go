@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
@@ -16,6 +15,7 @@ import (
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 )
 
 var provider = gcpProvider{}
@@ -61,8 +61,96 @@ func (p gcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 	if context.DryRun {
 		log.Debug("[GCP] Fetching instanes")
 	}
+	return getInstances(p.computeClient.Instances.AggregatedList(p.projectId).Filter("status eq RUNNING"))
+}
+
+func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
+	return errors.New("[GCP] Termination not supported")
+	// if context.DryRun {
+	// 	log.Debug("[GCP] Terminating instanes")
+	// }
+	// instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectId).Do()
+	// if err != nil {
+	// 	log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
+	// 	return err
+	// }
+
+	// instancesToDelete := []*types.Instance{}
+	// instanceGroupsToDelete := map[*compute.InstanceGroupManager]bool{}
+
+	// for _, inst := range instances {
+	// 	if context.DryRun {
+	// 		log.Debugf("[GCP] Terminating instane: %s", inst.GetName())
+	// 	}
+	// 	groupFound := false
+	// 	for _, i := range instanceGroups.Items {
+	// 		for _, group := range i.InstanceGroupManagers {
+	// 			if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.BaseInstanceName+"-") == 0 {
+	// 				instanceGroupsToDelete[group], groupFound = true, true
+	// 			}
+	// 		}
+	// 	}
+	// 	if !groupFound {
+	// 		instancesToDelete = append(instancesToDelete, inst)
+	// 	}
+	// }
+
+	// if context.DryRun {
+	// 	log.Debugf("[GCP] Instance groups to terminate (%d) : [%s]", len(instanceGroupsToDelete), instanceGroupsToDelete)
+	// }
+	// wg := sync.WaitGroup{}
+	// wg.Add(len(instanceGroupsToDelete))
+	// for g := range instanceGroupsToDelete {
+	// 	go func(group *compute.InstanceGroupManager) {
+	// 		defer wg.Done()
+
+	// 		zone := getZone(group.Zone)
+	// 		log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
+	// 		if context.DryRun {
+	// 			log.Info("[GCP] Skipping group termination on dry run session")
+	// 		} else {
+	// 			_, err := p.computeClient.InstanceGroupManagers.Delete(p.projectId, zone, group.Name).Do()
+	// 			if err != nil {
+	// 				log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
+	// 			}
+	// 		}
+	// 	}(g)
+	// }
+	// if context.DryRun {
+	// 	log.Debugf("[GCP] Instances to terminate (%d): [%s]", len(instancesToDelete), instancesToDelete)
+	// }
+	// wg.Add(len(instancesToDelete))
+	// for _, i := range instancesToDelete {
+	// 	go func(inst *types.Instance) {
+	// 		defer wg.Done()
+
+	// 		zone := inst.Metadata["zone"].(string)
+	// 		log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
+	// 		if context.DryRun {
+	// 			log.Info("[GCP] Skipping instance termination on dry run session")
+	// 		} else {
+	// 			_, err := p.computeClient.Instances.Delete(p.projectId, zone, inst.Name).Do()
+	// 			if err != nil {
+	// 				log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
+	// 			}
+	// 		}
+	// 	}(i)
+	// }
+	// wg.Wait()
+	// return nil
+}
+
+func (p gcpProvider) GetAccesses() ([]*types.Access, error) {
+	return nil, errors.New("[GCP] Access not supported")
+}
+
+type aggregator interface {
+	Do(...googleapi.CallOption) (*compute.InstanceAggregatedList, error)
+}
+
+func getInstances(aggregator aggregator) ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
-	instanceList, err := p.computeClient.Instances.AggregatedList(p.projectId).Filter("status eq RUNNING").Do()
+	instanceList, err := aggregator.Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
@@ -78,108 +166,24 @@ func (p gcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 	return instances, nil
 }
 
-func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
-	if context.DryRun {
-		log.Debug("[GCP] Terminating instanes")
-	}
-	instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectId).Do()
-	if err != nil {
-		log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
-		return err
-	}
-
-	instancesToDelete := []*types.Instance{}
-	instanceGroupsToDelete := map[*compute.InstanceGroupManager]bool{}
-
-	for _, inst := range instances {
-		if context.DryRun {
-			log.Debugf("[GCP] Terminating instane: %s", inst.GetName())
-		}
-		groupFound := false
-		for _, i := range instanceGroups.Items {
-			for _, group := range i.InstanceGroupManagers {
-				if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.BaseInstanceName+"-") == 0 {
-					instanceGroupsToDelete[group], groupFound = true, true
-				}
-			}
-		}
-		if !groupFound {
-			instancesToDelete = append(instancesToDelete, inst)
-		}
-	}
-
-	if context.DryRun {
-		log.Debugf("[GCP] Instance groups to terminate (%d) : [%s]", len(instanceGroupsToDelete), instanceGroupsToDelete)
-	}
-	wg := sync.WaitGroup{}
-	wg.Add(len(instanceGroupsToDelete))
-	for g := range instanceGroupsToDelete {
-		go func(group *compute.InstanceGroupManager) {
-			defer wg.Done()
-
-			zone := getZone(group.Zone)
-			log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
-			if context.DryRun {
-				log.Info("[GCP] Skipping group termination on dry run session")
-			} else {
-				_, err := p.computeClient.InstanceGroupManagers.Delete(p.projectId, zone, group.Name).Do()
-				if err != nil {
-					log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
-				}
-			}
-		}(g)
-	}
-	if context.DryRun {
-		log.Debugf("[GCP] Instances to terminate (%d): [%s]", len(instancesToDelete), instancesToDelete)
-	}
-	wg.Add(len(instancesToDelete))
-	for _, i := range instancesToDelete {
-		go func(inst *types.Instance) {
-			defer wg.Done()
-
-			zone := inst.Metadata["zone"].(string)
-			log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
-			if context.DryRun {
-				log.Info("[GCP] Skipping instance termination on dry run session")
-			} else {
-				_, err := p.computeClient.Instances.Delete(p.projectId, zone, inst.Name).Do()
-				if err != nil {
-					log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
-				}
-			}
-		}(i)
-	}
-	wg.Wait()
-	return nil
-}
-
-func (p gcpProvider) GetAccesses() ([]*types.Access, error) {
-	return nil, errors.New("[GCP] Access not supported")
-}
-
-func getRegions(p gcpProvider) ([]string, error) {
-	if context.DryRun {
-		log.Debug("[GCP] Fetching regions")
-	}
-	regionList, err := p.computeClient.Regions.List(p.projectId).Do()
-	if err != nil {
-		return nil, err
-	}
-	if context.DryRun {
-		log.Debugf("[GCP] Processing regions (%d): [%s]", len(regionList.Items), regionList.Items)
-	}
-	regions := make([]string, 0)
-	for _, region := range regionList.Items {
-		regions = append(regions, region.Name)
-	}
-	log.Infof("[GCP] Available regions: %v", regions)
-	return regions, nil
-}
-
-func getZone(url string) string {
-	parts := strings.Split(url, "/")
-	return parts[len(parts)-1]
-}
+// func getRegions(p gcpProvider) ([]string, error) {
+// 	if context.DryRun {
+// 		log.Debug("[GCP] Fetching regions")
+// 	}
+// 	regionList, err := p.computeClient.Regions.List(p.projectId).Do()
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	if context.DryRun {
+// 		log.Debugf("[GCP] Processing regions (%d): [%s]", len(regionList.Items), regionList.Items)
+// 	}
+// 	regions := make([]string, 0)
+// 	for _, region := range regionList.Items {
+// 		regions = append(regions, region.Name)
+// 	}
+// 	log.Infof("[GCP] Available regions: %v", regions)
+// 	return regions, nil
+// }
 
 func newInstance(inst *compute.Instance) *types.Instance {
 	created, err := utils.ConvertTimeRFC3339(inst.CreationTimestamp)
@@ -196,6 +200,11 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		Metadata:  map[string]interface{}{"zone": getZone(inst.Zone)},
 		Region:    getRegionFromZoneUrl(&inst.Zone),
 	}
+}
+
+func getZone(url string) string {
+	parts := strings.Split(url, "/")
+	return parts[len(parts)-1]
 }
 
 func getRegionFromZoneUrl(zoneUrl *string) string {
