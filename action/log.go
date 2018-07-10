@@ -9,13 +9,13 @@ import (
 )
 
 func init() {
-	context.Actions[types.LOG_ACTION] = new(LogAction)
+	context.Actions[types.LOG_ACTION] = new(logAction)
 }
 
-type LogAction struct {
+type logAction struct {
 }
 
-func (a LogAction) Execute(op *types.OpType, items []types.CloudItem) {
+func (a logAction) Execute(op *types.OpType, items []types.CloudItem) {
 	for _, item := range items {
 		out, _ := json.Marshal(item.GetItem())
 		log.Infof("[%s] %s", item.GetCloudType(), string(out))

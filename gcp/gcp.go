@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"sync"
 
@@ -11,54 +12,57 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/utils"
 
 	ctx "context"
-	"os"
 	"strconv"
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/compute/v1"
 )
 
-var (
+var provider = gcpProvider{}
+
+type gcpProvider struct {
 	projectId     string
 	computeClient *compute.Service
-)
+}
 
 func init() {
+	projectId := os.Getenv("GOOGLE_PROJECT_ID")
+	if len(projectId) == 0 {
+		log.Warn("[GCP] GOOGLE_PROJECT_ID environment variable is missing")
+		return
+	}
 	context.CloudProviders[types.GCP] = func() types.CloudProvider {
-		prepare()
-		return new(GcpProvider)
+		if provider.computeClient == nil {
+			log.Infof("[GCP] Trying to prepare")
+			if err := provider.init(projectId); err != nil {
+				panic("[GCP] Failed to initialize provider, err: " + err.Error())
+			}
+			log.Info("[GCP] Successfully prepared")
+		}
+		return provider
 	}
 }
 
-func prepare() {
-	if computeClient == nil {
-		projectId = os.Getenv("GOOGLE_PROJECT_ID")
-		if len(projectId) == 0 {
-			panic("[GCP] GOOGLE_PROJECT_ID environment variable is missing")
-		}
-		log.Infof("[GCP] Trying to prepare")
-		httpClient, err := google.DefaultClient(ctx.Background(), compute.CloudPlatformScope)
-		if err != nil {
-			panic("[GCP] Failed to authenticate, err: " + err.Error())
-		}
-		computeClient, err = compute.New(httpClient)
-		if err != nil {
-			panic("[GCP] Failed to authenticate, err: " + err.Error())
-		}
-
-		log.Info("[GCP] Successfully prepared")
+func (p *gcpProvider) init(projectId string) error {
+	httpClient, err := google.DefaultClient(ctx.Background(), compute.CloudPlatformScope)
+	if err != nil {
+		return errors.New("Failed to authenticate, err: " + err.Error())
 	}
+	computeClient, err := compute.New(httpClient)
+	if err != nil {
+		return errors.New("Failed to authenticate, err: " + err.Error())
+	}
+	p.projectId = projectId
+	p.computeClient = computeClient
+	return nil
 }
 
-type GcpProvider struct {
-}
-
-func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
+func (p gcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 	if context.DryRun {
 		log.Debug("[GCP] Fetching instanes")
 	}
 	instances := make([]*types.Instance, 0)
-	instanceList, err := computeClient.Instances.AggregatedList(projectId).Filter("status eq RUNNING").Do()
+	instanceList, err := p.computeClient.Instances.AggregatedList(p.projectId).Filter("status eq RUNNING").Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
@@ -74,11 +78,11 @@ func (p *GcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 	return instances, nil
 }
 
-func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
+func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
 	if context.DryRun {
 		log.Debug("[GCP] Terminating instanes")
 	}
-	instanceGroups, err := computeClient.InstanceGroupManagers.AggregatedList(projectId).Do()
+	instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectId).Do()
 	if err != nil {
 		log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
 		return err
@@ -118,7 +122,7 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 			if context.DryRun {
 				log.Info("[GCP] Skipping group termination on dry run session")
 			} else {
-				_, err := computeClient.InstanceGroupManagers.Delete(projectId, zone, group.Name).Do()
+				_, err := p.computeClient.InstanceGroupManagers.Delete(p.projectId, zone, group.Name).Do()
 				if err != nil {
 					log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
 				}
@@ -138,7 +142,7 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 			if context.DryRun {
 				log.Info("[GCP] Skipping instance termination on dry run session")
 			} else {
-				_, err := computeClient.Instances.Delete(projectId, zone, inst.Name).Do()
+				_, err := p.computeClient.Instances.Delete(p.projectId, zone, inst.Name).Do()
 				if err != nil {
 					log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
 				}
@@ -149,15 +153,15 @@ func (a GcpProvider) TerminateInstances(instances []*types.Instance) error {
 	return nil
 }
 
-func (a GcpProvider) GetAccesses() ([]*types.Access, error) {
+func (p gcpProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, errors.New("[GCP] Access not supported")
 }
 
-func getRegions() ([]string, error) {
+func getRegions(p gcpProvider) ([]string, error) {
 	if context.DryRun {
 		log.Debug("[GCP] Fetching regions")
 	}
-	regionList, err := computeClient.Regions.List(projectId).Do()
+	regionList, err := p.computeClient.Regions.List(p.projectId).Do()
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ const (
 	AWS   = CloudType("AWS")
 	GCP   = CloudType("GCP")
 	AZURE = CloudType("AZURE")
+	DUMMY = CloudType("DUMMY")
 )
 
 type CloudProvider interface {

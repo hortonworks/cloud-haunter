@@ -8,6 +8,8 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
+var providers = context.CloudProviders
+
 func collect(clouds []types.CloudType, getter func(types.CloudProvider) ([]types.CloudItem, error)) (chan []types.CloudItem, chan error) {
 	itemsChan := make(chan []types.CloudItem, 10)
 	errChan := make(chan error, 5)
@@ -17,11 +19,11 @@ func collect(clouds []types.CloudType, getter func(types.CloudProvider) ([]types
 		go func(cloud types.CloudType) {
 			defer wg.Done()
 
-			items, err := getter(context.CloudProviders[cloud]())
-			if err != nil {
+			if items, err := getter(providers[cloud]()); err != nil {
 				errChan <- err
+			} else {
+				itemsChan <- items
 			}
-			itemsChan <- items
 		}(c)
 	}
 	go func() {

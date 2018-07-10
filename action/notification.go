@@ -10,13 +10,13 @@ import (
 )
 
 func init() {
-	context.Actions[types.NOTIFICATION_ACTION] = new(NotificationAction)
+	context.Actions[types.NOTIFICATION_ACTION] = new(notificationAction)
 }
 
-type NotificationAction struct {
+type notificationAction struct {
 }
 
-func (a NotificationAction) Execute(op *types.OpType, items []types.CloudItem) {
+func (a notificationAction) Execute(op *types.OpType, items []types.CloudItem) {
 	log.Infof("[NOTIFICATION] Sending %d items for %d dispatchers", len(items), len(ctx.Dispatchers))
 	if context.DryRun {
 		log.Debugf("[NOTIFICATION] Sending notifications (%d) for items: [%s]", len(items), items)

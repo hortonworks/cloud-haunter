@@ -25,6 +25,7 @@ type awsProvider struct {
 func init() {
 	context.CloudProviders[types.AWS] = func() types.CloudProvider {
 		if len(provider.ec2Clients) == 0 {
+			log.Infof("[AWS] Trying to prepare")
 			ec2Client, err := newEc2Client("eu-west-1")
 			if err != nil {
 				panic("[AWS] Failed to create ec2 client, err: " + err.Error())
@@ -33,15 +34,15 @@ func init() {
 				return getRegions(ec2Client)
 			})
 			if err != nil {
-				panic("[AWS] Failed to fetch regions, err: " + err.Error())
+				panic("[AWS] Failed to initialize provider, err: " + err.Error())
 			}
+			log.Infof("[AWS] Successfully prepared")
 		}
 		return provider
 	}
 }
 
 func (p *awsProvider) init(getRegions func() ([]string, error)) error {
-	log.Infof("[AWS] Trying to prepare")
 	regions, err := getRegions()
 	if err != nil {
 		return err
@@ -54,7 +55,6 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 			p.ec2Clients[region] = client
 		}
 	}
-	log.Infof("[AWS] Successfully prepared")
 	return nil
 }
 

@@ -33,16 +33,17 @@ func init() {
 	}
 	context.CloudProviders[types.AZURE] = func() types.CloudProvider {
 		if len(provider.vmClient.SubscriptionID) == 0 {
+			log.Infof("[AZURE] Trying to prepare")
 			if err := provider.init(subscriptionId, auth.NewAuthorizerFromEnvironment); err != nil {
-				panic("[AZURE] Failed to initialize Azure clients: " + err.Error())
+				panic("[AZURE] Failed to initialize provider: " + err.Error())
 			}
+			log.Info("[AZURE] Successfully prepared")
 		}
 		return provider
 	}
 }
 
 func (p *azureProvider) init(subscriptionId string, authorizer func() (autorest.Authorizer, error)) error {
-	log.Infof("[AZURE] Trying to prepare")
 	authorization, err := authorizer()
 	if err != nil {
 		return errors.New("Failed to authenticate, err: " + err.Error())
@@ -50,7 +51,6 @@ func (p *azureProvider) init(subscriptionId string, authorizer func() (autorest.
 	p.subscriptionId = subscriptionId
 	p.vmClient = compute.NewVirtualMachinesClient(subscriptionId)
 	p.vmClient.Authorizer = authorization
-	log.Info("[AZURE] Successfully prepared")
 	return nil
 }
 

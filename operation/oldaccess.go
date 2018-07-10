@@ -1,6 +1,7 @@
 package operation
 
 import (
+	"os"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -8,16 +9,30 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
-var availablePeriod = 120 * 24 * time.Hour
+var defaultAvailablePeriod = 120 * 24 * time.Hour
+
+type oldAccess struct {
+	availablePeriod time.Duration
+}
 
 func init() {
-	context.Operations[types.OLDACCESS] = OldAccess{}
+	availableEnv := os.Getenv("ACCESS_AVAILABLE_PERIOD")
+	var availablePeriod time.Duration
+	if len(availableEnv) > 0 {
+		if duration, err := time.ParseDuration(availableEnv); err != nil {
+			log.Errorf("[OLDACCESS] err: %s", err)
+			return
+		} else {
+			availablePeriod = duration
+		}
+	} else {
+		availablePeriod = defaultAvailablePeriod
+	}
+	log.Infof("[OLDACCESS] running period set to: %s", availablePeriod)
+	context.Operations[types.OLDACCESS] = oldAccess{availablePeriod}
 }
 
-type OldAccess struct {
-}
-
-func (o OldAccess) Execute(clouds []types.CloudType) []types.CloudItem {
+func (o oldAccess) Execute(clouds []types.CloudType) []types.CloudItem {
 	if context.DryRun {
 		log.Debugf("Collecting old accesses on: [%s]", clouds)
 	}
@@ -26,12 +41,12 @@ func (o OldAccess) Execute(clouds []types.CloudType) []types.CloudItem {
 	return o.filter(items)
 }
 
-func (o OldAccess) filter(items []types.CloudItem) []types.CloudItem {
+func (o oldAccess) filter(items []types.CloudItem) []types.CloudItem {
 	if context.DryRun {
 		log.Debugf("Filtering accesses (%d): [%s]", len(items), items)
 	}
 	return filter(items, func(item types.CloudItem) bool {
-		match := item.GetCreated().Add(availablePeriod).Before(time.Now())
+		match := item.GetCreated().Add(o.availablePeriod).Before(time.Now())
 		if context.DryRun {
 			log.Debugf("Access: %s match: %b", item.GetName(), match)
 		}
@@ -39,7 +54,7 @@ func (o OldAccess) filter(items []types.CloudItem) []types.CloudItem {
 	})
 }
 
-func (o OldAccess) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
+func (o oldAccess) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
 	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
 		accesses, err := provider.GetAccesses()
 		if err != nil {
@@ -49,7 +64,7 @@ func (o OldAccess) collect(clouds []types.CloudType) (chan []types.CloudItem, ch
 	})
 }
 
-func (o OldAccess) convertToCloudItems(accesses []*types.Access) []types.CloudItem {
+func (o oldAccess) convertToCloudItems(accesses []*types.Access) []types.CloudItem {
 	items := []types.CloudItem{}
 	for _, access := range accesses {
 		items = append(items, access)

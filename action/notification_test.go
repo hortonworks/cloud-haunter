@@ -46,7 +46,7 @@ func (s *notificationSuite) TearDownSuite() {
 }
 
 func (s *notificationSuite) TestNotification() {
-	action := NotificationAction{}
+	action := notificationAction{}
 	op := types.LONGRUNNING
 	items := []types.CloudItem{types.Access{}}
 

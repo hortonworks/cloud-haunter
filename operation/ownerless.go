@@ -8,13 +8,13 @@ import (
 )
 
 func init() {
-	context.Operations[types.OWNERLESS] = Ownerless{}
+	context.Operations[types.OWNERLESS] = ownerless{}
 }
 
-type Ownerless struct {
+type ownerless struct {
 }
 
-func (o Ownerless) Execute(clouds []types.CloudType) []types.CloudItem {
+func (o ownerless) Execute(clouds []types.CloudType) []types.CloudItem {
 	if context.DryRun {
 		log.Debugf("Collecting owner less instances on: [%s]", clouds)
 	}
@@ -23,7 +23,7 @@ func (o Ownerless) Execute(clouds []types.CloudType) []types.CloudItem {
 	return o.filter(items)
 }
 
-func (o Ownerless) filter(items []types.CloudItem) []types.CloudItem {
+func (o ownerless) filter(items []types.CloudItem) []types.CloudItem {
 	if context.DryRun {
 		log.Debugf("Filtering instances (%d): [%s]", len(items), items)
 	}

@@ -6,14 +6,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 	"github.com/stretchr/testify/assert"
 )
-
-func TestInit(t *testing.T) {
-	assert.NotNil(t, context.CloudProviders[types.AWS])
-}
 
 func TestProviderInit(t *testing.T) {
 	provider := awsProvider{}

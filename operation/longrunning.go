@@ -11,25 +11,30 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/utils"
 )
 
-var runningPeriod = 24 * time.Hour
+var defaultRunningPeriod = 24 * time.Hour
+
+type longRunning struct {
+	runningPeriod time.Duration
+}
 
 func init() {
-	ctx.Operations[types.LONGRUNNING] = LongRunning{}
-	running := os.Getenv("RUNNING_PERIOD")
-	if len(running) > 0 {
-		if duration, err := time.ParseDuration(running); err != nil {
-			log.Warnf("[LONGRUNNING] err: %s", err)
+	runningEnv := os.Getenv("RUNNING_PERIOD")
+	var runningPeriod time.Duration
+	if len(runningEnv) > 0 {
+		if duration, err := time.ParseDuration(runningEnv); err != nil {
+			log.Errorf("[LONGRUNNING] err: %s", err)
+			return
 		} else {
 			runningPeriod = duration
 		}
+	} else {
+		runningPeriod = defaultRunningPeriod
 	}
 	log.Infof("[LONGRUNNING] running period set to: %s", runningPeriod)
+	ctx.Operations[types.LONGRUNNING] = longRunning{runningPeriod}
 }
 
-type LongRunning struct {
-}
-
-func (o LongRunning) Execute(clouds []types.CloudType) []types.CloudItem {
+func (o longRunning) Execute(clouds []types.CloudType) []types.CloudItem {
 	if ctx.DryRun {
 		log.Debugf("Collecting long running instances on: [%s]", clouds)
 	}
@@ -38,14 +43,15 @@ func (o LongRunning) Execute(clouds []types.CloudType) []types.CloudItem {
 	return o.filter(items)
 }
 
-func (o LongRunning) filter(items []types.CloudItem) []types.CloudItem {
+func (o longRunning) filter(items []types.CloudItem) []types.CloudItem {
 	if ctx.DryRun {
 		log.Debugf("Filtering instances (%d): [%s]", len(items), items)
 	}
+	now := time.Now()
 	return filter(items, func(item types.CloudItem) bool {
 		ignoreLabel, ok := ctx.IgnoreLabels[item.GetCloudType()]
 		inst := item.(*types.Instance)
-		match := (!ok || !utils.IsAnyMatch(inst.Tags, ignoreLabel)) && item.GetCreated().Add(runningPeriod).Before(time.Now())
+		match := (!ok || !utils.IsAnyMatch(inst.Tags, ignoreLabel)) && item.GetCreated().Add(o.runningPeriod).Before(now)
 		if ctx.DryRun {
 			log.Debugf("Instances: %s match: %b", inst.Name, match)
 		}

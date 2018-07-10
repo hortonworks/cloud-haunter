@@ -10,13 +10,13 @@ import (
 )
 
 func init() {
-	context.Actions[types.TERMINATION_ACTION] = new(TerminationAction)
+	context.Actions[types.TERMINATION_ACTION] = new(terminationAction)
 }
 
-type TerminationAction struct {
+type terminationAction struct {
 }
 
-func (a TerminationAction) Execute(op *types.OpType, items []types.CloudItem) {
+func (a terminationAction) Execute(op *types.OpType, items []types.CloudItem) {
 	if context.DryRun {
 		log.Debugf("[TERMINATION] Terminating instances (%d): [%s]", len(items), items)
 	}

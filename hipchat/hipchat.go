@@ -3,6 +3,7 @@ package hipchat
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 
@@ -12,52 +13,52 @@ import (
 	"github.com/tbruyelle/hipchat-go/hipchat"
 )
 
-var (
+var dispatcher = hipchatDispatcher{}
+
+type hipchatDispatcher struct {
 	client *hipchat.Client
 	room   string
-)
+}
 
 func init() {
 	token := os.Getenv("HIPCHAT_TOKEN")
 	server := os.Getenv("HIPCHAT_SERVER")
-	room = os.Getenv("HIPCHAT_ROOM")
-	if len(token) > 0 && len(server) > 0 && len(room) > 0 {
-		log.Infof("[HIPCHAT] register hipchat to send notifications to server: %s and room: %s", server, room)
-		client = hipchat.NewClient(token)
-		if serverUrl, err := url.Parse(server); err != nil {
-			log.Errorf("[HIPCHAT] invalid url: %s, err: %s", server, err.Error())
-		} else {
-			client.BaseURL = serverUrl
-			ctx.Dispatchers["HIPCHAT"] = new(Hipchat)
-		}
+	room := os.Getenv("HIPCHAT_ROOM")
+	if len(token) == 0 || len(server) == 0 || len(room) == 0 {
+		log.Warn("[HIPCHAT] HIPCHAT_TOKEN or HIPCHAT_SERVER or HIPCHAT_ROOM environment variables are missing")
+		return
+	}
+	if serverUrl, err := url.Parse(server); err != nil {
+		log.Errorf("[HIPCHAT] invalid url: %s, err: %s", server, err.Error())
+	} else {
+		log.Infof("[HIPCHAT] register hipchat to send notifications to server: %s and room: %s", serverUrl.Host, room)
+		dispatcher.init(token, room, serverUrl)
+		ctx.Dispatchers["HIPCHAT"] = dispatcher
 	}
 }
 
-type Hipchat struct {
+func (d *hipchatDispatcher) init(token, room string, serverUrl *url.URL) {
+	d.room = room
+	d.client = hipchat.NewClient(token)
+	d.client.BaseURL = serverUrl
 }
 
-func (h *Hipchat) GetName() string {
+func (h hipchatDispatcher) GetName() string {
 	return "HipChat"
 }
 
-func (h *Hipchat) Send(op *types.OpType, items []types.CloudItem) error {
-	message := h.generateMessage(op, items)
+func (d hipchatDispatcher) Send(op *types.OpType, items []types.CloudItem) error {
+	message := d.generateMessage(op, items)
 	if ctx.DryRun {
+		log.Debugf("[HIPCHAT] Generated message is: %s", message)
 		log.Info("[HIPCHAT] Skipping notification on dry run session")
 	} else {
-		_, err := client.Room.Notification(room, &hipchat.NotificationRequest{
-			Message:       message,
-			Color:         "green",
-			MessageFormat: "text",
-		})
-		if err != nil {
-			return err
-		}
+		return send(d.room, message, d.client.Room)
 	}
 	return nil
 }
 
-func (h *Hipchat) generateMessage(op *types.OpType, items []types.CloudItem) string {
+func (h *hipchatDispatcher) generateMessage(op *types.OpType, items []types.CloudItem) string {
 	var buffer bytes.Buffer
 	buffer.WriteString("/code\n")
 	for _, item := range items {
@@ -69,8 +70,18 @@ func (h *Hipchat) generateMessage(op *types.OpType, items []types.CloudItem) str
 			buffer.WriteString(fmt.Sprintf("[%s] %s: %s created: %s owner: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), item.GetCreated(), item.GetOwner()))
 		}
 	}
-	if ctx.DryRun {
-		log.Debugf("[HIPCHAT] Generated message is: %s", buffer.String())
-	}
 	return buffer.String()
+}
+
+type notificationClient interface {
+	Notification(string, *hipchat.NotificationRequest) (*http.Response, error)
+}
+
+func send(room, message string, client notificationClient) error {
+	_, err := client.Notification(room, &hipchat.NotificationRequest{
+		Message:       message,
+		Color:         "green",
+		MessageFormat: "text",
+	})
+	return err
 }
