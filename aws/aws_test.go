@@ -15,10 +15,10 @@ func TestInit(t *testing.T) {
 	assert.NotNil(t, context.CloudProviders[types.AWS])
 }
 
-func TestInitEc2Clietns(t *testing.T) {
+func TestProviderInit(t *testing.T) {
 	provider := awsProvider{}
 
-	provider.initEc2Clietns(func() ([]string, error) {
+	provider.init(func() ([]string, error) {
 		return []string{"region1", "region2"}, nil
 	})
 

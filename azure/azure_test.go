@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
+	"github.com/Azure/go-autorest/autorest"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 
@@ -13,6 +14,26 @@ import (
 
 type callInfo struct {
 	invocations []interface{}
+}
+
+func TestProviderInit(t *testing.T) {
+	provider := azureProvider{}
+
+	authorizer := func() (autorest.Authorizer, error) {
+		return autorest.NullAuthorizer{}, nil
+	}
+
+	provider.init("AZURE_SUBSCRIPTION_ID", authorizer)
+
+	assert.Equal(t, "AZURE_SUBSCRIPTION_ID", provider.subscriptionId)
+	assert.NotNil(t, provider.vmClient)
+	assert.NotNil(t, provider.vmClient.Authorizer)
+}
+
+func TestConvertVmsToInstances(t *testing.T) {
+	instances, _ := convertVmsToInstances(mockHasValues{})
+
+	assert.Equal(t, 1, len(instances))
 }
 
 func Test_givenGetCreationTimeFromTagsReturnsCreationTime_whenNewInstance_thenCreatedWillContainCreationTime(t *testing.T) {
@@ -57,9 +78,9 @@ func Test_givenTimestampNotInTags_whenGetCreationTimeFromTags_thenReturnsEpochZe
 }
 
 func getInstance() *compute.VirtualMachine {
-	var instanceName = "testInstance"
-	var instanceID = "id-1234"
-	var instanceLocation = "testLocation"
+	instanceName := "testInstance"
+	instanceID := "id-1234"
+	instanceLocation := "testLocation"
 	return &compute.VirtualMachine{Name: &instanceName, ID: &instanceID, Location: &instanceLocation}
 }
 
@@ -85,4 +106,11 @@ func getStubConvertTimeUnixEpochZero() (*callInfo, func(string) time.Time) {
 		callInfo.invocations = append(callInfo.invocations, unixTimestamp)
 		return time.Date(1970, 1, 1, 0, 0, 0, 0, time.Local)
 	}
+}
+
+type mockHasValues struct {
+}
+
+func (m mockHasValues) Values() []compute.VirtualMachine {
+	return []compute.VirtualMachine{*getInstance()}
 }

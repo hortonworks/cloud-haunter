@@ -25,3 +25,5 @@ type Dispatcher interface {
 	GetName() string
 	Send(op *OpType, items []CloudItem) error
 }
+
+type EnvResolver func(string) string

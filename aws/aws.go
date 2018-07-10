@@ -16,31 +16,31 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
-var awsProviderImpl = awsProvider{}
+var provider = awsProvider{}
+
+type awsProvider struct {
+	ec2Clients map[string]*ec2.EC2
+}
 
 func init() {
 	context.CloudProviders[types.AWS] = func() types.CloudProvider {
-		if len(awsProviderImpl.ec2Clients) == 0 {
+		if len(provider.ec2Clients) == 0 {
 			ec2Client, err := newEc2Client("eu-west-1")
 			if err != nil {
 				panic("[AWS] Failed to create ec2 client, err: " + err.Error())
 			}
-			err = awsProviderImpl.initEc2Clietns(func() ([]string, error) {
+			err = provider.init(func() ([]string, error) {
 				return getRegions(ec2Client)
 			})
 			if err != nil {
 				panic("[AWS] Failed to fetch regions, err: " + err.Error())
 			}
 		}
-		return awsProviderImpl
+		return provider
 	}
 }
 
-type awsProvider struct {
-	ec2Clients map[string]*ec2.EC2
-}
-
-func (p *awsProvider) initEc2Clietns(getRegions func() ([]string, error)) error {
+func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 	log.Infof("[AWS] Trying to prepare")
 	regions, err := getRegions()
 	if err != nil {

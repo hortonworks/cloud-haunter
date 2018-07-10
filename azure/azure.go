@@ -9,70 +9,64 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/utils"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
+	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	log "github.com/Sirupsen/logrus"
 	"github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
-var (
-	IgnoreLabel    string = "cloud-cost-reducer-ignore"
+var provider = azureProvider{}
+
+type azureProvider struct {
 	subscriptionId string
 	vmClient       compute.VirtualMachinesClient
 	// rgClient       resources.GroupsClient
 	// resClient      resources.Client
-	typesToCollect = map[string]bool{"Microsoft.Compute/virtualMachines": true}
-)
+}
 
 func init() {
+	subscriptionId := os.Getenv("AZURE_SUBSCRIPTION_ID")
+	if len(subscriptionId) == 0 {
+		log.Warn("[AZURE] AZURE_SUBSCRIPTION_ID environment variable is missing")
+		return
+	}
 	context.CloudProviders[types.AZURE] = func() types.CloudProvider {
-		prepare()
-		return new(AzureProvider)
+		if len(provider.vmClient.SubscriptionID) == 0 {
+			if err := provider.init(subscriptionId, auth.NewAuthorizerFromEnvironment); err != nil {
+				panic("[AZURE] Failed to initialize Azure clients: " + err.Error())
+			}
+		}
+		return provider
 	}
 }
 
-func prepare() {
-	if len(vmClient.SubscriptionID) == 0 {
-		subscriptionId = os.Getenv("AZURE_SUBSCRIPTION_ID")
-		if len(subscriptionId) == 0 {
-			panic("[AZURE] AZURE_SUBSCRIPTION_ID environment variable is missing")
-		}
-		log.Infof("[AZURE] Trying to prepare")
-		authorization, err := auth.NewAuthorizerFromEnvironment()
-		if err != nil {
-			panic("[AZURE] Failed to authenticate, err: " + err.Error())
-		}
-		vmClient = compute.NewVirtualMachinesClient(subscriptionId)
-		vmClient.Authorizer = authorization
-
-		log.Info("[AZURE] Successfully prepared")
+func (p *azureProvider) init(subscriptionId string, authorizer func() (autorest.Authorizer, error)) error {
+	log.Infof("[AZURE] Trying to prepare")
+	authorization, err := authorizer()
+	if err != nil {
+		return errors.New("Failed to authenticate, err: " + err.Error())
 	}
+	p.subscriptionId = subscriptionId
+	p.vmClient = compute.NewVirtualMachinesClient(subscriptionId)
+	p.vmClient.Authorizer = authorization
+	log.Info("[AZURE] Successfully prepared")
+	return nil
 }
 
-type AzureProvider struct {
-}
-
-func (p *AzureProvider) GetRunningInstances() ([]*types.Instance, error) {
+func (p azureProvider) GetRunningInstances() ([]*types.Instance, error) {
 	if context.DryRun {
 		log.Debug("[AZURE] Fetching instances")
 	}
-	instances := make([]*types.Instance, 0)
-	result, err := vmClient.ListAll(ctx.Background())
+	result, err := p.vmClient.ListAll(ctx.Background())
 	if err != nil {
 		log.Errorf("[AZURE] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
 	}
-	for _, inst := range result.Values() {
-		newInstance := newInstance(inst, getCreationTimeFromTags, utils.ConvertTags)
-		if context.DryRun {
-			log.Debugf("[AZURE] Converted instance: %s", newInstance)
-		}
-		instances = append(instances, newInstance)
-	}
-	return instances, nil
+	return convertVmsToInstances(result)
 }
 
-func (a AzureProvider) TerminateInstances([]*types.Instance) error {
+func (a azureProvider) TerminateInstances([]*types.Instance) error {
 	return errors.New("[AZURE] Termination not supported")
 	// AZURE
 	// rgClient = resources.NewGroupsClient(subscriptionId)
@@ -85,6 +79,7 @@ func (a AzureProvider) TerminateInstances([]*types.Instance) error {
 	// 	log.Errorf("[AZURE] Failed to fetch the existing resource groups, err: %s", err.Error())
 	// 	return nil, err
 	// }
+	// typesToCollect =: map[string]bool{"Microsoft.Compute/virtualMachines": true}
 	// for _, g := range groups.Values() {
 	// 	resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil) // TODO maybe we can filter for (running) instances
 	// 	if err != nil {
@@ -108,8 +103,24 @@ func (a AzureProvider) TerminateInstances([]*types.Instance) error {
 	// return instances, nil
 }
 
-func (a AzureProvider) GetAccesses() ([]*types.Access, error) {
+func (a azureProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, errors.New("[AZURE] Access not supported")
+}
+
+type hasValues interface {
+	Values() []compute.VirtualMachine
+}
+
+func convertVmsToInstances(vms hasValues) ([]*types.Instance, error) {
+	instances := make([]*types.Instance, 0)
+	for _, inst := range vms.Values() {
+		newInstance := newInstance(inst, getCreationTimeFromTags, utils.ConvertTags)
+		if context.DryRun {
+			log.Debugf("[AZURE] Converted instance: %s", newInstance)
+		}
+		instances = append(instances, newInstance)
+	}
+	return instances, nil
 }
 
 func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(map[string]*string) types.Tags) *types.Instance {
