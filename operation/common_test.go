@@ -10,10 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCollect(t *testing.T) {
+func init() {
 	context.CloudProviders[types.DUMMY] = func() types.CloudProvider {
 		return dummyProvider{}
 	}
+}
+func TestCollect(t *testing.T) {
 	clouds := []types.CloudType{types.DUMMY}
 	getter := func(p types.CloudProvider) (i []types.CloudItem, e error) {
 		return []types.CloudItem{types.Instance{Name: "instance"}}, nil
