@@ -1,6 +1,7 @@
 package gcp
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/hortonworks/cloud-cost-reducer/context"
@@ -12,7 +13,7 @@ import (
 func TestProviderInit(t *testing.T) {
 	provider := gcpProvider{}
 
-	provider.init("project-id")
+	provider.init("project-id", &http.Client{})
 
 	assert.Equal(t, "project-id", provider.projectId)
 	assert.NotNil(t, provider.computeClient)

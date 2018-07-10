@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"errors"
+	"net/http"
 	"os"
 	"strings"
 
@@ -34,7 +35,11 @@ func init() {
 	context.CloudProviders[types.GCP] = func() types.CloudProvider {
 		if provider.computeClient == nil {
 			log.Infof("[GCP] Trying to prepare")
-			if err := provider.init(projectId); err != nil {
+			httpClient, err := google.DefaultClient(ctx.Background(), compute.CloudPlatformScope)
+			if err != nil {
+				panic("[GCP] Failed to authenticate, err: " + err.Error())
+			}
+			if err := provider.init(projectId, httpClient); err != nil {
 				panic("[GCP] Failed to initialize provider, err: " + err.Error())
 			}
 			log.Info("[GCP] Successfully prepared")
@@ -43,11 +48,7 @@ func init() {
 	}
 }
 
-func (p *gcpProvider) init(projectId string) error {
-	httpClient, err := google.DefaultClient(ctx.Background(), compute.CloudPlatformScope)
-	if err != nil {
-		return errors.New("Failed to authenticate, err: " + err.Error())
-	}
+func (p *gcpProvider) init(projectId string, httpClient *http.Client) error {
 	computeClient, err := compute.New(httpClient)
 	if err != nil {
 		return errors.New("Failed to authenticate, err: " + err.Error())
