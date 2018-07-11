@@ -31,7 +31,6 @@ For the proper work, you have to use some custom tags/labels on your cloud resou
  * multiple cloud accounts
 
 ```
-# ccr -h
 NAME:
    Cloud Cost Reducer
 USAGE:
