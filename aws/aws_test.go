@@ -6,7 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hortonworks/cloud-cost-reducer/types"
+	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
 )
 

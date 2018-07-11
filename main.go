@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
-	_ "github.com/hortonworks/cloud-cost-reducer/action"
-	_ "github.com/hortonworks/cloud-cost-reducer/aws"
-	_ "github.com/hortonworks/cloud-cost-reducer/azure"
-	ctx "github.com/hortonworks/cloud-cost-reducer/context"
-	_ "github.com/hortonworks/cloud-cost-reducer/gcp"
-	_ "github.com/hortonworks/cloud-cost-reducer/hipchat"
-	_ "github.com/hortonworks/cloud-cost-reducer/operation"
-	"github.com/hortonworks/cloud-cost-reducer/types"
+	_ "github.com/hortonworks/cloud-haunter/action"
+	_ "github.com/hortonworks/cloud-haunter/aws"
+	_ "github.com/hortonworks/cloud-haunter/azure"
+	ctx "github.com/hortonworks/cloud-haunter/context"
+	_ "github.com/hortonworks/cloud-haunter/gcp"
+	_ "github.com/hortonworks/cloud-haunter/hipchat"
+	_ "github.com/hortonworks/cloud-haunter/operation"
+	"github.com/hortonworks/cloud-haunter/types"
 )
 
 func main() {
@@ -83,9 +83,9 @@ func main() {
 
 func printHelp() {
 	println(`NAME:
-   Cloud Cost Reducer
+   Cloud Haunter
 USAGE:
-   ccr -o=operation -a=action [-c=cloud]
+   ch -o=operation -a=action [-c=cloud]
    
 VERSION:`)
 	println(ctx.Version)

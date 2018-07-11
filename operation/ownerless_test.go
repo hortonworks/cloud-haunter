@@ -3,8 +3,8 @@ package operation
 import (
 	"testing"
 
-	ctx "github.com/hortonworks/cloud-cost-reducer/context"
-	"github.com/hortonworks/cloud-cost-reducer/types"
+	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
 )
 

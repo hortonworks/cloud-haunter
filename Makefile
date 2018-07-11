@@ -1,8 +1,8 @@
-BINARY=ccr
+BINARY=ch
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 VERSION?=$(shell git describe --tags --abbrev=0)-snapshot
-PKG_BASE=github.com/hortonworks/cloud-cost-reducer
+PKG_BASE=github.com/hortonworks/cloud-haunter
 BUILD_TIME=$(shell date +%FT%T)
 LDFLAGS=-X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.BuildTime=${BUILD_TIME}
 
@@ -71,5 +71,5 @@ release: cleanup build
 	glu release
 
 download:
-	curl -LOs https://github.com/hortonworks/cloud-cost-reducer/releases/download/v$(VERSION)/cloud-cost-reducer_$(VERSION)_$(shell uname)_x86_64.tgz
-	tar -xvf cloud-cost-reducer_$(VERSION)_$(shell uname)_x86_64.tgz
+	curl -LOs https://github.com/hortonworks/cloud-haunter/releases/download/v$(VERSION)/cloud-haunter_$(VERSION)_$(shell uname)_x86_64.tgz
+	tar -xvf cloud-haunter_$(VERSION)_$(shell uname)_x86_64.tgz

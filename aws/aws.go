@@ -12,8 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
-	ctx "github.com/hortonworks/cloud-cost-reducer/context"
-	"github.com/hortonworks/cloud-cost-reducer/types"
+	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/types"
 )
 
 var provider = awsProvider{}

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	ctx "github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/stretchr/testify/assert"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"

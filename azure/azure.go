@@ -6,14 +6,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/hortonworks/cloud-cost-reducer/utils"
+	"github.com/hortonworks/cloud-haunter/utils"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	log "github.com/Sirupsen/logrus"
-	ctx "github.com/hortonworks/cloud-cost-reducer/context"
-	"github.com/hortonworks/cloud-cost-reducer/types"
+	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/types"
 )
 
 var provider = azureProvider{}

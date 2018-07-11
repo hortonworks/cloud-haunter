@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/hortonworks/cloud-cost-reducer/context"
-	"github.com/hortonworks/cloud-cost-reducer/types"
-	"github.com/hortonworks/cloud-cost-reducer/utils"
+	"github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/types"
+	"github.com/hortonworks/cloud-haunter/utils"
 
 	ctx "context"
 	"strconv"

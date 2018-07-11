@@ -4,7 +4,7 @@ jobs:
     docker:
       # CircleCI Go images available at: https://hub.docker.com/r/circleci/golang/
       - image: circleci/golang:1.10.3
-    working_directory: /go/src/github.com/hortonworks/cloud-cost-reducer
+    working_directory: /go/src/github.com/hortonworks/cloud-haunter
 
     # environment:
     #   TEST_RESULTS: /tmp/test-results

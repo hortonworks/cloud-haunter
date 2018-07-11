@@ -6,7 +6,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/hortonworks/cloud-cost-reducer/types"
+	"github.com/hortonworks/cloud-haunter/types"
 )
 
 // IsAnyMatch looks for any of the given tag in types.Tag
