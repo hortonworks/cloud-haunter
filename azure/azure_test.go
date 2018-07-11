@@ -25,7 +25,7 @@ func TestProviderInit(t *testing.T) {
 
 	provider.init("AZURE_SUBSCRIPTION_ID", authorizer)
 
-	assert.Equal(t, "AZURE_SUBSCRIPTION_ID", provider.subscriptionId)
+	assert.Equal(t, "AZURE_SUBSCRIPTION_ID", provider.subscriptionID)
 	assert.NotNil(t, provider.vmClient)
 	assert.NotNil(t, provider.vmClient.Authorizer)
 }

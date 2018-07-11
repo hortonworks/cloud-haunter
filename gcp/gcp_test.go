@@ -15,7 +15,7 @@ func TestProviderInit(t *testing.T) {
 
 	provider.init("project-id", &http.Client{})
 
-	assert.Equal(t, "project-id", provider.projectId)
+	assert.Equal(t, "project-id", provider.projectID)
 	assert.NotNil(t, provider.computeClient)
 }
 

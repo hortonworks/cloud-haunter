@@ -19,12 +19,12 @@ func init() {
 	availableEnv := os.Getenv("ACCESS_AVAILABLE_PERIOD")
 	var availablePeriod time.Duration
 	if len(availableEnv) > 0 {
-		if duration, err := time.ParseDuration(availableEnv); err != nil {
+		duration, err := time.ParseDuration(availableEnv)
+		if err != nil {
 			log.Errorf("[OLDACCESS] err: %s", err)
 			return
-		} else {
-			availablePeriod = duration
 		}
+		availablePeriod = duration
 	} else {
 		availablePeriod = defaultAvailablePeriod
 	}

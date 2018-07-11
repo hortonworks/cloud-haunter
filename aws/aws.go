@@ -72,11 +72,11 @@ func (p awsProvider) GetRunningInstances() ([]*types.Instance, error) {
 	return getRunningInstances(ec2Clients)
 }
 
-func (a awsProvider) TerminateInstances([]*types.Instance) error {
+func (p awsProvider) TerminateInstances([]*types.Instance) error {
 	return errors.New("[AWS] Termination not supported")
 }
 
-func (a awsProvider) GetAccesses() ([]*types.Access, error) {
+func (p awsProvider) GetAccesses() ([]*types.Access, error) {
 	if context.DryRun {
 		log.Debug("[AWS] Fetching users")
 	}

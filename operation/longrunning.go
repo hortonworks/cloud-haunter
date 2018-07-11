@@ -21,12 +21,12 @@ func init() {
 	runningEnv := os.Getenv("RUNNING_PERIOD")
 	var runningPeriod time.Duration
 	if len(runningEnv) > 0 {
-		if duration, err := time.ParseDuration(runningEnv); err != nil {
+		duration, err := time.ParseDuration(runningEnv)
+		if err != nil {
 			log.Errorf("[LONGRUNNING] err: %s", err)
 			return
-		} else {
-			runningPeriod = duration
 		}
+		runningPeriod = duration
 	} else {
 		runningPeriod = defaultRunningPeriod
 	}

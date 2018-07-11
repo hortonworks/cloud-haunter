@@ -28,22 +28,22 @@ func init() {
 		log.Warn("[HIPCHAT] HIPCHAT_TOKEN or HIPCHAT_SERVER or HIPCHAT_ROOM environment variables are missing")
 		return
 	}
-	if serverUrl, err := url.Parse(server); err != nil {
+	if serverURL, err := url.Parse(server); err != nil {
 		log.Errorf("[HIPCHAT] invalid url: %s, err: %s", server, err.Error())
 	} else {
-		log.Infof("[HIPCHAT] register hipchat to send notifications to server: %s and room: %s", serverUrl.Host, room)
-		dispatcher.init(token, room, serverUrl)
+		log.Infof("[HIPCHAT] register hipchat to send notifications to server: %s and room: %s", serverURL.Host, room)
+		dispatcher.init(token, room, serverURL)
 		ctx.Dispatchers["HIPCHAT"] = dispatcher
 	}
 }
 
-func (d *hipchatDispatcher) init(token, room string, serverUrl *url.URL) {
+func (d *hipchatDispatcher) init(token, room string, serverURL *url.URL) {
 	d.room = room
 	d.client = hipchat.NewClient(token)
-	d.client.BaseURL = serverUrl
+	d.client.BaseURL = serverURL
 }
 
-func (h hipchatDispatcher) GetName() string {
+func (d hipchatDispatcher) GetName() string {
 	return "HipChat"
 }
 
@@ -58,13 +58,13 @@ func (d hipchatDispatcher) Send(op *types.OpType, items []types.CloudItem) error
 	return nil
 }
 
-func (h *hipchatDispatcher) generateMessage(op *types.OpType, items []types.CloudItem) string {
+func (d *hipchatDispatcher) generateMessage(op *types.OpType, items []types.CloudItem) string {
 	var buffer bytes.Buffer
 	buffer.WriteString("/code\n")
 	for _, item := range items {
 		switch item.GetItem().(type) {
 		case types.Instance:
-			var inst types.Instance = item.GetItem().(types.Instance)
+			inst := item.GetItem().(types.Instance)
 			buffer.WriteString(fmt.Sprintf("[%s] instance name: %s created: %s owner: %s region: %s\n", item.GetCloudType(), item.GetName(), item.GetCreated(), item.GetOwner(), inst.Region))
 		default:
 			buffer.WriteString(fmt.Sprintf("[%s] %s: %s created: %s owner: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), item.GetCreated(), item.GetOwner()))

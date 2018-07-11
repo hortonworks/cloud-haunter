@@ -22,13 +22,13 @@ import (
 var provider = gcpProvider{}
 
 type gcpProvider struct {
-	projectId     string
+	projectID     string
 	computeClient *compute.Service
 }
 
 func init() {
-	projectId := os.Getenv("GOOGLE_PROJECT_ID")
-	if len(projectId) == 0 {
+	projectID := os.Getenv("GOOGLE_PROJECT_ID")
+	if len(projectID) == 0 {
 		log.Warn("[GCP] GOOGLE_PROJECT_ID environment variable is missing")
 		return
 	}
@@ -39,7 +39,7 @@ func init() {
 			if err != nil {
 				panic("[GCP] Failed to authenticate, err: " + err.Error())
 			}
-			if err := provider.init(projectId, httpClient); err != nil {
+			if err := provider.init(projectID, httpClient); err != nil {
 				panic("[GCP] Failed to initialize provider, err: " + err.Error())
 			}
 			log.Info("[GCP] Successfully prepared")
@@ -48,12 +48,12 @@ func init() {
 	}
 }
 
-func (p *gcpProvider) init(projectId string, httpClient *http.Client) error {
+func (p *gcpProvider) init(projectID string, httpClient *http.Client) error {
 	computeClient, err := compute.New(httpClient)
 	if err != nil {
 		return errors.New("Failed to authenticate, err: " + err.Error())
 	}
-	p.projectId = projectId
+	p.projectID = projectID
 	p.computeClient = computeClient
 	return nil
 }
@@ -62,7 +62,7 @@ func (p gcpProvider) GetRunningInstances() ([]*types.Instance, error) {
 	if context.DryRun {
 		log.Debug("[GCP] Fetching instanes")
 	}
-	return getInstances(p.computeClient.Instances.AggregatedList(p.projectId).Filter("status eq RUNNING"))
+	return getInstances(p.computeClient.Instances.AggregatedList(p.projectID).Filter("status eq RUNNING"))
 }
 
 func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
@@ -199,7 +199,7 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		Tags:      inst.Labels,
 		Owner:     inst.Labels[context.GcpOwnerLabel],
 		Metadata:  map[string]interface{}{"zone": getZone(inst.Zone)},
-		Region:    getRegionFromZoneUrl(&inst.Zone),
+		Region:    getRegionFromZoneURL(&inst.Zone),
 	}
 }
 
@@ -208,8 +208,8 @@ func getZone(url string) string {
 	return parts[len(parts)-1]
 }
 
-func getRegionFromZoneUrl(zoneUrl *string) string {
-	zoneUrlParts := strings.Split(*zoneUrl, "/")
-	zone := zoneUrlParts[len(zoneUrlParts)-1]
+func getRegionFromZoneURL(zoneURL *string) string {
+	zoneURLParts := strings.Split(*zoneURL, "/")
+	zone := zoneURLParts[len(zoneURLParts)-1]
 	return zone[:len(zone)-2]
 }

@@ -19,22 +19,22 @@ import (
 var provider = azureProvider{}
 
 type azureProvider struct {
-	subscriptionId string
+	subscriptionID string
 	vmClient       compute.VirtualMachinesClient
 	// rgClient       resources.GroupsClient
 	// resClient      resources.Client
 }
 
 func init() {
-	subscriptionId := os.Getenv("AZURE_SUBSCRIPTION_ID")
-	if len(subscriptionId) == 0 {
+	subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID")
+	if len(subscriptionID) == 0 {
 		log.Warn("[AZURE] AZURE_SUBSCRIPTION_ID environment variable is missing")
 		return
 	}
 	context.CloudProviders[types.AZURE] = func() types.CloudProvider {
 		if len(provider.vmClient.SubscriptionID) == 0 {
 			log.Infof("[AZURE] Trying to prepare")
-			if err := provider.init(subscriptionId, auth.NewAuthorizerFromEnvironment); err != nil {
+			if err := provider.init(subscriptionID, auth.NewAuthorizerFromEnvironment); err != nil {
 				panic("[AZURE] Failed to initialize provider: " + err.Error())
 			}
 			log.Info("[AZURE] Successfully prepared")
@@ -43,13 +43,13 @@ func init() {
 	}
 }
 
-func (p *azureProvider) init(subscriptionId string, authorizer func() (autorest.Authorizer, error)) error {
+func (p *azureProvider) init(subscriptionID string, authorizer func() (autorest.Authorizer, error)) error {
 	authorization, err := authorizer()
 	if err != nil {
 		return errors.New("Failed to authenticate, err: " + err.Error())
 	}
-	p.subscriptionId = subscriptionId
-	p.vmClient = compute.NewVirtualMachinesClient(subscriptionId)
+	p.subscriptionID = subscriptionID
+	p.vmClient = compute.NewVirtualMachinesClient(subscriptionID)
 	p.vmClient.Authorizer = authorization
 	return nil
 }
@@ -66,7 +66,7 @@ func (p azureProvider) GetRunningInstances() ([]*types.Instance, error) {
 	return convertVmsToInstances(result)
 }
 
-func (a azureProvider) TerminateInstances([]*types.Instance) error {
+func (p azureProvider) TerminateInstances([]*types.Instance) error {
 	return errors.New("[AZURE] Termination not supported")
 	// AZURE
 	// rgClient = resources.NewGroupsClient(subscriptionId)
@@ -103,7 +103,7 @@ func (a azureProvider) TerminateInstances([]*types.Instance) error {
 	// return instances, nil
 }
 
-func (a azureProvider) GetAccesses() ([]*types.Access, error) {
+func (p azureProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, errors.New("[AZURE] Access not supported")
 }
 

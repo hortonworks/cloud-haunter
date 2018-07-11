@@ -19,6 +19,7 @@ var (
 	CreationTimeLabel string = "cb-creation-timestamp"
 )
 
+// DryRun is a global flag to skip concrete action
 var DryRun = false
 
 var Operations = make(map[types.OpType]types.Operation)
