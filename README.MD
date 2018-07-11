@@ -1,6 +1,7 @@
 # Cloud Haunter
 
-As the name suggests the main goal of this project is to save costs in the cloud. Cloud Haunter (ch) is supports the three major cloud providers.
+The main goal of this project is to save costs in the cloud by monitoring and terminating resources.
+Cloud Haunter (ch) is supports the three major cloud providers.
 
 `The project is under construction, use on your own risk!`
 
