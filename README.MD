@@ -11,16 +11,16 @@ Current version of the software has limited features, it can monitor and report 
 
 For the proper work, you have to use some custom tags/labels on your cloud resources.
 
-### AWS
+#### AWS
  * Owner tag: `Owner`
  * Ignore tag: `cloud-cost-reducer-ignore`
 
-### Azure
+#### Azure
  * Owner tag: `Owner`
  * Ignore tag: `cloud-cost-reducer-ignore`
  * Resource creation time, because Azure SDK doesn't response it: `cb-creation-timestamp`
 
-### Google
+#### Google
  * Owner label: `owner`
  * Ignore tag: `cloud-cost-reducer-ignore`
 
