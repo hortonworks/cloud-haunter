@@ -22,7 +22,7 @@ For the proper work, you have to use some custom tags/labels on your cloud resou
 
 #### Google
  * Owner label: `owner`
- * Ignore tag: `cloud-cost-reducer-ignore`
+ * Ignore label: `cloud-cost-reducer-ignore`
 
 ## Future plans
  * automatic instance termination
