@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	ctx.Actions[types.TerminationAction] = new(terminationAction)
+	// ctx.Actions[types.TerminationAction] = new(terminationAction)
 }
 
 type terminationAction struct {
