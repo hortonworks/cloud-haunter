@@ -43,12 +43,10 @@ NAME:
    Cloud Haunter
 USAGE:
    ch -o=operation -a=action [-c=cloud]
-
 VERSION:
-
+   0.2.0
 AUTHOR(S):
    Hortonworks
-
 OPERATIONS:
         -o longrunning
         -o oldaccess

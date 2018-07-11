@@ -86,12 +86,11 @@ func printHelp() {
    Cloud Haunter
 USAGE:
    ch -o=operation -a=action [-c=cloud]
-   
 VERSION:`)
-	println(ctx.Version)
-	println(`AUTHOR(S):
+	println("   " + ctx.Version)
+	println(`
+AUTHOR(S):
    Hortonworks
-   
 OPERATIONS:`)
 	for ot := range ctx.Operations {
 		println("\t-o " + ot.String())
