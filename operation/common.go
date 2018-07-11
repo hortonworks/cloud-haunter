@@ -4,11 +4,11 @@ import (
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
-var providers = context.CloudProviders
+var providers = ctx.CloudProviders
 
 func collect(clouds []types.CloudType, getter func(types.CloudProvider) ([]types.CloudItem, error)) (chan []types.CloudItem, chan error) {
 	itemsChan := make(chan []types.CloudItem, 10)

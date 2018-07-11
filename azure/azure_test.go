@@ -6,7 +6,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/Azure/go-autorest/autorest"
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 
 	"github.com/stretchr/testify/assert"
@@ -59,7 +59,7 @@ func Test_givenTimestampIsInTags_whenGetCreationTimeFromTags_thenReturnsConverte
 		timeAsUnixTimeStamp: "1527240203",
 		timeAsTime:          time.Date(2018, 5, 25, 11, 23, 23, 0, time.Local),
 	}
-	tags := types.Tags{context.CreationTimeLabel: testValues.timeAsUnixTimeStamp}
+	tags := types.Tags{ctx.CreationTimeLabel: testValues.timeAsUnixTimeStamp}
 	callInfo, stubConverterFunc := getStubConvertTimeUnixByTime(testValues.timeAsTime)
 
 	getCreationTimeFromTags(tags, stubConverterFunc)

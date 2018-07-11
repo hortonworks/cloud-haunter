@@ -5,7 +5,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
@@ -29,27 +29,21 @@ func init() {
 		availablePeriod = defaultAvailablePeriod
 	}
 	log.Infof("[OLDACCESS] running period set to: %s", availablePeriod)
-	context.Operations[types.OLDACCESS] = oldAccess{availablePeriod}
+	ctx.Operations[types.OLDACCESS] = oldAccess{availablePeriod}
 }
 
 func (o oldAccess) Execute(clouds []types.CloudType) []types.CloudItem {
-	if context.DryRun {
-		log.Debugf("Collecting old accesses on: [%s]", clouds)
-	}
+	log.Debugf("Collecting old accesses on: [%s]", clouds)
 	accessChan, errChan := o.collect(clouds)
 	items := wait(accessChan, errChan, "[OLDACCESS] Failed to collect old accesses")
 	return o.filter(items)
 }
 
 func (o oldAccess) filter(items []types.CloudItem) []types.CloudItem {
-	if context.DryRun {
-		log.Debugf("Filtering accesses (%d): [%s]", len(items), items)
-	}
+	log.Debugf("Filtering accesses (%d): [%s]", len(items), items)
 	return filter(items, func(item types.CloudItem) bool {
 		match := item.GetCreated().Add(o.availablePeriod).Before(time.Now())
-		if context.DryRun {
-			log.Debugf("Access: %s match: %b", item.GetName(), match)
-		}
+		log.Debugf("Access: %s match: %b", item.GetName(), match)
 		return match
 	})
 }

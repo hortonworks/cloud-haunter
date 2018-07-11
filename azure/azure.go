@@ -1,7 +1,7 @@
 package azure
 
 import (
-	ctx "context"
+	"context"
 	"errors"
 	"os"
 	"time"
@@ -12,7 +12,7 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	log "github.com/Sirupsen/logrus"
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
@@ -31,7 +31,7 @@ func init() {
 		log.Warn("[AZURE] AZURE_SUBSCRIPTION_ID environment variable is missing")
 		return
 	}
-	context.CloudProviders[types.AZURE] = func() types.CloudProvider {
+	ctx.CloudProviders[types.AZURE] = func() types.CloudProvider {
 		if len(provider.vmClient.SubscriptionID) == 0 {
 			log.Infof("[AZURE] Trying to prepare")
 			if err := provider.init(subscriptionID, auth.NewAuthorizerFromEnvironment); err != nil {
@@ -55,10 +55,8 @@ func (p *azureProvider) init(subscriptionID string, authorizer func() (autorest.
 }
 
 func (p azureProvider) GetRunningInstances() ([]*types.Instance, error) {
-	if context.DryRun {
-		log.Debug("[AZURE] Fetching instances")
-	}
-	result, err := p.vmClient.ListAll(ctx.Background())
+	log.Debug("[AZURE] Fetching instances")
+	result, err := p.vmClient.ListAll(context.Background())
 	if err != nil {
 		log.Errorf("[AZURE] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
@@ -115,9 +113,7 @@ func convertVmsToInstances(vms hasValues) ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	for _, inst := range vms.Values() {
 		newInstance := newInstance(inst, getCreationTimeFromTags, utils.ConvertTags)
-		if context.DryRun {
-			log.Debugf("[AZURE] Converted instance: %s", newInstance)
-		}
+		log.Debugf("[AZURE] Converted instance: %s", newInstance)
 		instances = append(instances, newInstance)
 	}
 	return instances, nil
@@ -131,7 +127,7 @@ func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreatio
 		Created:   getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 		CloudType: types.AZURE,
 		Tags:      tags,
-		Owner:     tags[context.AzureOwnerLabel],
+		Owner:     tags[ctx.AzureOwnerLabel],
 		Region:    *inst.Location,
 	}
 }
@@ -139,7 +135,7 @@ func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreatio
 type getCreationTimeFromTagsFuncSignature func(types.Tags, func(unixTimestamp string) time.Time) time.Time
 
 func getCreationTimeFromTags(tags types.Tags, convertTimeUnix func(unixTimestamp string) time.Time) time.Time {
-	if creationTimestamp, ok := tags[context.CreationTimeLabel]; ok {
+	if creationTimestamp, ok := tags[ctx.CreationTimeLabel]; ok {
 		return convertTimeUnix(creationTimestamp)
 	}
 	return convertTimeUnix("0")

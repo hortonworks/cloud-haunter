@@ -92,7 +92,9 @@ type mockIamClient struct {
 func (t mockIamClient) ListUsers(*iam.ListUsersInput) (*iam.ListUsersOutput, error) {
 	return &iam.ListUsersOutput{
 		Users: []*iam.User{
-			&iam.User{},
+			&iam.User{
+				UserName: &(&types.S{S: "user"}).S,
+			},
 		},
 	}, nil
 }

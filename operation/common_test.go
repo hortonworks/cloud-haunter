@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func init() {
-	context.CloudProviders[types.DUMMY] = func() types.CloudProvider {
+	ctx.CloudProviders[types.DUMMY] = func() types.CloudProvider {
 		return dummyProvider{}
 	}
 }

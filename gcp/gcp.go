@@ -59,17 +59,13 @@ func (p *gcpProvider) init(projectID string, httpClient *http.Client) error {
 }
 
 func (p gcpProvider) GetRunningInstances() ([]*types.Instance, error) {
-	if context.DryRun {
-		log.Debug("[GCP] Fetching instanes")
-	}
+	log.Debug("[GCP] Fetching instanes")
 	return getInstances(p.computeClient.Instances.AggregatedList(p.projectID).Filter("status eq RUNNING"))
 }
 
 func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
 	return errors.New("[GCP] Termination not supported")
-	// if context.DryRun {
 	// 	log.Debug("[GCP] Terminating instanes")
-	// }
 	// instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectId).Do()
 	// if err != nil {
 	// 	log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
@@ -80,9 +76,7 @@ func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
 	// instanceGroupsToDelete := map[*compute.InstanceGroupManager]bool{}
 
 	// for _, inst := range instances {
-	// 	if context.DryRun {
 	// 		log.Debugf("[GCP] Terminating instane: %s", inst.GetName())
-	// 	}
 	// 	groupFound := false
 	// 	for _, i := range instanceGroups.Items {
 	// 		for _, group := range i.InstanceGroupManagers {
@@ -96,9 +90,7 @@ func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
 	// 	}
 	// }
 
-	// if context.DryRun {
 	// 	log.Debugf("[GCP] Instance groups to terminate (%d) : [%s]", len(instanceGroupsToDelete), instanceGroupsToDelete)
-	// }
 	// wg := sync.WaitGroup{}
 	// wg.Add(len(instanceGroupsToDelete))
 	// for g := range instanceGroupsToDelete {
@@ -117,9 +109,7 @@ func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
 	// 		}
 	// 	}(g)
 	// }
-	// if context.DryRun {
 	// 	log.Debugf("[GCP] Instances to terminate (%d): [%s]", len(instancesToDelete), instancesToDelete)
-	// }
 	// wg.Add(len(instancesToDelete))
 	// for _, i := range instancesToDelete {
 	// 	go func(inst *types.Instance) {
@@ -156,9 +146,7 @@ func getInstances(aggregator aggregator) ([]*types.Instance, error) {
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
 	}
-	if context.DryRun {
-		log.Debugf("[GCP] Processing instances (%d): [%s]", len(instanceList.Items), instanceList.Items)
-	}
+	log.Debugf("[GCP] Processing instances (%d): [%s]", len(instanceList.Items), instanceList.Items)
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
 			instances = append(instances, newInstance(inst))
@@ -168,16 +156,12 @@ func getInstances(aggregator aggregator) ([]*types.Instance, error) {
 }
 
 // func getRegions(p gcpProvider) ([]string, error) {
-// 	if context.DryRun {
 // 		log.Debug("[GCP] Fetching regions")
-// 	}
 // 	regionList, err := p.computeClient.Regions.List(p.projectId).Do()
 // 	if err != nil {
 // 		return nil, err
 // 	}
-// 	if context.DryRun {
 // 		log.Debugf("[GCP] Processing regions (%d): [%s]", len(regionList.Items), regionList.Items)
-// 	}
 // 	regions := make([]string, 0)
 // 	for _, region := range regionList.Items {
 // 		regions = append(regions, region.Name)

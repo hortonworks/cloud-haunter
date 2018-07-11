@@ -4,13 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLongRunningInit(t *testing.T) {
-	assert.NotNil(t, context.Operations[types.LONGRUNNING])
+	assert.NotNil(t, ctx.Operations[types.LONGRUNNING])
 }
 
 func TestLongRunningFilter(t *testing.T) {
@@ -29,7 +29,7 @@ func TestLongRunningFilter(t *testing.T) {
 		&types.Instance{
 			CloudType: types.AWS,
 			Name:      "ignored",
-			Tags:      types.Tags{context.AwsIgnoreLabel: "true"},
+			Tags:      types.Tags{ctx.AwsIgnoreLabel: "true"},
 		},
 	}
 

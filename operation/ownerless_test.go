@@ -3,13 +3,13 @@ package operation
 import (
 	"testing"
 
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestOwnerlessInit(t *testing.T) {
-	assert.NotNil(t, context.Operations[types.OWNERLESS])
+	assert.NotNil(t, ctx.Operations[types.OWNERLESS])
 }
 
 func TestOwnerlessFilter(t *testing.T) {
@@ -26,12 +26,12 @@ func TestOwnerlessFilter(t *testing.T) {
 		&types.Instance{
 			CloudType: types.AWS,
 			Name:      "has owner",
-			Tags:      types.Tags{context.AwsOwnerLabel: "owner"},
+			Tags:      types.Tags{ctx.AwsOwnerLabel: "owner"},
 		},
 		&types.Instance{
 			CloudType: types.AWS,
 			Name:      "ignored",
-			Tags:      types.Tags{context.AwsIgnoreLabel: "true"},
+			Tags:      types.Tags{ctx.AwsIgnoreLabel: "true"},
 		},
 	}
 

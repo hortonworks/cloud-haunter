@@ -9,7 +9,7 @@ import (
 	_ "github.com/hortonworks/cloud-cost-reducer/action"
 	_ "github.com/hortonworks/cloud-cost-reducer/aws"
 	_ "github.com/hortonworks/cloud-cost-reducer/azure"
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	_ "github.com/hortonworks/cloud-cost-reducer/gcp"
 	_ "github.com/hortonworks/cloud-cost-reducer/hipchat"
 	_ "github.com/hortonworks/cloud-cost-reducer/operation"
@@ -29,22 +29,23 @@ func main() {
 	actionType := flag.String("a", "log", "type of action")
 	cloudType := flag.String("c", "", "type of cloud")
 	dryRun := flag.Bool("d", false, "dry run")
+	verbose := flag.Bool("v", false, "verbose")
 
 	flag.Parse()
-
-	context.DryRun = *dryRun
 
 	if *help {
 		printHelp()
 		os.Exit(0)
 	}
 
-	if context.DryRun {
+	ctx.DryRun = *dryRun
+	ctx.Verbose = *verbose
+	if ctx.Verbose {
 		log.SetLevel(log.DebugLevel)
 	}
 
 	op := func() *types.OpType {
-		for i := range context.Operations {
+		for i := range ctx.Operations {
 			if i.String() == *opType {
 				return &i
 			}
@@ -52,23 +53,23 @@ func main() {
 		return nil
 	}()
 	if op == nil {
-		panic("Operation is not supported.")
+		panic("Operation is not found.")
 	}
 
 	action := func() types.Action {
-		for i := range context.Actions {
+		for i := range ctx.Actions {
 			if i.String() == *actionType {
-				return context.Actions[i]
+				return ctx.Actions[i]
 			}
 		}
 		return nil
 	}()
 	if action == nil {
-		panic("Action is not supported.")
+		panic("Action is not found.")
 	}
 
 	clouds := []types.CloudType{}
-	for t := range context.CloudProviders {
+	for t := range ctx.CloudProviders {
 		if len(*cloudType) == 0 || t.String() == strings.ToUpper(*cloudType) {
 			clouds = append(clouds, t)
 		}
@@ -77,7 +78,7 @@ func main() {
 		panic("Cloud provider not found.")
 	}
 
-	action.Execute(op, context.Operations[*op].Execute(clouds))
+	action.Execute(op, ctx.Operations[*op].Execute(clouds))
 }
 
 func printHelp() {
@@ -87,22 +88,23 @@ USAGE:
    ccr -o=operation -a=action [-c=cloud]
    
 VERSION:`)
-	println(context.Version)
+	println(ctx.Version)
 	println(`AUTHOR(S):
    Hortonworks
    
 OPERATIONS:`)
-	for ot := range context.Operations {
+	for ot := range ctx.Operations {
 		println("\t-o " + ot.String())
 	}
 	println("ACTIONS:")
-	for a := range context.Actions {
+	for a := range ctx.Actions {
 		println("\t-a " + a.String())
 	}
 	println("CLOUDS:")
-	for ct := range context.CloudProviders {
+	for ct := range ctx.CloudProviders {
 		println("\t-c " + ct.String())
 	}
 	println("DRY RUN:\n\t-d")
+	println("VERBOSE:\n\t-v")
 	println("HELP:\n\t-p")
 }

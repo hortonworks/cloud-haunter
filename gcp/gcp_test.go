@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/stretchr/testify/assert"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
@@ -54,6 +54,6 @@ func newTestInstance() *compute.Instance {
 		Name:              "instance",
 		CreationTimestamp: "2006-01-02T15:04:05Z",
 		Zone:              "a/bbb",
-		Labels:            map[string]string{context.GcpOwnerLabel: "owner"},
+		Labels:            map[string]string{ctx.GcpOwnerLabel: "owner"},
 	}
 }

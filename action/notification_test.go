@@ -3,14 +3,14 @@ package action
 import (
 	"testing"
 
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
 func TestNotificationInit(t *testing.T) {
-	assert.NotNil(t, context.Actions[types.NOTIFICATION_ACTION])
+	assert.NotNil(t, ctx.Actions[types.NOTIFICATION_ACTION])
 }
 
 type mockDispatcher struct {
@@ -33,16 +33,16 @@ type notificationSuite struct {
 }
 
 func (s *notificationSuite) SetupSuite() {
-	s.dispatchers = context.Dispatchers
+	s.dispatchers = ctx.Dispatchers
 }
 
 func (s *notificationSuite) SetupTest() {
 	s.mockDispatcher = &mockDispatcher{0}
-	context.Dispatchers = map[string]types.Dispatcher{"mock": s.mockDispatcher}
+	ctx.Dispatchers = map[string]types.Dispatcher{"mock": s.mockDispatcher}
 }
 
 func (s *notificationSuite) TearDownSuite() {
-	context.Dispatchers = s.dispatchers
+	ctx.Dispatchers = s.dispatchers
 }
 
 func (s *notificationSuite) TestNotification() {

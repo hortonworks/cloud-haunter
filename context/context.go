@@ -22,6 +22,9 @@ var (
 // DryRun is a global flag to skip concrete action
 var DryRun = false
 
+// Verbose is a global flag for verbose logging
+var Verbose = false
+
 var Operations = make(map[types.OpType]types.Operation)
 
 var CloudProviders = make(map[types.CloudType]func() types.CloudProvider)

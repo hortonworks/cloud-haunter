@@ -49,8 +49,8 @@ func (d hipchatDispatcher) GetName() string {
 
 func (d hipchatDispatcher) Send(op *types.OpType, items []types.CloudItem) error {
 	message := d.generateMessage(op, items)
+	log.Debugf("[HIPCHAT] Generated message is: %s", message)
 	if ctx.DryRun {
-		log.Debugf("[HIPCHAT] Generated message is: %s", message)
 		log.Info("[HIPCHAT] Skipping notification on dry run session")
 	} else {
 		return send(d.room, message, d.client.Room)

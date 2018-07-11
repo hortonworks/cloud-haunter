@@ -4,13 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestOldAccessInit(t *testing.T) {
-	assert.NotNil(t, context.Operations[types.OLDACCESS])
+	assert.NotNil(t, ctx.Operations[types.OLDACCESS])
 }
 
 func TestOldAccessFilter(t *testing.T) {

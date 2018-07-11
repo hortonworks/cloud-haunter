@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
@@ -23,7 +23,7 @@ type awsProvider struct {
 }
 
 func init() {
-	context.CloudProviders[types.AWS] = func() types.CloudProvider {
+	ctx.CloudProviders[types.AWS] = func() types.CloudProvider {
 		if len(provider.ec2Clients) == 0 {
 			log.Infof("[AWS] Trying to prepare")
 			ec2Client, err := newEc2Client("eu-west-1")
@@ -31,9 +31,7 @@ func init() {
 				panic("[AWS] Failed to create ec2 client, err: " + err.Error())
 			}
 			err = provider.init(func() ([]string, error) {
-				if context.DryRun {
-					log.Debug("[AWS] Fetching regions")
-				}
+				log.Debug("[AWS] Fetching regions")
 				return getRegions(ec2Client)
 			})
 			if err != nil {
@@ -62,9 +60,7 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 }
 
 func (p awsProvider) GetRunningInstances() ([]*types.Instance, error) {
-	if context.DryRun {
-		log.Debug("[AWS] Fetching instanes")
-	}
+	log.Debug("[AWS] Fetching instanes")
 	ec2Clients := map[string]ec2Client{}
 	for k, v := range p.ec2Clients {
 		ec2Clients[k] = v
@@ -77,9 +73,7 @@ func (p awsProvider) TerminateInstances([]*types.Instance) error {
 }
 
 func (p awsProvider) GetAccesses() ([]*types.Access, error) {
-	if context.DryRun {
-		log.Debug("[AWS] Fetching users")
-	}
+	log.Debug("[AWS] Fetching users")
 	iamClient, err := newIamClient()
 	if err != nil {
 		return nil, err
@@ -107,9 +101,7 @@ func getRunningInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, er
 	runningFilter := []*ec2.Filter{{Name: &filterName, Values: []*string{&filterValue}}}
 
 	for r, c := range ec2Clients {
-		if context.DryRun {
-			log.Debugf("[AWS] Fetching instanes from: %s", r)
-		}
+		log.Debugf("[AWS] Fetching instanes from: %s", r)
 		go func(region string, ec2Client ec2Client) {
 			defer wg.Done()
 
@@ -120,9 +112,7 @@ func getRunningInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, er
 				log.Errorf("[AWS] Failed to fetch the running instances in region: %s, err: %s", region, e)
 				return
 			}
-			if context.DryRun {
-				log.Debugf("[AWS] Processing instances (%d): [%s] in region: %s", len(instanceResult.Reservations), instanceResult.Reservations, region)
-			}
+			log.Debugf("[AWS] Processing instances (%d): [%s] in region: %s", len(instanceResult.Reservations), instanceResult.Reservations, region)
 			for _, res := range instanceResult.Reservations {
 				for _, inst := range res.Instances {
 					instChan <- newInstance(inst)
@@ -146,14 +136,10 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 	if err != nil {
 		return nil, err
 	}
-	if context.DryRun {
-		log.Debugf("[AWS] Processing users (%d): [%s]", len(users.Users), users.Users)
-	}
+	log.Debugf("[AWS] Processing users (%d): [%s]", len(users.Users), users.Users)
 	accesses := []*types.Access{}
 	for _, u := range users.Users {
-		if context.DryRun {
-			log.Debugf("[AWS] Fetching access keys for: %s", *u.UserName)
-		}
+		log.Debugf("[AWS] Fetching access keys for: %s", *u.UserName)
 		req := &iam.ListAccessKeysInput{
 			UserName: u.UserName,
 			MaxItems: &(&types.I64{I: 1000}).I,
@@ -162,9 +148,7 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 		if err != nil {
 			return nil, err
 		}
-		if context.DryRun {
-			log.Debugf("[AWS] Processing access keys (%d): [%s]", len(resp.AccessKeyMetadata), resp.AccessKeyMetadata)
-		}
+		log.Debugf("[AWS] Processing access keys (%d): [%s]", len(resp.AccessKeyMetadata), resp.AccessKeyMetadata)
 		for _, akm := range resp.AccessKeyMetadata {
 			if *akm.Status == "Active" {
 				accessKey := *akm.AccessKeyId
@@ -185,9 +169,7 @@ func getRegions(ec2Client ec2Client) ([]string, error) {
 	if e != nil {
 		return nil, e
 	}
-	if context.DryRun {
-		log.Debugf("[AWS] Processing regions (%d): [%s]", len(regionResult.Regions), regionResult.Regions)
-	}
+	log.Debugf("[AWS] Processing regions (%d): [%s]", len(regionResult.Regions), regionResult.Regions)
 	regions := make([]string, 0)
 	for _, region := range regionResult.Regions {
 		regions = append(regions, *region.RegionName)
@@ -234,7 +216,7 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		Created:   *inst.LaunchTime,
 		CloudType: types.AWS,
 		Tags:      tags,
-		Owner:     tags[context.AwsOwnerLabel],
+		Owner:     tags[ctx.AwsOwnerLabel],
 		Region:    getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
 	}
 }

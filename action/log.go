@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/hortonworks/cloud-cost-reducer/context"
+	ctx "github.com/hortonworks/cloud-cost-reducer/context"
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
 func init() {
-	context.Actions[types.LOG_ACTION] = new(logAction)
+	ctx.Actions[types.LOG_ACTION] = new(logAction)
 }
 
 type logAction struct {
