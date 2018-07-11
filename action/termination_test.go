@@ -10,7 +10,7 @@ import (
 )
 
 func TestTerminationInit(t *testing.T) {
-	assert.NotNil(t, ctx.Actions[types.TERMINATION_ACTION])
+	assert.NotNil(t, ctx.Actions[types.TerminationAction])
 }
 
 type mockProvider struct {
@@ -54,7 +54,7 @@ func (s *terminationSuite) TearDownSuite() {
 
 func (s *terminationSuite) TestTermination() {
 	action := terminationAction{}
-	op := types.LONGRUNNING
+	op := types.LongRunning
 	items := []types.CloudItem{
 		types.Instance{CloudType: types.AWS},
 		types.Instance{CloudType: types.GCP},

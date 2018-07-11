@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	ctx.Actions[types.LOG_ACTION] = new(logAction)
+	ctx.Actions[types.LogAction] = new(logAction)
 }
 
 type logAction struct {

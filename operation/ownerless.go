@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	ctx.Operations[types.OWNERLESS] = ownerless{}
+	ctx.Operations[types.Ownerless] = ownerless{}
 }
 
 type ownerless struct {

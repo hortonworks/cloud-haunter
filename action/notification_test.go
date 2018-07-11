@@ -10,7 +10,7 @@ import (
 )
 
 func TestNotificationInit(t *testing.T) {
-	assert.NotNil(t, ctx.Actions[types.NOTIFICATION_ACTION])
+	assert.NotNil(t, ctx.Actions[types.NotificationAction])
 }
 
 type mockDispatcher struct {
@@ -47,7 +47,7 @@ func (s *notificationSuite) TearDownSuite() {
 
 func (s *notificationSuite) TestNotification() {
 	action := notificationAction{}
-	op := types.LONGRUNNING
+	op := types.LongRunning
 	items := []types.CloudItem{types.Access{}}
 
 	action.Execute(&op, items)

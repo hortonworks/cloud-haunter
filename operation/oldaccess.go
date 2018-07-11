@@ -29,7 +29,7 @@ func init() {
 		availablePeriod = defaultAvailablePeriod
 	}
 	log.Infof("[OLDACCESS] running period set to: %s", availablePeriod)
-	ctx.Operations[types.OLDACCESS] = oldAccess{availablePeriod}
+	ctx.Operations[types.OldAccess] = oldAccess{availablePeriod}
 }
 
 func (o oldAccess) Execute(clouds []types.CloudType) []types.CloudItem {

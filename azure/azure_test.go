@@ -59,7 +59,7 @@ func Test_givenTimestampIsInTags_whenGetCreationTimeFromTags_thenReturnsConverte
 		timeAsUnixTimeStamp: "1527240203",
 		timeAsTime:          time.Date(2018, 5, 25, 11, 23, 23, 0, time.Local),
 	}
-	tags := types.Tags{ctx.CreationTimeLabel: testValues.timeAsUnixTimeStamp}
+	tags := types.Tags{ctx.AzureCreationTimeLabel: testValues.timeAsUnixTimeStamp}
 	callInfo, stubConverterFunc := getStubConvertTimeUnixByTime(testValues.timeAsTime)
 
 	getCreationTimeFromTags(tags, stubConverterFunc)

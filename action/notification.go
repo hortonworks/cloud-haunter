@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	ctx.Actions[types.NOTIFICATION_ACTION] = new(notificationAction)
+	ctx.Actions[types.NotificationAction] = new(notificationAction)
 }
 
 type notificationAction struct {

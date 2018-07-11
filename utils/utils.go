@@ -9,6 +9,7 @@ import (
 	"github.com/hortonworks/cloud-cost-reducer/types"
 )
 
+// IsAnyMatch looks for any of the given tag in types.Tag
 func IsAnyMatch(haystack types.Tags, needles ...string) bool {
 	for _, k := range needles {
 		if _, ok := haystack[k]; ok {
@@ -18,6 +19,7 @@ func IsAnyMatch(haystack types.Tags, needles ...string) bool {
 	return false
 }
 
+// ConvertTimeRFC3339 converts RFC3339 format string to time.Time
 func ConvertTimeRFC3339(stringTime string) (time.Time, error) {
 	return time.Parse(time.RFC3339, stringTime)
 }
@@ -32,8 +34,7 @@ func ConvertTimeUnix(unixTimestamp string) time.Time {
 	return time.Unix(timestamp, 0)
 }
 
-type ConvertTagsFuncSignature func(map[string]*string) types.Tags
-
+// ConvertTags converts a map of tags to types.Tag
 func ConvertTags(tagMap map[string]*string) types.Tags {
 	tags := make(types.Tags, 0)
 	for k, v := range tagMap {

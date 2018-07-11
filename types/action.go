@@ -7,9 +7,9 @@ func (ot ActionType) String() string {
 }
 
 const (
-	LOG_ACTION          = ActionType("log")
-	NOTIFICATION_ACTION = ActionType("notification")
-	TERMINATION_ACTION  = ActionType("termination")
+	LogAction          = ActionType("log")
+	NotificationAction = ActionType("notification")
+	TerminationAction  = ActionType("termination")
 )
 
 type Action interface {

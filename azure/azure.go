@@ -135,7 +135,7 @@ func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreatio
 type getCreationTimeFromTagsFuncSignature func(types.Tags, func(unixTimestamp string) time.Time) time.Time
 
 func getCreationTimeFromTags(tags types.Tags, convertTimeUnix func(unixTimestamp string) time.Time) time.Time {
-	if creationTimestamp, ok := tags[ctx.CreationTimeLabel]; ok {
+	if creationTimestamp, ok := tags[ctx.AzureCreationTimeLabel]; ok {
 		return convertTimeUnix(creationTimestamp)
 	}
 	return convertTimeUnix("0")

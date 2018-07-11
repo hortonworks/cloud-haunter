@@ -7,9 +7,9 @@ func (ot OpType) String() string {
 }
 
 const (
-	LONGRUNNING = OpType("longrunning")
-	OWNERLESS   = OpType("ownerless")
-	OLDACCESS   = OpType("oldaccess")
+	LongRunning = OpType("longrunning")
+	Ownerless   = OpType("ownerless")
+	OldAccess   = OpType("oldaccess")
 )
 
 type Operation interface {
