@@ -41,7 +41,7 @@ CH will skip all the resources where the name, owner, or any of the tags are sta
 
 ## Installation
 
-`# curl -Ls https://github.com/hortonworks/cloud-haunter/releases/download/v0.2.0/cloud-haunter_0.2.0_$(uname)_x86_64.tgz | tar x`
+`# curl -Ls https://github.com/hortonworks/cloud-haunter/releases/download/v0.2.1/cloud-haunter_0.2.1_$(uname)_x86_64.tgz | tar x`
 
 ## Usage
 
