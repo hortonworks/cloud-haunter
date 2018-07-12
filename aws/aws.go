@@ -210,9 +210,15 @@ func newSession(configure func(*aws.Config)) (*session.Session, error) {
 
 func newInstance(inst *ec2.Instance) *types.Instance {
 	tags := getTags(inst.Tags)
+	var name string
+	if n, ok := tags["Name"]; ok {
+		name = n
+	} else {
+		name = *inst.InstanceId
+	}
 	return &types.Instance{
 		Id:        *inst.InstanceId,
-		Name:      tags["Name"],
+		Name:      name,
 		Created:   *inst.LaunchTime,
 		CloudType: types.AWS,
 		Tags:      tags,

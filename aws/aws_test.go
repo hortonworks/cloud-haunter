@@ -40,6 +40,20 @@ func TestGetRegions(t *testing.T) {
 	assert.Equal(t, 1, len(regions))
 }
 
+func TestNewInstanceWithName(t *testing.T) {
+	ec2Instance := newTestInstance()
+	ec2Instance.Tags = []*ec2.Tag{&ec2.Tag{Key: &(&types.S{S: "Name"}).S, Value: &(&types.S{S: "name"}).S}}
+
+	instance := newInstance(ec2Instance)
+
+	assert.Equal(t, "name", instance.Name)
+}
+
+func TestNewInstanceMissingName(t *testing.T) {
+	instance := newInstance(newTestInstance())
+
+	assert.Equal(t, "ID", instance.Name)
+}
 func TestGetTags(t *testing.T) {
 	assert.Equal(t, types.Tags{"k": "v"}, getTags([]*ec2.Tag{&ec2.Tag{Key: &(&types.S{S: "k"}).S, Value: &(&types.S{S: "v"}).S}}))
 }
@@ -60,16 +74,11 @@ type mockEc2Client struct {
 }
 
 func (t mockEc2Client) DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
-	now := time.Now()
 	return &ec2.DescribeInstancesOutput{
 		Reservations: []*ec2.Reservation{
 			&ec2.Reservation{
 				Instances: []*ec2.Instance{
-					&ec2.Instance{
-						InstanceId: &(&types.S{S: "ID"}).S,
-						LaunchTime: &now,
-						Placement:  &ec2.Placement{},
-					},
+					newTestInstance(),
 				},
 			},
 		},
@@ -117,4 +126,13 @@ func (t mockIamClient) ListAccessKeys(*iam.ListAccessKeysInput) (*iam.ListAccess
 			},
 		},
 	}, nil
+}
+
+func newTestInstance() *ec2.Instance {
+	now := time.Now()
+	return &ec2.Instance{
+		InstanceId: &(&types.S{S: "ID"}).S,
+		LaunchTime: &now,
+		Placement:  &ec2.Placement{},
+	}
 }

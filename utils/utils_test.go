@@ -8,14 +8,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsMatchFound(t *testing.T) {
+func TestIsAnyMatchFound(t *testing.T) {
 	tags := map[string]string{"firsttag": "", "testtag": ""}
 	assert.True(t, IsAnyMatch(tags, "testtag"))
 }
 
-func TestIsMatchNotFound(t *testing.T) {
+func TestIsAnyMatchNotFound(t *testing.T) {
 	tags := map[string]string{"firsttag": "", "sectag": ""}
 	assert.False(t, IsAnyMatch(tags, "testtag"))
+}
+
+func TestIsAnyStartsWithFound(t *testing.T) {
+	tags := map[string]string{"firsttag": "", "testtag": ""}
+	assert.True(t, IsAnyStartsWith(tags, "te"))
+}
+
+func TestIsAnyStartsWithNotFound(t *testing.T) {
+	tags := map[string]string{"firsttag": "", "testtag": ""}
+	assert.False(t, IsAnyStartsWith(tags, "x"))
 }
 
 func Test_givenValidUnixTimeStamp_whenConvertTimeUnix_thenReturnsConvertedToTime(t *testing.T) {
@@ -40,4 +50,28 @@ func Test_givenNotAnIntUnixTimeStamp_whenConvertTimeUnix_thenReturnsEpochZeroTim
 func TestConvertTags(t *testing.T) {
 	tags := map[string]*string{"firsttag": &(&types.S{S: ""}).S}
 	assert.Equal(t, types.Tags{"firsttag": ""}, ConvertTags(tags))
+}
+
+func TestLoadIgnores(t *testing.T) {
+	ignores, _ := LoadIgnores("testdata/ignores.yml")
+
+	assert.Equal(t, []string{"awsName"}, ignores.Access.Aws.Names)
+	assert.Equal(t, []string{"azureName"}, ignores.Access.Azure.Names)
+	assert.Equal(t, []string{"gcpName"}, ignores.Access.Gcp.Names)
+
+	assert.Equal(t, []string{"awsOwner"}, ignores.Access.Aws.Owners)
+	assert.Equal(t, []string{"azureOwner"}, ignores.Access.Azure.Owners)
+	assert.Equal(t, []string{"gcpOwner"}, ignores.Access.Gcp.Owners)
+
+	assert.Equal(t, []string{"awsLabel"}, ignores.Instance.Aws.Labels)
+	assert.Equal(t, []string{"azureLabel"}, ignores.Instance.Azure.Labels)
+	assert.Equal(t, []string{"gcpLabel"}, ignores.Instance.Gcp.Labels)
+
+	assert.Equal(t, []string{"awsName"}, ignores.Instance.Aws.Names)
+	assert.Equal(t, []string{"azureName"}, ignores.Instance.Azure.Names)
+	assert.Equal(t, []string{"gcpName"}, ignores.Instance.Gcp.Names)
+
+	assert.Equal(t, []string{"awsOwner"}, ignores.Instance.Aws.Owners)
+	assert.Equal(t, []string{"azureOwner"}, ignores.Instance.Azure.Owners)
+	assert.Equal(t, []string{"gcpOwner"}, ignores.Instance.Gcp.Owners)
 }

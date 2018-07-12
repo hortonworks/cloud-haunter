@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/hortonworks/cloud-haunter/utils"
+
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/hortonworks/cloud-haunter/action"
 	_ "github.com/hortonworks/cloud-haunter/aws"
@@ -28,6 +30,7 @@ func main() {
 	opType := flag.String("o", "", "type of operation")
 	actionType := flag.String("a", "log", "type of action")
 	cloudType := flag.String("c", "", "type of cloud")
+	ignoresLoc := flag.String("i", "", "ignores YAML")
 	dryRun := flag.Bool("d", false, "dry run")
 	verbose := flag.Bool("v", false, "verbose")
 
@@ -36,6 +39,14 @@ func main() {
 	if *help {
 		printHelp()
 		os.Exit(0)
+	}
+
+	if ignoresLoc != nil && len(*ignoresLoc) != 0 {
+		var err error
+		ctx.Ignores, err = utils.LoadIgnores(*ignoresLoc)
+		if err != nil {
+			panic("Unable to parse ignore configuration: " + err.Error())
+		}
 	}
 
 	ctx.DryRun = *dryRun
@@ -103,6 +114,7 @@ OPERATIONS:`)
 	for ct := range ctx.CloudProviders {
 		println("\t-c " + ct.String())
 	}
+	println("IGNORE:\n\t-i=/location/of/ignore/config.yml")
 	println("DRY RUN:\n\t-d")
 	println("VERBOSE:\n\t-v")
 	println("HELP:\n\t-p")

@@ -8,7 +8,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
-	"github.com/hortonworks/cloud-haunter/utils"
 )
 
 var defaultRunningPeriod = 24 * time.Hour
@@ -45,10 +44,8 @@ func (o longRunning) filter(items []types.CloudItem) []types.CloudItem {
 	log.Debugf("Filtering instances (%d): [%s]", len(items), items)
 	now := time.Now()
 	return filter(items, func(item types.CloudItem) bool {
-		ignoreLabel, ok := ctx.IgnoreLabels[item.GetCloudType()]
-		inst := item.(*types.Instance)
-		match := (!ok || !utils.IsAnyMatch(inst.Tags, ignoreLabel)) && item.GetCreated().Add(o.runningPeriod).Before(now)
-		log.Debugf("Instances: %s match: %b", inst.Name, match)
+		match := item.GetCreated().Add(o.runningPeriod).Before(now)
+		log.Debugf("Instances: %s match: %b", item.GetName(), match)
 		return match
 	})
 }

@@ -1,18 +1,41 @@
 package utils
 
 import (
+	"io/ioutil"
 	"strconv"
+	"strings"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/hortonworks/cloud-haunter/types"
+	yaml "gopkg.in/yaml.v2"
 )
 
 // IsAnyMatch looks for any of the given tag in types.Tag
-func IsAnyMatch(haystack types.Tags, needles ...string) bool {
-	for _, k := range needles {
-		if _, ok := haystack[k]; ok {
+func IsAnyMatch(haystack map[string]string, needles ...string) bool {
+	for _, n := range needles {
+		if _, ok := haystack[n]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// IsAnyStartsWith looks any tag start with given needles
+func IsAnyStartsWith(haystack map[string]string, needles ...string) bool {
+	for k := range haystack {
+		if IsStartsWith(k, needles...) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsStartsWith looks input start with given needles
+func IsStartsWith(hay string, needles ...string) bool {
+	for _, n := range needles {
+		if strings.Index(hay, n) == 0 {
 			return true
 		}
 	}
@@ -41,4 +64,18 @@ func ConvertTags(tagMap map[string]*string) types.Tags {
 		tags[k] = *v
 	}
 	return tags
+}
+
+// LoadIgnores loads and unmarshalls ignore config YAML
+func LoadIgnores(location string) (*types.Ignores, error) {
+	raw, err := ioutil.ReadFile(location)
+	if err != nil {
+		return nil, err
+	}
+	ignores := &types.Ignores{}
+	err = yaml.Unmarshal(raw, ignores)
+	if err != nil {
+		return nil, err
+	}
+	return ignores, nil
 }

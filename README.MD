@@ -27,6 +27,12 @@ For the proper work, you have to use some custom tags/labels on your cloud resou
 
 There is an option to use custom tags/labels, but you have to recompile the project with a bunch of custom environment variables like `AWS_OWNER_LABEL`. Please check Makefile.
 
+### Ignorance config
+
+This tool works well if you use it from early days of your cloud account and all of your users are following the basic rules of tagging instances. On the other hand introducing it on an existing environment should be pain in the back.
+There is an option to declare your ignore policies in a YAML file (please have look at utils/testdata/ignores.yml).
+CH will skip all the resources where the name, owner, or any of the tags are starting with the given configuration.
+
 ## Future plans
  * automatic instance termination
  * more notification types
@@ -59,6 +65,8 @@ CLOUDS:
         -c AWS
         -c AZURE
         -c GCP
+IGNORE:
+        -i=/location/of/ignore/config.yml
 DRY RUN:
         -d
 VERBOSE:
