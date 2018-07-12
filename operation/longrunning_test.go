@@ -26,11 +26,6 @@ func TestLongRunningFilter(t *testing.T) {
 			Name:      "long running",
 			Created:   now.Add(-defaultRunningPeriod).Add(-1 * time.Second),
 		},
-		&types.Instance{
-			CloudType: types.AWS,
-			Name:      "ignored",
-			Tags:      types.Tags{ctx.AwsIgnoreLabel: "true"},
-		},
 	}
 
 	filteredItems := longRunning{defaultRunningPeriod}.filter(items)

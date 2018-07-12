@@ -1,0 +1,15 @@
+--- 
+access: 
+  aws: 
+    names: 
+      - skipThisAccess
+    owners: 
+      - skipThisOwner
+instance: 
+  aws: 
+    names: 
+      - skipThisName
+    owners: 
+      - skipThisOwner
+    labels:
+      - skipThisLabel

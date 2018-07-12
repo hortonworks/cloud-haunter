@@ -1,0 +1,39 @@
+--- 
+access: 
+  aws: 
+    names: 
+      - awsName
+    owners: 
+      - awsOwner
+  azure: 
+    names: 
+      - azureName
+    owners: 
+      - azureOwner
+  gcp: 
+    names: 
+      - gcpName
+    owners: 
+      - gcpOwner
+instance: 
+  aws: 
+    labels: 
+      - awsLabel
+    names: 
+      - awsName
+    owners: 
+      - awsOwner
+  azure: 
+    labels: 
+      - azureLabel
+    names: 
+      - azureName
+    owners: 
+      - azureOwner
+  gcp: 
+    labels: 
+      - gcpLabel
+    names: 
+      - gcpName
+    owners: 
+      - gcpOwner

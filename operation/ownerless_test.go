@@ -28,11 +28,6 @@ func TestOwnerlessFilter(t *testing.T) {
 			Name:      "has owner",
 			Tags:      types.Tags{ctx.AwsOwnerLabel: "owner"},
 		},
-		&types.Instance{
-			CloudType: types.AWS,
-			Name:      "ignored",
-			Tags:      types.Tags{ctx.AwsIgnoreLabel: "true"},
-		},
 	}
 
 	filteredItems := ownerless{}.filter(items)
