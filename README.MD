@@ -1,5 +1,7 @@
 # Cloud Haunter
 
+`Haunter is a pokémon ghost which will poison and kill your unidentified and orphan cloud resources`
+ 
 The main goal of this project is to save costs in the cloud by monitoring and terminating resources.
 Cloud Haunter (ch) is supports the three major cloud providers.
 
@@ -8,7 +10,7 @@ Cloud Haunter (ch) is supports the three major cloud providers.
 Current version of the software has limited features, it can monitor and report (only HipChat supported)
  * long running instances
  * instances without owner
- * old credentials (AWS only).
+ * old cloud credentials
 
 For the proper work, you have to use some custom tags/labels on your cloud resources.
 

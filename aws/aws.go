@@ -150,15 +150,18 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 		}
 		log.Debugf("[AWS] Processing access keys (%d): [%s]", len(resp.AccessKeyMetadata), resp.AccessKeyMetadata)
 		for _, akm := range resp.AccessKeyMetadata {
-			if *akm.Status == "Active" {
-				accessKey := *akm.AccessKeyId
-				accesses = append(accesses, &types.Access{
-					CloudType: types.AWS,
-					Name:      accessKey[0:10] + "...",
-					Owner:     *akm.UserName,
-					Created:   *akm.CreateDate,
-				})
+			accessKey := *akm.AccessKeyId
+			name := accessKey[0:10] + "..."
+			if *akm.Status != "Active" {
+				log.Debugf("[AWS] Access key is not active: %s", name)
+				continue
 			}
+			accesses = append(accesses, &types.Access{
+				CloudType: types.AWS,
+				Name:      name,
+				Owner:     *akm.UserName,
+				Created:   *akm.CreateDate,
+			})
 		}
 	}
 	return accesses, nil
