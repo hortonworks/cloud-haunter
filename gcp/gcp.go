@@ -5,18 +5,20 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/hortonworks/cloud-haunter/context"
+	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
 
-	ctx "context"
+	"context"
 	"strconv"
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/api/iam/v1"
 )
 
 var provider = gcpProvider{}
@@ -24,6 +26,7 @@ var provider = gcpProvider{}
 type gcpProvider struct {
 	projectID     string
 	computeClient *compute.Service
+	iamClient     *iam.Service
 }
 
 func init() {
@@ -32,14 +35,14 @@ func init() {
 		log.Warn("[GCP] GOOGLE_PROJECT_ID environment variable is missing")
 		return
 	}
-	context.CloudProviders[types.GCP] = func() types.CloudProvider {
-		if provider.computeClient == nil {
+	ctx.CloudProviders[types.GCP] = func() types.CloudProvider {
+		if len(provider.projectID) == 0 {
 			log.Infof("[GCP] Trying to prepare")
-			httpClient, err := google.DefaultClient(ctx.Background(), compute.CloudPlatformScope)
+			computeClient, iamClient, err := initClients()
 			if err != nil {
 				panic("[GCP] Failed to authenticate, err: " + err.Error())
 			}
-			if err := provider.init(projectID, httpClient); err != nil {
+			if err := provider.init(projectID, computeClient, iamClient); err != nil {
 				panic("[GCP] Failed to initialize provider, err: " + err.Error())
 			}
 			log.Info("[GCP] Successfully prepared")
@@ -48,13 +51,30 @@ func init() {
 	}
 }
 
-func (p *gcpProvider) init(projectID string, httpClient *http.Client) error {
-	computeClient, err := compute.New(httpClient)
+func initClients() (computeClient *http.Client, iamClient *http.Client, err error) {
+	computeClient, err = google.DefaultClient(context.Background(), compute.CloudPlatformScope)
 	if err != nil {
-		return errors.New("Failed to authenticate, err: " + err.Error())
+		return
 	}
+	iamClient, err = google.DefaultClient(context.Background(), iam.CloudPlatformScope)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iamHTTPClient *http.Client) error {
 	p.projectID = projectID
+	computeClient, err := compute.New(computeHTTPClient)
+	if err != nil {
+		return errors.New("Failed to initialize compute client, err: " + err.Error())
+	}
 	p.computeClient = computeClient
+	iamClient, err := iam.New(iamHTTPClient)
+	if err != nil {
+		return errors.New("Failed to initialize iam client, err: " + err.Error())
+	}
+	p.iamClient = iamClient
 	return nil
 }
 
@@ -132,14 +152,17 @@ func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
 }
 
 func (p gcpProvider) GetAccesses() ([]*types.Access, error) {
-	return nil, errors.New("[GCP] Access not supported")
+	log.Debug("[GCP] Fetching service accounts")
+	return getAccesses(p.iamClient.Projects.ServiceAccounts.List("projects/"+p.projectID), func(name string) keysListAggregator {
+		return p.iamClient.Projects.ServiceAccounts.Keys.List(name)
+	})
 }
 
-type aggregator interface {
+type instancesListAggregator interface {
 	Do(...googleapi.CallOption) (*compute.InstanceAggregatedList, error)
 }
 
-func getInstances(aggregator aggregator) ([]*types.Instance, error) {
+func getInstances(aggregator instancesListAggregator) ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	instanceList, err := aggregator.Do()
 	if err != nil {
@@ -153,6 +176,52 @@ func getInstances(aggregator aggregator) ([]*types.Instance, error) {
 		}
 	}
 	return instances, nil
+}
+
+type serviceAccountsListAggregator interface {
+	Do(opts ...googleapi.CallOption) (*iam.ListServiceAccountsResponse, error)
+}
+
+type keysListAggregator interface {
+	Do(opts ...googleapi.CallOption) (*iam.ListServiceAccountKeysResponse, error)
+}
+
+func getAccesses(serviceAccountAggregator serviceAccountsListAggregator, getKeysAggregator func(string) keysListAggregator) ([]*types.Access, error) {
+	accounts, err := serviceAccountAggregator.Do()
+	if err != nil {
+		return nil, err
+	}
+	log.Debugf("[GCP] Processing service accounts (%d): [%s]", len(accounts.Accounts), accounts.Accounts)
+	now := time.Now()
+	accesses := []*types.Access{}
+	for _, account := range accounts.Accounts {
+		log.Debugf("[GCP] Fetching keys for: %s", account.Name)
+		keys, err := getKeysAggregator(account.Name).Do()
+		if err != nil {
+			return nil, err
+		}
+		log.Debugf("[GCP] Processing keys of %s (%d): [%s]", account.Name, len(keys.Keys), keys.Keys)
+		for _, key := range keys.Keys {
+			validBefore, err := utils.ConvertTimeRFC3339(key.ValidBeforeTime)
+			if err != nil {
+				return nil, err
+			} else if now.After(validBefore) {
+				log.Debugf("[GCP] Key already expired: %s", key.Name)
+				continue
+			}
+			validAfter, err := utils.ConvertTimeRFC3339(key.ValidAfterTime)
+			if err != nil {
+				return nil, err
+			}
+			accesses = append(accesses, &types.Access{
+				CloudType: types.GCP,
+				Name:      key.Name,
+				Owner:     account.Email,
+				Created:   validAfter,
+			})
+		}
+	}
+	return accesses, nil
 }
 
 // func getRegions(p gcpProvider) ([]string, error) {
@@ -181,7 +250,7 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		Created:   created,
 		CloudType: types.GCP,
 		Tags:      inst.Labels,
-		Owner:     inst.Labels[context.GcpOwnerLabel],
+		Owner:     inst.Labels[ctx.GcpOwnerLabel],
 		Metadata:  map[string]interface{}{"zone": getZone(inst.Zone)},
 		Region:    getRegionFromZoneURL(&inst.Zone),
 	}

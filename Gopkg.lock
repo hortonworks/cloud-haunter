@@ -213,13 +213,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:d7ee05cca8ce3e1a2d7fab1e65113f3a411bf6018b251efa3d28570576b3d0d2"
+  digest = "1:c90c4ff9402e956dd61aed7c8bf37f8ecb492b5f1317b245163446f182d49be8"
   name = "google.golang.org/api"
   packages = [
     "compute/v1",
     "gensupport",
     "googleapi",
     "googleapi/internal/uritemplates",
+    "iam/v1",
   ]
   pruneopts = "UT"
   revision = "17ac5598d127e9c0f2a74f1c96d84cf7ebcc312f"
@@ -269,6 +270,7 @@
     "golang.org/x/oauth2/google",
     "google.golang.org/api/compute/v1",
     "google.golang.org/api/googleapi",
+    "google.golang.org/api/iam/v1",
     "gopkg.in/yaml.v2",
   ]
   solver-name = "gps-cdcl"
