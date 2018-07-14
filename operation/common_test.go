@@ -104,7 +104,7 @@ func TestIsIgnored(t *testing.T) {
 }
 
 func TestConvertInstancesToCloudItems(t *testing.T) {
-	instances := []*types.Instance{&types.Instance{}}
+	instances := []*types.Instance{{}}
 
 	items := convertInstancesToCloudItems(instances)
 

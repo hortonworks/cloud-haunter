@@ -34,7 +34,7 @@ func TestOldAccessFilter(t *testing.T) {
 }
 
 func TestConvertToCloudItems(t *testing.T) {
-	accesses := []*types.Access{&types.Access{}}
+	accesses := []*types.Access{{}}
 
 	items := oldAccess{}.convertToCloudItems(accesses)
 

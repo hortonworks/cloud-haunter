@@ -53,7 +53,7 @@ type mockInstancesListAggregator struct {
 func (m mockInstancesListAggregator) Do(opts ...googleapi.CallOption) (*compute.InstanceAggregatedList, error) {
 	return &compute.InstanceAggregatedList{
 		Items: map[string]compute.InstancesScopedList{
-			"key": compute.InstancesScopedList{
+			"key": {
 				Instances: []*compute.Instance{
 					newTestInstance(),
 				},
@@ -68,7 +68,7 @@ type mockServiceAccountsListAggregator struct {
 func (m mockServiceAccountsListAggregator) Do(opts ...googleapi.CallOption) (*iam.ListServiceAccountsResponse, error) {
 	return &iam.ListServiceAccountsResponse{
 		Accounts: []*iam.ServiceAccount{
-			&iam.ServiceAccount{
+			{
 				Name:  "service-account",
 				Email: "service@account.com",
 			},
@@ -83,11 +83,11 @@ func (m mockKeysListAggregator) Do(opts ...googleapi.CallOption) (*iam.ListServi
 	now := time.Now()
 	return &iam.ListServiceAccountKeysResponse{
 		Keys: []*iam.ServiceAccountKey{
-			&iam.ServiceAccountKey{
+			{
 				Name:            "expired",
 				ValidBeforeTime: now.Add(-1 * time.Second).Format(time.RFC3339),
 			},
-			&iam.ServiceAccountKey{
+			{
 				Name:            "valid",
 				ValidBeforeTime: now.Add(1 * time.Second).Format(time.RFC3339),
 				ValidAfterTime:  now.Format(time.RFC3339),
