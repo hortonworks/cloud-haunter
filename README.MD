@@ -1,3 +1,5 @@
+[![CircleCI](https://circleci.com/gh/hortonworks/cloud-haunter.svg?style=shield)](https://circleci.com/gh/hortonworks/cloud-haunter) [![Go Report Card](https://goreportcard.com/badge/github.com/hortonworks/cloud-haunter)](https://goreportcard.com/report/github.com/hortonworks/cloud-haunter)
+
 # Cloud Haunter
 
 `Haunter is a pokémon ghost which will poison and kill your unidentified and orphan cloud resources`
