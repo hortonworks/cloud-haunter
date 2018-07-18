@@ -131,8 +131,9 @@ func (t mockIamClient) ListAccessKeys(*iam.ListAccessKeysInput) (*iam.ListAccess
 func newTestInstance() *ec2.Instance {
 	now := time.Now()
 	return &ec2.Instance{
-		InstanceId: &(&types.S{S: "ID"}).S,
-		LaunchTime: &now,
-		Placement:  &ec2.Placement{},
+		InstanceId:   &(&types.S{S: "ID"}).S,
+		LaunchTime:   &now,
+		Placement:    &ec2.Placement{},
+		InstanceType: &(&types.S{S: "m5.xlarge"}).S,
 	}
 }

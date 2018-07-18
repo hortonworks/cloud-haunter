@@ -81,7 +81,8 @@ func getInstance() *compute.VirtualMachine {
 	instanceName := "testInstance"
 	instanceID := "id-1234"
 	instanceLocation := "testLocation"
-	return &compute.VirtualMachine{Name: &instanceName, ID: &instanceID, Location: &instanceLocation}
+	hwInfo := compute.VirtualMachineProperties{HardwareProfile: &compute.HardwareProfile{VMSize: "Standard_DS1_v2"}}
+	return &compute.VirtualMachine{Name: &instanceName, ID: &instanceID, Location: &instanceLocation, VirtualMachineProperties: &hwInfo}
 }
 
 func getStubGetCreationTimeFromTags(expectedTime time.Time) (*callInfo, getCreationTimeFromTagsFuncSignature) {

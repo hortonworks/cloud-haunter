@@ -122,13 +122,14 @@ func convertVmsToInstances(vms hasValues) ([]*types.Instance, error) {
 func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(map[string]*string) types.Tags) *types.Instance {
 	tags := convertTags(inst.Tags)
 	return &types.Instance{
-		Name:      *inst.Name,
-		Id:        *inst.ID,
-		Created:   getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
-		CloudType: types.AZURE,
-		Tags:      tags,
-		Owner:     tags[ctx.AzureOwnerLabel],
-		Region:    *inst.Location,
+		Name:         *inst.Name,
+		Id:           *inst.ID,
+		Created:      getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
+		CloudType:    types.AZURE,
+		Tags:         tags,
+		Owner:        tags[ctx.AzureOwnerLabel],
+		Region:       *inst.Location,
+		InstanceType: string(inst.HardwareProfile.VMSize),
 	}
 }
 

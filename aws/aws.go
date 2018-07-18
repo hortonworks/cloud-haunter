@@ -220,13 +220,14 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		name = *inst.InstanceId
 	}
 	return &types.Instance{
-		Id:        *inst.InstanceId,
-		Name:      name,
-		Created:   *inst.LaunchTime,
-		CloudType: types.AWS,
-		Tags:      tags,
-		Owner:     tags[ctx.AwsOwnerLabel],
-		Region:    getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
+		Id:           *inst.InstanceId,
+		Name:         name,
+		Created:      *inst.LaunchTime,
+		CloudType:    types.AWS,
+		Tags:         tags,
+		Owner:        tags[ctx.AwsOwnerLabel],
+		Region:       getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
+		InstanceType: *inst.InstanceType,
 	}
 }
 

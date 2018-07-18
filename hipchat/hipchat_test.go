@@ -25,11 +25,12 @@ func TestSend(t *testing.T) {
 func TestGenerateMessage(t *testing.T) {
 	items := []types.CloudItem{
 		types.Instance{
-			CloudType: types.AWS,
-			Name:      "instance",
-			Created:   time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
-			Owner:     "owner",
-			Region:    "region",
+			CloudType:    types.AWS,
+			Name:         "instance",
+			Created:      time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
+			Owner:        "owner",
+			Region:       "region",
+			InstanceType: "large",
 		},
 		types.Access{
 			CloudType: types.AWS,
@@ -41,7 +42,7 @@ func TestGenerateMessage(t *testing.T) {
 	op := types.LongRunning
 	message := dispatcher.generateMessage(&op, items)
 
-	assert.Equal(t, "/code\n[AWS] instance name: instance created: 1970-01-01 00:00:00 +0000 UTC owner: owner region: region\n[AWS] access: access created: 1970-01-01 00:00:00 +0000 UTC owner: owner\n", message)
+	assert.Equal(t, "/code\n[AWS] instance name: instance type: large created: 1970-01-01 00:00:00 +0000 UTC owner: owner region: region\n[AWS] access: access created: 1970-01-01 00:00:00 +0000 UTC owner: owner\n", message)
 }
 
 type mockNotificationClient struct {

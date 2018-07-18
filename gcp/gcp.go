@@ -245,14 +245,15 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		log.Warnf("[GCP] cannot convert time: %s, err: %s", inst.CreationTimestamp, err.Error())
 	}
 	return &types.Instance{
-		Name:      inst.Name,
-		Id:        strconv.Itoa(int(inst.Id)),
-		Created:   created,
-		CloudType: types.GCP,
-		Tags:      inst.Labels,
-		Owner:     inst.Labels[ctx.GcpOwnerLabel],
-		Metadata:  map[string]interface{}{"zone": getZone(inst.Zone)},
-		Region:    getRegionFromZoneURL(&inst.Zone),
+		Name:         inst.Name,
+		Id:           strconv.Itoa(int(inst.Id)),
+		Created:      created,
+		CloudType:    types.GCP,
+		Tags:         inst.Labels,
+		Owner:        inst.Labels[ctx.GcpOwnerLabel],
+		Metadata:     map[string]interface{}{"zone": getZone(inst.Zone)},
+		Region:       getRegionFromZoneURL(&inst.Zone),
+		InstanceType: inst.MachineType[strings.LastIndex(inst.MachineType, "/")+1:],
 	}
 }
 

@@ -102,5 +102,6 @@ func newTestInstance() *compute.Instance {
 		CreationTimestamp: "2006-01-02T15:04:05Z",
 		Zone:              "a/bbb",
 		Labels:            map[string]string{ctx.GcpOwnerLabel: "owner"},
+		MachineType:       "n1-standard-8",
 	}
 }
