@@ -151,6 +151,10 @@ func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
 	// return nil
 }
 
+func (p gcpProvider) StopInstances([]*types.Instance) error {
+	return errors.New("[GCP] Stop not supported")
+}
+
 func (p gcpProvider) GetAccesses() ([]*types.Access, error) {
 	log.Debug("[GCP] Fetching service accounts")
 	return getAccesses(p.iamClient.Projects.ServiceAccounts.List("projects/"+p.projectID), func(name string) keysListAggregator {

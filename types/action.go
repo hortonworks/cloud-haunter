@@ -8,6 +8,7 @@ func (ot ActionType) String() string {
 
 const (
 	LogAction          = ActionType("log")
+	StopAction         = ActionType("stop")
 	NotificationAction = ActionType("notification")
 	TerminationAction  = ActionType("termination")
 )

@@ -72,6 +72,52 @@ func (p awsProvider) TerminateInstances([]*types.Instance) error {
 	return errors.New("[AWS] Termination not supported")
 }
 
+func (p awsProvider) StopInstances(instances []*types.Instance) error {
+	regionInstances := map[string][]*types.Instance{}
+	for _, instance := range instances {
+		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance)
+	}
+
+	numRegions := len(regionInstances)
+	wg := sync.WaitGroup{}
+	wg.Add(numRegions)
+	errChan := make(chan error, numRegions)
+
+	for region, instances := range regionInstances {
+		go func(region string, instances []*types.Instance) {
+			defer wg.Done()
+
+			var instIdNames = make(map[string]string)
+			var instanceIds []*string
+			for _, inst := range instances {
+				instIdNames[inst.Id] = inst.Name
+				instanceIds = append(instanceIds, &inst.Id)
+			}
+
+			log.Infof("[AWS] Sending request to stop instances in region: %s instances: %v", region, instIdNames)
+			if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIds}); err != nil {
+				errChan <- err
+			}
+
+		}(region, instances)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errorMessage = ""
+	for err := range errChan {
+		errorMessage += err.Error() + " "
+	}
+	if len(errorMessage) > 0 {
+		return errors.New(errorMessage)
+	}
+
+	return nil
+}
+
 func (p awsProvider) GetAccesses() ([]*types.Access, error) {
 	log.Debug("[AWS] Fetching users")
 	iamClient, err := newIamClient()

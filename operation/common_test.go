@@ -122,6 +122,10 @@ func (p dummyProvider) TerminateInstances(i []*types.Instance) (e error) {
 	return
 }
 
+func (p dummyProvider) StopInstances(i []*types.Instance) (e error) {
+	return
+}
+
 func (p dummyProvider) GetAccesses() (a []*types.Access, e error) {
 	return
 }

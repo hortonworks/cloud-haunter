@@ -101,6 +101,10 @@ func (p azureProvider) TerminateInstances([]*types.Instance) error {
 	// return instances, nil
 }
 
+func (p azureProvider) StopInstances([]*types.Instance) error {
+	return errors.New("[AZURE] Stop not supported")
+}
+
 func (p azureProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, errors.New("[AZURE] Access not supported")
 }

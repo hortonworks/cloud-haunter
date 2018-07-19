@@ -26,6 +26,11 @@ func (p *mockProvider) TerminateInstances([]*types.Instance) error {
 	return nil
 }
 
+func (p *mockProvider) StopInstances([]*types.Instance) error {
+	p.calls++
+	return nil
+}
+
 func (p *mockProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, nil
 }
