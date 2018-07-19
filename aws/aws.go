@@ -10,6 +10,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	ctx "github.com/hortonworks/cloud-haunter/context"
@@ -19,7 +20,8 @@ import (
 var provider = awsProvider{}
 
 type awsProvider struct {
-	ec2Clients map[string]*ec2.EC2
+	ec2Clients         map[string]*ec2.EC2
+	autoScalingClients map[string]*autoscaling.AutoScaling
 }
 
 func init() {
@@ -49,12 +51,20 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 		return err
 	}
 	p.ec2Clients = map[string]*ec2.EC2{}
+	p.autoScalingClients = map[string]*autoscaling.AutoScaling{}
 	for _, region := range regions {
 		if client, err := newEc2Client(region); err != nil {
-			panic(fmt.Sprintf("[AWS] Failed to create client in region %s, err: %s", region, err.Error()))
+			panic(fmt.Sprintf("[AWS] Failed to create EC2 client in region %s, err: %s", region, err.Error()))
 		} else {
 			p.ec2Clients[region] = client
 		}
+
+		if client, err := newAutoscalingClient(region); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create ASG client in region %s, err: %s", region, err.Error()))
+		} else {
+			p.autoScalingClients[region] = client
+		}
+
 	}
 	return nil
 }
@@ -94,7 +104,36 @@ func (p awsProvider) StopInstances(instances []*types.Instance) error {
 				instanceIds = append(instanceIds, &inst.Id)
 			}
 
-			log.Infof("[AWS] Sending request to stop instances in region: %s instances: %v", region, instIdNames)
+			// We need to suspend the ASGs as it will terminate the stopped instances
+			// Instances that are not part of an ASG are not returned
+			asgInstances, err := p.autoScalingClients[region].DescribeAutoScalingInstances(&autoscaling.DescribeAutoScalingInstancesInput{
+				InstanceIds: instanceIds,
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to fetch the ASG instances in region: %s, err: %s", region, err)
+				return
+			}
+			for _, instance := range asgInstances.AutoScalingInstances {
+				asgName := instance.AutoScalingGroupName
+				compactInstanceName := fmt.Sprintf("%s:%s", *instance.InstanceId, instIdNames[*instance.InstanceId])
+				log.Infof("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
+
+				if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{AutoScalingGroupName: asgName}); err != nil {
+					log.Errorf("[AWS] Failed to suspend ASG %s for instance %s", asgName, compactInstanceName)
+
+					// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
+					var tempInstanceIds []*string
+					for _, instId := range instanceIds {
+						if *instId == *instance.InstanceId {
+							continue
+						}
+						tempInstanceIds = append(tempInstanceIds, instId)
+					}
+					instanceIds = tempInstanceIds
+				}
+			}
+
+			log.Infof("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIds), instIdNames)
 			if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIds}); err != nil {
 				errChan <- err
 			}
@@ -243,6 +282,16 @@ func newEc2Client(region string) (*ec2.EC2, error) {
 		return nil, err
 	}
 	return ec2.New(awsSession), nil
+}
+
+func newAutoscalingClient(region string) (*autoscaling.AutoScaling, error) {
+	awsSession, err := newSession(func(config *aws.Config) {
+		config.Region = &region
+	})
+	if err != nil {
+		return nil, err
+	}
+	return autoscaling.New(awsSession), nil
 }
 
 func newSession(configure func(*aws.Config)) (*session.Session, error) {
