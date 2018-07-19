@@ -4,6 +4,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
+	"sync"
 )
 
 func init() {
@@ -23,10 +24,18 @@ func (s stopAction) Execute(op *types.OpType, items []types.CloudItem) {
 			log.Printf("[STOP} Ignoring cloud item: %s, because it's not an instance, but a %s", t, item.GetType())
 		}
 	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(instancesPerCloud))
 	for cloud, instances := range instancesPerCloud {
-		log.Printf("[STOP] Stop %d instances on cloud: %s", len(instances), cloud)
-		if err := ctx.CloudProviders[cloud]().StopInstances(instances); err != nil {
-			log.Errorf("[STOP] Failed to stop instances on cloud: %s, err: %s", cloud, err.Error())
-		}
+		go func(cloud types.CloudType, instances []*types.Instance) {
+			defer wg.Done()
+			log.Printf("[STOP] Stop %d instances on cloud: %s", len(instances), cloud)
+			if err := ctx.CloudProviders[cloud]().StopInstances(instances); err != nil {
+				log.Errorf("[STOP] Failed to stop instances on cloud: %s, err: %s", cloud, err.Error())
+			}
+		}(cloud, instances)
 	}
+
+	wg.Wait()
 }
