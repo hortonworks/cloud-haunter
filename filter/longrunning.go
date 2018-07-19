@@ -30,21 +30,14 @@ func init() {
 		runningPeriod = defaultRunningPeriod
 	}
 	log.Infof("[LONGRUNNING] running period set to: %s", runningPeriod)
-	ctx.Operations[types.LongRunning] = longRunning{runningPeriod}
+	ctx.Filters[types.LongRunning] = longRunning{runningPeriod}
 }
 
-func (o longRunning) Execute(clouds []types.CloudType) []types.CloudItem {
-	log.Debugf("Collecting long running instances on: [%s]", clouds)
-	itemsChan, errChan := collectRunningInstances(clouds)
-	items := wait(itemsChan, errChan, "[LONGRUNNING] Failed to collect long running instances")
-	return o.filter(items)
-}
-
-func (o longRunning) filter(items []types.CloudItem) []types.CloudItem {
+func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 	log.Debugf("Filtering instances (%d): [%s]", len(items), items)
 	now := time.Now()
 	return filter(items, func(item types.CloudItem) bool {
-		match := item.GetCreated().Add(o.runningPeriod).Before(now)
+		match := item.GetCreated().Add(f.runningPeriod).Before(now)
 		log.Debugf("Instances: %s match: %b", item.GetName(), match)
 		return match
 	})

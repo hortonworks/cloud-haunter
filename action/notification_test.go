@@ -47,7 +47,7 @@ func (s *notificationSuite) TearDownSuite() {
 
 func (s *notificationSuite) TestNotification() {
 	action := notificationAction{}
-	op := types.LongRunning
+	op := types.Running
 	items := []types.CloudItem{types.Access{}}
 
 	action.Execute(&op, items)

@@ -10,7 +10,7 @@ import (
 )
 
 func TestOldAccessInit(t *testing.T) {
-	assert.NotNil(t, ctx.Operations[types.OldAccess])
+	assert.NotNil(t, ctx.Filters[types.OldAccess])
 }
 
 func TestOldAccessFilter(t *testing.T) {
@@ -28,15 +28,7 @@ func TestOldAccessFilter(t *testing.T) {
 		},
 	}
 
-	filteredItems := oldAccess{defaultAvailablePeriod}.filter(items)
+	filteredItems := oldAccess{defaultAvailablePeriod}.Execute(items)
 
 	assert.Equal(t, 1, len(filteredItems))
-}
-
-func TestConvertToCloudItems(t *testing.T) {
-	accesses := []*types.Access{{}}
-
-	items := oldAccess{}.convertToCloudItems(accesses)
-
-	assert.Equal(t, len(accesses), len(items))
 }

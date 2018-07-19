@@ -10,7 +10,7 @@ import (
 )
 
 func TestLongRunningInit(t *testing.T) {
-	assert.NotNil(t, ctx.Operations[types.LongRunning])
+	assert.NotNil(t, ctx.Filters[types.LongRunning])
 }
 
 func TestLongRunningFilter(t *testing.T) {
@@ -28,7 +28,7 @@ func TestLongRunningFilter(t *testing.T) {
 		},
 	}
 
-	filteredItems := longRunning{defaultRunningPeriod}.filter(items)
+	filteredItems := longRunning{defaultRunningPeriod}.Execute(items)
 
 	assert.Equal(t, 1, len(filteredItems))
 }

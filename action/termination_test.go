@@ -59,7 +59,7 @@ func (s *terminationSuite) TearDownSuite() {
 
 func (s *terminationSuite) TestTermination() {
 	action := terminationAction{}
-	op := types.LongRunning
+	op := types.Running
 	items := []types.CloudItem{
 		types.Instance{CloudType: types.AWS},
 		types.Instance{CloudType: types.GCP},

@@ -1,17 +1,16 @@
 package types
 
-type OpType string
-
-func (ot OpType) String() string {
-	return string(ot)
-}
-
 const (
-	LongRunning = OpType("longrunning")
-	Ownerless   = OpType("ownerless")
-	OldAccess   = OpType("oldaccess")
+	Running     = OpType("running")
+	CloudAccess = OpType("access")
 )
+
+type OpType string
 
 type Operation interface {
 	Execute([]CloudType) []CloudItem
+}
+
+func (ot OpType) String() string {
+	return string(ot)
 }

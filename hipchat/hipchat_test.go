@@ -39,7 +39,7 @@ func TestGenerateMessage(t *testing.T) {
 			Owner:     "owner",
 		},
 	}
-	op := types.LongRunning
+	op := types.Running
 	message := dispatcher.generateMessage(&op, items)
 
 	assert.Equal(t, "/code\n[AWS] instance name: instance type: large created: 1970-01-01 00:00:00 +0000 UTC owner: owner region: region\n[AWS] access: access created: 1970-01-01 00:00:00 +0000 UTC owner: owner\n", message)

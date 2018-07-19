@@ -8,20 +8,13 @@ import (
 )
 
 func init() {
-	ctx.Operations[types.Ownerless] = ownerless{}
+	ctx.Filters[types.Ownerless] = ownerless{}
 }
 
 type ownerless struct {
 }
 
-func (o ownerless) Execute(clouds []types.CloudType) []types.CloudItem {
-	log.Debugf("Collecting owner less instances on: [%s]", clouds)
-	itemsChan, errChan := collectRunningInstances(clouds)
-	items := wait(itemsChan, errChan, "[OWNERLESS] Failed to collect owner less instances")
-	return o.filter(items)
-}
-
-func (o ownerless) filter(items []types.CloudItem) []types.CloudItem {
+func (o ownerless) Execute(items []types.CloudItem) []types.CloudItem {
 	log.Debugf("Filtering instances (%d): [%s]", len(items), items)
 	return filter(items, func(item types.CloudItem) bool {
 		inst := item.(*types.Instance)
