@@ -69,6 +69,7 @@
     "service/autoscaling",
     "service/ec2",
     "service/iam",
+    "service/rds",
     "service/sts"
   ]
   revision = "c25475dd537f7becaf29e97c14617c8082f6b5d4"
@@ -215,6 +216,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b0ec5801e127bf50f82262daef40e6be80abf29aa09d44cec9fa0f3bfe60efd0"
+  inputs-digest = "1e31a13a97499b32a3b2cb64ad767b6f990556e3ccf01ca37e8fa1587d091636"
   solver-name = "gps-cdcl"
   solver-version = 1
