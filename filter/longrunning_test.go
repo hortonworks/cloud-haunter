@@ -10,7 +10,7 @@ import (
 )
 
 func TestLongRunningInit(t *testing.T) {
-	assert.NotNil(t, ctx.Filters[types.LongRunning])
+	assert.NotNil(t, ctx.Filters[types.LongRunningFilter])
 }
 
 func TestLongRunningFilter(t *testing.T) {

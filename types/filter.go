@@ -1,9 +1,10 @@
 package types
 
 const (
-	LongRunning = FilterType("longrunning")
-	Ownerless   = FilterType("ownerless")
-	OldAccess   = FilterType("oldaccess")
+	LongRunningFilter = FilterType("longrunning")
+	OwnerlessFilter   = FilterType("ownerless")
+	OldAccessFilter   = FilterType("oldaccess")
+	StoppedFilter     = FilterType("stopped")
 )
 
 type FilterType string

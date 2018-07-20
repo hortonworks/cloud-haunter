@@ -9,7 +9,7 @@ import (
 )
 
 func TestOwnerlessInit(t *testing.T) {
-	assert.NotNil(t, ctx.Filters[types.Ownerless])
+	assert.NotNil(t, ctx.Filters[types.OwnerlessFilter])
 }
 
 func TestOwnerlessFilter(t *testing.T) {

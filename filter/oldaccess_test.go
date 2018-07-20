@@ -10,7 +10,7 @@ import (
 )
 
 func TestOldAccessInit(t *testing.T) {
-	assert.NotNil(t, ctx.Filters[types.OldAccess])
+	assert.NotNil(t, ctx.Filters[types.OldAccessFilter])
 }
 
 func TestOldAccessFilter(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	ctx.Filters[types.Ownerless] = ownerless{}
+	ctx.Filters[types.OwnerlessFilter] = ownerless{}
 }
 
 type ownerless struct {

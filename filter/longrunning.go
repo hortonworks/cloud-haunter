@@ -30,7 +30,7 @@ func init() {
 		runningPeriod = defaultRunningPeriod
 	}
 	log.Infof("[LONGRUNNING] running period set to: %s", runningPeriod)
-	ctx.Filters[types.LongRunning] = longRunning{runningPeriod}
+	ctx.Filters[types.LongRunningFilter] = longRunning{runningPeriod}
 }
 
 func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
