@@ -14,7 +14,7 @@ const (
 )
 
 type CloudProvider interface {
-	GetRunningInstances() ([]*Instance, error)
+	GetInstances() ([]*Instance, error)
 	StopInstances([]*Instance) error
 	TerminateInstances([]*Instance) error
 	GetAccesses() ([]*Access, error)

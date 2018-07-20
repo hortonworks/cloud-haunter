@@ -14,6 +14,8 @@ import (
 	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
+	"strings"
+	"sync"
 )
 
 var provider = azureProvider{}
@@ -54,14 +56,56 @@ func (p *azureProvider) init(subscriptionID string, authorizer func() (autorest.
 	return nil
 }
 
-func (p azureProvider) GetRunningInstances() ([]*types.Instance, error) {
+func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[AZURE] Fetching instances")
 	result, err := p.vmClient.ListAll(context.Background())
 	if err != nil {
-		log.Errorf("[AZURE] Failed to fetch the running instances, err: %s", err.Error())
+		log.Errorf("[AZURE] Failed to fetch the instances, err: %s", err.Error())
 		return nil, err
 	}
-	return convertVmsToInstances(result)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(result.Values()))
+	vms := make([]azureInstance, 0)
+	instanceChan := make(chan azureInstance)
+
+	for _, vm := range result.Values() {
+		go func(vm compute.VirtualMachine) {
+			defer wg.Done()
+
+			instanceIdParts := strings.Split(*vm.ID, "/")
+			// /subscriptions/<sub_id>/resourceGroups/<rg_name>/providers/Microsoft.Compute/virtualMachines/<inst_name>
+			if len(instanceIdParts) == 9 {
+				resourceGroupName := instanceIdParts[4]
+				instanceName := instanceIdParts[8]
+				log.Debugf("[AZURE] Fetch instance view of instance: %s", instanceName)
+				viewResult, err := p.vmClient.InstanceView(context.Background(), resourceGroupName, instanceName)
+				if err != nil {
+					log.Errorf("[AZURE] Failed to fetch the instance view of instance %s, err: %s", instanceName, err.Error())
+				} else {
+					instanceChan <- azureInstance{instance: vm, instanceView: viewResult}
+				}
+			} else {
+				log.Errorf("[AZURE] Failed to find the resource group and name of instance: %s", *vm.Name)
+			}
+		}(vm)
+	}
+
+	go func() {
+		wg.Wait()
+		close(instanceChan)
+	}()
+
+	for inst := range instanceChan {
+		vms = append(vms, inst)
+	}
+
+	return convertVmsToInstances(vms)
+}
+
+type azureInstance struct {
+	instance     compute.VirtualMachine
+	instanceView compute.VirtualMachineInstanceView
 }
 
 func (p azureProvider) TerminateInstances([]*types.Instance) error {
@@ -109,21 +153,18 @@ func (p azureProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, errors.New("[AZURE] Access not supported")
 }
 
-type hasValues interface {
-	Values() []compute.VirtualMachine
-}
-
-func convertVmsToInstances(vms hasValues) ([]*types.Instance, error) {
+func convertVmsToInstances(vms []azureInstance) ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
-	for _, inst := range vms.Values() {
-		newInstance := newInstance(inst, getCreationTimeFromTags, utils.ConvertTags)
+	for _, inst := range vms {
+		newInstance := newInstance(inst.instance, inst.instanceView, getCreationTimeFromTags, utils.ConvertTags)
 		log.Debugf("[AZURE] Converted instance: %s", newInstance)
 		instances = append(instances, newInstance)
 	}
 	return instances, nil
 }
 
-func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(map[string]*string) types.Tags) *types.Instance {
+func newInstance(inst compute.VirtualMachine, view compute.VirtualMachineInstanceView,
+	getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(map[string]*string) types.Tags) *types.Instance {
 	tags := convertTags(inst.Tags)
 	return &types.Instance{
 		Name:         *inst.Name,
@@ -134,7 +175,40 @@ func newInstance(inst compute.VirtualMachine, getCreationTimeFromTags getCreatio
 		Owner:        tags[ctx.AzureOwnerLabel],
 		Region:       *inst.Location,
 		InstanceType: string(inst.HardwareProfile.VMSize),
+		State:        getInstanceState(view),
 	}
+}
+
+// Possible values:
+//   "PowerState/deallocated"
+//   "PowerState/deallocating"
+//   "PowerState/running"
+//   "PowerState/starting"
+//   "PowerState/stopped"
+//   "PowerState/stopping"
+//   "PowerState/unknown"
+// The assumption is that the status without time is the currently active status
+func getInstanceState(view compute.VirtualMachineInstanceView) types.InstanceState {
+	var actualStatus *compute.InstanceViewStatus
+	for _, v := range *view.Statuses {
+		if v.Time == nil {
+			actualStatus = &v
+			break
+		}
+	}
+	if actualStatus != nil {
+		switch *actualStatus.Code {
+		case "PowerState/deallocated", "PowerState/deallocating":
+			return types.Stopped
+		case "PowerState/running", "PowerState/starting":
+			return types.Running
+		case "PowerState/stopped", "PowerState/stopping":
+			return types.Stopped
+		default:
+			return types.Unknown
+		}
+	}
+	return types.Unknown
 }
 
 type getCreationTimeFromTagsFuncSignature func(types.Tags, func(unixTimestamp string) time.Time) time.Time

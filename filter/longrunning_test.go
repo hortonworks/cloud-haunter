@@ -10,7 +10,7 @@ import (
 )
 
 func TestLongRunningInit(t *testing.T) {
-	assert.NotNil(t, ctx.Operations[types.LongRunning])
+	assert.NotNil(t, ctx.Filters[types.LongRunning])
 }
 
 func TestLongRunningFilter(t *testing.T) {
@@ -20,15 +20,17 @@ func TestLongRunningFilter(t *testing.T) {
 			CloudType: types.AWS,
 			Name:      "short running",
 			Created:   now.Add(-defaultRunningPeriod).Add(1 * time.Second),
+			State:     types.Running,
 		},
 		&types.Instance{
 			CloudType: types.AWS,
 			Name:      "long running",
 			Created:   now.Add(-defaultRunningPeriod).Add(-1 * time.Second),
+			State:     types.Running,
 		},
 	}
 
-	filteredItems := longRunning{defaultRunningPeriod}.filter(items)
+	filteredItems := longRunning{defaultRunningPeriod}.Execute(items)
 
 	assert.Equal(t, 1, len(filteredItems))
 }

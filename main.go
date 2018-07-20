@@ -12,6 +12,7 @@ import (
 	_ "github.com/hortonworks/cloud-haunter/aws"
 	_ "github.com/hortonworks/cloud-haunter/azure"
 	ctx "github.com/hortonworks/cloud-haunter/context"
+	_ "github.com/hortonworks/cloud-haunter/filter"
 	_ "github.com/hortonworks/cloud-haunter/gcp"
 	_ "github.com/hortonworks/cloud-haunter/hipchat"
 	_ "github.com/hortonworks/cloud-haunter/operation"
@@ -28,6 +29,7 @@ func main() {
 
 	help := flag.Bool("h", false, "print help")
 	opType := flag.String("o", "", "type of operation")
+	filterTypes := flag.String("f", "", "type of filters")
 	actionType := flag.String("a", "log", "type of action")
 	cloudType := flag.String("c", "", "type of cloud")
 	ignoresLoc := flag.String("i", "", "ignores YAML")
@@ -67,6 +69,18 @@ func main() {
 		panic("Operation is not found.")
 	}
 
+	var filters []types.Filter
+	if filterTypes != nil {
+		filters = func() (f []types.Filter) {
+			for filter := range ctx.Filters {
+				if strings.Contains(*filterTypes, filter.String()) {
+					f = append(f, ctx.Filters[filter])
+				}
+			}
+			return f
+		}()
+	}
+
 	action := func() types.Action {
 		for i := range ctx.Actions {
 			if i.String() == *actionType {
@@ -89,14 +103,18 @@ func main() {
 		panic("Cloud provider not found.")
 	}
 
-	action.Execute(op, ctx.Operations[*op].Execute(clouds))
+	items := ctx.Operations[*op].Execute(clouds)
+	for _, filter := range filters {
+		items = filter.Execute(items)
+	}
+	action.Execute(op, items)
 }
 
 func printHelp() {
 	println(`NAME:
    Cloud Haunter
 USAGE:
-   ch -o=operation -a=action [-c=cloud]
+   ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud]
 VERSION:`)
 	println("   " + ctx.Version)
 	println(`
@@ -105,6 +123,10 @@ AUTHOR(S):
 OPERATIONS:`)
 	for ot := range ctx.Operations {
 		println("\t-o " + ot.String())
+	}
+	println("FILTERS:")
+	for f := range ctx.Filters {
+		println("\t-f " + f.String())
 	}
 	println("ACTIONS:")
 	for a := range ctx.Actions {

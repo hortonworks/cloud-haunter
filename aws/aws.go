@@ -69,13 +69,13 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 	return nil
 }
 
-func (p awsProvider) GetRunningInstances() ([]*types.Instance, error) {
-	log.Debug("[AWS] Fetching instanes")
+func (p awsProvider) GetInstances() ([]*types.Instance, error) {
+	log.Debug("[AWS] Fetching instances")
 	ec2Clients := map[string]ec2Client{}
 	for k, v := range p.ec2Clients {
 		ec2Clients[k] = v
 	}
-	return getRunningInstances(ec2Clients)
+	return getInstances(ec2Clients)
 }
 
 func (p awsProvider) TerminateInstances([]*types.Instance) error {
@@ -176,25 +176,19 @@ type iamClient interface {
 	ListAccessKeys(*iam.ListAccessKeysInput) (*iam.ListAccessKeysOutput, error)
 }
 
-func getRunningInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, error) {
+func getInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, error) {
 	instChan := make(chan *types.Instance, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
 
-	filterName := "instance-state-name"
-	filterValue := ec2.InstanceStateNameRunning
-	runningFilter := []*ec2.Filter{{Name: &filterName, Values: []*string{&filterValue}}}
-
 	for r, c := range ec2Clients {
-		log.Debugf("[AWS] Fetching instanes from: %s", r)
+		log.Debugf("[AWS] Fetching instances from: %s", r)
 		go func(region string, ec2Client ec2Client) {
 			defer wg.Done()
 
-			instanceResult, e := ec2Client.DescribeInstances(&ec2.DescribeInstancesInput{
-				Filters: runningFilter,
-			})
+			instanceResult, e := ec2Client.DescribeInstances(&ec2.DescribeInstancesInput{})
 			if e != nil {
-				log.Errorf("[AWS] Failed to fetch the running instances in region: %s, err: %s", region, e)
+				log.Errorf("[AWS] Failed to fetch the instances in region: %s, err: %s", region, e)
 				return
 			}
 			log.Debugf("[AWS] Processing instances (%d): [%s] in region: %s", len(instanceResult.Reservations), instanceResult.Reservations, region)
@@ -323,6 +317,36 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		Owner:        tags[ctx.AwsOwnerLabel],
 		Region:       getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
 		InstanceType: *inst.InstanceType,
+		State:        getInstanceState(inst),
+	}
+}
+
+// The low byte represents the state. The high byte is an opaque internal value
+// and should be ignored.
+//    * 0 : pending
+//
+//    * 16 : running
+//
+//    * 32 : shutting-down
+//
+//    * 48 : terminated
+//
+//    * 64 : stopping
+//
+//    * 80 : stopped
+func getInstanceState(instance *ec2.Instance) types.InstanceState {
+	if instance.State == nil {
+		return types.Unknown
+	}
+	switch *instance.State.Code {
+	case 0, 16:
+		return types.Running
+	case 32, 48:
+		return types.Terminated
+	case 64, 80:
+		return types.Stopped
+	default:
+		return types.Unknown
 	}
 }
 

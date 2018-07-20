@@ -23,7 +23,7 @@ func TestProviderInit(t *testing.T) {
 func TestGetRunningInstances(t *testing.T) {
 	ec2Clients := map[string]ec2Client{"region": mockEc2Client{}}
 
-	instances, _ := getRunningInstances(ec2Clients)
+	instances, _ := getInstances(ec2Clients)
 
 	assert.Equal(t, 1, len(instances))
 }

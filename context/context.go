@@ -35,6 +35,9 @@ var Verbose = false
 // Operations contains all the available operations
 var Operations = make(map[types.OpType]types.Operation)
 
+// Filters that can be applied on the operations
+var Filters = make(map[types.FilterType]types.Filter)
+
 // CloudProviders contains all the available cloud providers
 var CloudProviders = make(map[types.CloudType]func() types.CloudProvider)
 
