@@ -139,5 +139,5 @@ OPERATIONS:`)
 	println("IGNORE:\n\t-i=/location/of/ignore/config.yml")
 	println("DRY RUN:\n\t-d")
 	println("VERBOSE:\n\t-v")
-	println("HELP:\n\t-p")
+	println("HELP:\n\t-h")
 }
