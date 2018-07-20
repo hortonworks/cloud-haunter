@@ -31,7 +31,12 @@ func TestProviderInit(t *testing.T) {
 }
 
 func TestConvertVmsToInstances(t *testing.T) {
-	instances, _ := convertVmsToInstances(mockHasValues{})
+	mockInstance := azureInstance{
+		instance:     *getInstance(),
+		instanceView: *getInstanceView(),
+	}
+
+	instances, _ := convertVmsToInstances([]azureInstance{mockInstance})
 
 	assert.Equal(t, 1, len(instances))
 }
@@ -44,7 +49,7 @@ func Test_givenGetCreationTimeFromTagsReturnsCreationTime_whenNewInstance_thenCr
 		return tags
 	}
 
-	instance := newInstance(*getInstance(), stubGetCreationTimeFromTagsFunc, stubConvertTagsFunc)
+	instance := newInstance(*getInstance(), *getInstanceView(), stubGetCreationTimeFromTagsFunc, stubConvertTagsFunc)
 
 	assert.Equal(t, instance.Created, expectedTime)
 	assert.Equal(t, len(callInfo.invocations), 1)
@@ -85,6 +90,15 @@ func getInstance() *compute.VirtualMachine {
 	return &compute.VirtualMachine{Name: &instanceName, ID: &instanceID, Location: &instanceLocation, VirtualMachineProperties: &hwInfo}
 }
 
+func getInstanceView() *compute.VirtualMachineInstanceView {
+	code := "PowerState/running"
+	statuses := make([]compute.InstanceViewStatus, 0)
+	statuses = append(statuses, compute.InstanceViewStatus{
+		Code: &code,
+	})
+	return &compute.VirtualMachineInstanceView{Statuses: &statuses}
+}
+
 func getStubGetCreationTimeFromTags(expectedTime time.Time) (*callInfo, getCreationTimeFromTagsFuncSignature) {
 	callInfo := callInfo{invocations: make([]interface{}, 0, 3)}
 	return &callInfo, func(tags types.Tags, timeConverterFunc func(string) time.Time) time.Time {
@@ -107,11 +121,4 @@ func getStubConvertTimeUnixEpochZero() (*callInfo, func(string) time.Time) {
 		callInfo.invocations = append(callInfo.invocations, unixTimestamp)
 		return time.Date(1970, 1, 1, 0, 0, 0, 0, time.Local)
 	}
-}
-
-type mockHasValues struct {
-}
-
-func (m mockHasValues) Values() []compute.VirtualMachine {
-	return []compute.VirtualMachine{*getInstance()}
 }

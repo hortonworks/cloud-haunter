@@ -1,8 +1,8 @@
 package types
 
 const (
-	Running     = OpType("running")
-	CloudAccess = OpType("access")
+	Instances   = OpType("getInstances")
+	CloudAccess = OpType("getAccess")
 )
 
 type OpType string

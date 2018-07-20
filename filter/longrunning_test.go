@@ -20,11 +20,13 @@ func TestLongRunningFilter(t *testing.T) {
 			CloudType: types.AWS,
 			Name:      "short running",
 			Created:   now.Add(-defaultRunningPeriod).Add(1 * time.Second),
+			State:     types.Running,
 		},
 		&types.Instance{
 			CloudType: types.AWS,
 			Name:      "long running",
 			Created:   now.Add(-defaultRunningPeriod).Add(-1 * time.Second),
+			State:     types.Running,
 		},
 	}
 

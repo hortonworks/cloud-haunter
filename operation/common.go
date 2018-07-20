@@ -56,9 +56,9 @@ func wait(itemsChan chan []types.CloudItem, errChan chan error, errorMsg string)
 	return allItems
 }
 
-func collectRunningInstances(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
+func collectInstances(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
 	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
-		instances, err := provider.GetRunningInstances()
+		instances, err := provider.GetInstances()
 		if err != nil {
 			return nil, err
 		}

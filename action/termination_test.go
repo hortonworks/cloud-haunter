@@ -17,7 +17,7 @@ type mockProvider struct {
 	calls int
 }
 
-func (p *mockProvider) GetRunningInstances() ([]*types.Instance, error) {
+func (p *mockProvider) GetInstances() ([]*types.Instance, error) {
 	return nil, nil
 }
 
@@ -59,7 +59,7 @@ func (s *terminationSuite) TearDownSuite() {
 
 func (s *terminationSuite) TestTermination() {
 	action := terminationAction{}
-	op := types.Running
+	op := types.Instances
 	items := []types.CloudItem{
 		types.Instance{CloudType: types.AWS},
 		types.Instance{CloudType: types.GCP},

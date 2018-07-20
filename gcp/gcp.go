@@ -78,9 +78,9 @@ func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iam
 	return nil
 }
 
-func (p gcpProvider) GetRunningInstances() ([]*types.Instance, error) {
+func (p gcpProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[GCP] Fetching instanes")
-	return getInstances(p.computeClient.Instances.AggregatedList(p.projectID).Filter("status eq RUNNING"))
+	return getInstances(p.computeClient.Instances.AggregatedList(p.projectID))
 }
 
 func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
@@ -258,6 +258,29 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		Metadata:     map[string]interface{}{"zone": getZone(inst.Zone)},
 		Region:       getRegionFromZoneURL(&inst.Zone),
 		InstanceType: inst.MachineType[strings.LastIndex(inst.MachineType, "/")+1:],
+		State:        getInstanceState(inst),
+	}
+}
+
+// Possible values:
+//   "PROVISIONING"
+//   "RUNNING"
+//   "STAGING"
+//   "STOPPED"
+//   "STOPPING"
+//   "SUSPENDED"
+//   "SUSPENDING"
+//   "TERMINATED"
+func getInstanceState(instance *compute.Instance) types.InstanceState {
+	switch instance.Status {
+	case "PROVISIONING", "RUNNING", "STAGING":
+		return types.Running
+	case "STOPPED", "STOPPING", "SUSPENDED", "SUSPENDING":
+		return types.Stopped
+	case "TERMINATED":
+		return types.Terminated
+	default:
+		return types.Unknown
 	}
 }
 

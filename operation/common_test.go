@@ -61,7 +61,7 @@ func TestConvertInstancesToCloudItems(t *testing.T) {
 type dummyProvider struct {
 }
 
-func (p dummyProvider) GetRunningInstances() (i []*types.Instance, e error) {
+func (p dummyProvider) GetInstances() (i []*types.Instance, e error) {
 	return
 }
 

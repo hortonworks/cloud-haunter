@@ -16,6 +16,7 @@ type logAction struct {
 }
 
 func (a logAction) Execute(op *types.OpType, items []types.CloudItem) {
+	log.Infof("[LOG] Number of items: %d", len(items))
 	for _, item := range items {
 		out, _ := json.Marshal(item.GetItem())
 		log.Infof("[%s] %s", item.GetCloudType(), string(out))
