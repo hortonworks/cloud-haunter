@@ -53,30 +53,36 @@ CH will skip all the resources where the name, owner, or any of the tags are sta
 NAME:
    Cloud Haunter
 USAGE:
-   ch -o=operation -a=action [-c=cloud]
+   ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud]
 VERSION:
-   0.2.0
+   0.3.1
+
 AUTHOR(S):
    Hortonworks
 OPERATIONS:
-        -o longrunning
-        -o oldaccess
-        -o ownerless
+	-o getAccess
+	-o getInstances
+FILTERS:
+	-f oldaccess
+	-f ownerless
+	-f stopped
+	-f longrunning
 ACTIONS:
-        -a log
-        -a notification
+	-a stop
+	-a log
+	-a notification
 CLOUDS:
-        -c AWS
-        -c AZURE
-        -c GCP
+	-c AWS
+	-c AZURE
+	-c GCP
 IGNORE:
-        -i=/location/of/ignore/config.yml
+	-i=/location/of/ignore/config.yml
 DRY RUN:
-        -d
+	-d
 VERBOSE:
-        -v
+	-v
 HELP:
-        -p
+	-h
 ```
 
 ### Environment variables
