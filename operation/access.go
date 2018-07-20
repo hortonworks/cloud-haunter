@@ -16,7 +16,7 @@ type access struct {
 func (o access) Execute(clouds []types.CloudType) []types.CloudItem {
 	log.Debugf("Collecting old accesses on: [%s]", clouds)
 	accessChan, errChan := o.collect(clouds)
-	return wait(accessChan, errChan, "[ACCESS] Failed to collect old accesses")
+	return wait(accessChan, errChan, "[ACCESS] Failed to collect accesses")
 }
 
 func (o access) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
@@ -30,7 +30,7 @@ func (o access) collect(clouds []types.CloudType) (chan []types.CloudItem, chan 
 }
 
 func (o access) convertToCloudItems(accesses []*types.Access) []types.CloudItem {
-	items := []types.CloudItem{}
+	var items []types.CloudItem
 	for _, access := range accesses {
 		items = append(items, access)
 	}

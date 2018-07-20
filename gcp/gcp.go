@@ -162,6 +162,10 @@ func (p gcpProvider) GetAccesses() ([]*types.Access, error) {
 	})
 }
 
+func (p gcpProvider) GetDatabases() ([]*types.Database, error) {
+	return nil, errors.New("[GCP] Get databases is not supported")
+}
+
 type instancesListAggregator interface {
 	Do(...googleapi.CallOption) (*compute.InstanceAggregatedList, error)
 }
@@ -197,7 +201,7 @@ func getAccesses(serviceAccountAggregator serviceAccountsListAggregator, getKeys
 	}
 	log.Debugf("[GCP] Processing service accounts (%d): [%s]", len(accounts.Accounts), accounts.Accounts)
 	now := time.Now()
-	accesses := []*types.Access{}
+	var accesses []*types.Access
 	for _, account := range accounts.Accounts {
 		log.Debugf("[GCP] Fetching keys for: %s", account.Name)
 		keys, err := getKeysAggregator(account.Name).Do()
@@ -271,7 +275,7 @@ func newInstance(inst *compute.Instance) *types.Instance {
 //   "SUSPENDED"
 //   "SUSPENDING"
 //   "TERMINATED"
-func getInstanceState(instance *compute.Instance) types.InstanceState {
+func getInstanceState(instance *compute.Instance) types.State {
 	switch instance.Status {
 	case "PROVISIONING", "RUNNING", "STAGING":
 		return types.Running

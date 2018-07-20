@@ -18,4 +18,5 @@ type CloudProvider interface {
 	StopInstances([]*Instance) error
 	TerminateInstances([]*Instance) error
 	GetAccesses() ([]*Access, error)
+	GetDatabases() ([]*Database, error)
 }

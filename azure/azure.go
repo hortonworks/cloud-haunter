@@ -153,6 +153,10 @@ func (p azureProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, errors.New("[AZURE] Access not supported")
 }
 
+func (p azureProvider) GetDatabases() ([]*types.Database, error) {
+	return nil, errors.New("[AZURE] Get databases is not supported")
+}
+
 func convertVmsToInstances(vms []azureInstance) ([]*types.Instance, error) {
 	instances := make([]*types.Instance, 0)
 	for _, inst := range vms {
@@ -188,7 +192,7 @@ func newInstance(inst compute.VirtualMachine, view compute.VirtualMachineInstanc
 //   "PowerState/stopping"
 //   "PowerState/unknown"
 // The assumption is that the status without time is the currently active status
-func getInstanceState(view compute.VirtualMachineInstanceView) types.InstanceState {
+func getInstanceState(view compute.VirtualMachineInstanceView) types.State {
 	var actualStatus *compute.InstanceViewStatus
 	for _, v := range *view.Statuses {
 		if v.Time == nil {

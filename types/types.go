@@ -4,6 +4,15 @@ import (
 	"time"
 )
 
+const (
+	Running    = State("running")
+	Stopped    = State("stopped")
+	Terminated = State("terminated")
+	Unknown    = State("unknown")
+)
+
+type State string
+
 type S struct {
 	S string
 }
