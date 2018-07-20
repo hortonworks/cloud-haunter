@@ -14,7 +14,7 @@ func init() {
 type stopAction struct {
 }
 
-func (s stopAction) Execute(op *types.OpType, items []types.CloudItem) {
+func (s stopAction) Execute(op types.OpType, filters []types.FilterType, items []types.CloudItem) {
 	instancesPerCloud := map[types.CloudType][]*types.Instance{}
 	for _, item := range items {
 		switch t := item.GetItem().(type) {

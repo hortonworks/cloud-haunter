@@ -21,7 +21,7 @@ func (d *mockDispatcher) GetName() string {
 	return "mock"
 }
 
-func (d *mockDispatcher) Send(op *types.OpType, items []types.CloudItem) error {
+func (d *mockDispatcher) Send(op types.OpType, filters []types.FilterType, items []types.CloudItem) error {
 	d.calls++
 	return nil
 }
@@ -50,7 +50,7 @@ func (s *notificationSuite) TestNotification() {
 	op := types.Instances
 	items := []types.CloudItem{types.Access{}}
 
-	action.Execute(&op, items)
+	action.Execute(op, []types.FilterType{}, items)
 
 	s.Equal(1, s.mockDispatcher.calls)
 }

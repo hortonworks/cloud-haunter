@@ -23,7 +23,7 @@ type CloudItem interface {
 
 type Dispatcher interface {
 	GetName() string
-	Send(op *OpType, items []CloudItem) error
+	Send(op OpType, filters []FilterType, items []CloudItem) error
 }
 
 type EnvResolver func(string) string

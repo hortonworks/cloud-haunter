@@ -65,7 +65,7 @@ func (s *terminationSuite) TestTermination() {
 		types.Instance{CloudType: types.GCP},
 	}
 
-	action.Execute(&op, items)
+	action.Execute(op, []types.FilterType{}, items)
 
 	s.Equal(1, s.mockProvider.calls)
 }

@@ -11,6 +11,7 @@ import (
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/tbruyelle/hipchat-go/hipchat"
+	"strings"
 )
 
 var dispatcher = hipchatDispatcher{}
@@ -47,8 +48,8 @@ func (d hipchatDispatcher) GetName() string {
 	return "HipChat"
 }
 
-func (d hipchatDispatcher) Send(op *types.OpType, items []types.CloudItem) error {
-	message := d.generateMessage(op, items)
+func (d hipchatDispatcher) Send(op types.OpType, filters []types.FilterType, items []types.CloudItem) error {
+	message := d.generateMessage(op, filters, items)
 	log.Debugf("[HIPCHAT] Generated message is: %s", message)
 	if ctx.DryRun {
 		log.Info("[HIPCHAT] Skipping notification on dry run session")
@@ -58,9 +59,10 @@ func (d hipchatDispatcher) Send(op *types.OpType, items []types.CloudItem) error
 	return nil
 }
 
-func (d *hipchatDispatcher) generateMessage(op *types.OpType, items []types.CloudItem) string {
+func (d *hipchatDispatcher) generateMessage(op types.OpType, filters []types.FilterType, items []types.CloudItem) string {
 	var buffer bytes.Buffer
 	buffer.WriteString("/code\n")
+	buffer.WriteString(fmt.Sprintf("Operation: %s Filters: %s\n", op, getFilterNames(filters)))
 	for _, item := range items {
 		switch item.GetItem().(type) {
 		case types.Instance:
@@ -71,6 +73,17 @@ func (d *hipchatDispatcher) generateMessage(op *types.OpType, items []types.Clou
 		}
 	}
 	return buffer.String()
+}
+
+func getFilterNames(filters []types.FilterType) string {
+	if len(filters) == 0 {
+		return "noFilter"
+	}
+	fNames := make([]string, 0)
+	for _, f := range filters {
+		fNames = append(fNames, f.String())
+	}
+	return strings.Join(fNames, ",")
 }
 
 type notificationClient interface {

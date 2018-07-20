@@ -70,11 +70,13 @@ func main() {
 	}
 
 	var filters []types.Filter
+	var filterNames []types.FilterType
 	if filterTypes != nil {
 		filters = func() (f []types.Filter) {
 			for filter := range ctx.Filters {
 				if strings.Contains(*filterTypes, filter.String()) {
 					f = append(f, ctx.Filters[filter])
+					filterNames = append(filterNames, filter)
 				}
 			}
 			return f
@@ -107,7 +109,7 @@ func main() {
 	for _, filter := range filters {
 		items = filter.Execute(items)
 	}
-	action.Execute(op, items)
+	action.Execute(*op, filterNames, items)
 }
 
 func printHelp() {

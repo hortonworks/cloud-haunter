@@ -15,7 +15,7 @@ func init() {
 type notificationAction struct {
 }
 
-func (a notificationAction) Execute(op *types.OpType, items []types.CloudItem) {
+func (a notificationAction) Execute(op types.OpType, filters []types.FilterType, items []types.CloudItem) {
 	log.Infof("[NOTIFICATION] Sending %d items for %d dispatchers", len(items), len(ctx.Dispatchers))
 	log.Debugf("[NOTIFICATION] Sending notifications (%d) for items: [%s]", len(items), items)
 	if len(items) > 0 {
@@ -26,7 +26,7 @@ func (a notificationAction) Execute(op *types.OpType, items []types.CloudItem) {
 			go func(name string, dispatcher types.Dispatcher) {
 				defer wg.Done()
 
-				if err := dispatcher.Send(op, items); err != nil {
+				if err := dispatcher.Send(op, filters, items); err != nil {
 					log.Errorf("[%s] Failed to send message, err: %s", name, err.Error())
 				}
 			}(n, d)

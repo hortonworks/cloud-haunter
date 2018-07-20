@@ -14,5 +14,5 @@ const (
 )
 
 type Action interface {
-	Execute(*OpType, []CloudItem)
+	Execute(OpType, []FilterType, []CloudItem)
 }

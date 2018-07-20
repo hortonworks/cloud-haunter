@@ -16,7 +16,7 @@ func init() {
 type terminationAction struct {
 }
 
-func (a terminationAction) Execute(op *types.OpType, items []types.CloudItem) {
+func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, items []types.CloudItem) {
 	log.Debugf("[TERMINATION] Terminating instances (%d): [%s]", len(items), items)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ctx.CloudProviders))
