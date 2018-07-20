@@ -17,6 +17,15 @@ func filter(items []types.CloudItem, isNeeded func(types.CloudItem) bool) []type
 	return filtered
 }
 
+func isInstance(item types.CloudItem) bool {
+	switch item.GetItem().(type) {
+	case types.Instance:
+		return true
+	default:
+		return false
+	}
+}
+
 func isIgnored(item types.CloudItem, ignores *types.Ignores) bool {
 	switch item.GetItem().(type) {
 	case types.Instance:

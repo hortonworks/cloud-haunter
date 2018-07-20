@@ -12,10 +12,10 @@ import (
 	_ "github.com/hortonworks/cloud-haunter/aws"
 	_ "github.com/hortonworks/cloud-haunter/azure"
 	ctx "github.com/hortonworks/cloud-haunter/context"
+	_ "github.com/hortonworks/cloud-haunter/filter"
 	_ "github.com/hortonworks/cloud-haunter/gcp"
 	_ "github.com/hortonworks/cloud-haunter/hipchat"
 	_ "github.com/hortonworks/cloud-haunter/operation"
-	_ "github.com/hortonworks/cloud-haunter/filter"
 	"github.com/hortonworks/cloud-haunter/types"
 )
 
