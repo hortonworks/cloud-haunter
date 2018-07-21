@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/rds"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 )
@@ -22,6 +23,7 @@ var provider = awsProvider{}
 type awsProvider struct {
 	ec2Clients         map[string]*ec2.EC2
 	autoScalingClients map[string]*autoscaling.AutoScaling
+	rdsClients         map[string]*rds.RDS
 }
 
 func init() {
@@ -52,6 +54,7 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 	}
 	p.ec2Clients = map[string]*ec2.EC2{}
 	p.autoScalingClients = map[string]*autoscaling.AutoScaling{}
+	p.rdsClients = map[string]*rds.RDS{}
 	for _, region := range regions {
 		if client, err := newEc2Client(region); err != nil {
 			panic(fmt.Sprintf("[AWS] Failed to create EC2 client in region %s, err: %s", region, err.Error()))
@@ -65,6 +68,12 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 			p.autoScalingClients[region] = client
 		}
 
+		if client, err := newRdsClient(region); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create RDS client in region %s, err: %s", region, err.Error()))
+		} else {
+			p.rdsClients[region] = client
+		}
+
 	}
 	return nil
 }
@@ -76,6 +85,15 @@ func (p awsProvider) GetInstances() ([]*types.Instance, error) {
 		ec2Clients[k] = v
 	}
 	return getInstances(ec2Clients)
+}
+
+func (p awsProvider) GetDatabases() ([]*types.Database, error) {
+	log.Debugf("[AWS] Fetch databases")
+	rdsClients := map[string]rdsClient{}
+	for k, v := range p.rdsClients {
+		rdsClients[k] = v
+	}
+	return getDatabases(rdsClients)
 }
 
 func (p awsProvider) TerminateInstances([]*types.Instance) error {
@@ -176,6 +194,10 @@ type iamClient interface {
 	ListAccessKeys(*iam.ListAccessKeysInput) (*iam.ListAccessKeysOutput, error)
 }
 
+type rdsClient interface {
+	DescribeDBInstances(input *rds.DescribeDBInstancesInput) (*rds.DescribeDBInstancesOutput, error)
+}
+
 func getInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, error) {
 	instChan := make(chan *types.Instance, 5)
 	wg := sync.WaitGroup{}
@@ -215,8 +237,8 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("[AWS] Processing users (%d): [%s]", len(users.Users), users.Users)
-	accesses := []*types.Access{}
+	log.Debugf("[AWS] Processing users (%d): %s", len(users.Users), users.Users)
+	var accesses []*types.Access
 	for _, u := range users.Users {
 		log.Debugf("[AWS] Fetching access keys for: %s", *u.UserName)
 		req := &iam.ListAccessKeysInput{
@@ -246,6 +268,42 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 	return accesses, nil
 }
 
+func getDatabases(rdsClients map[string]rdsClient) ([]*types.Database, error) {
+	dbChan := make(chan *types.Database)
+	wg := sync.WaitGroup{}
+	wg.Add(len(rdsClients))
+
+	for r, c := range rdsClients {
+		log.Debugf("[AWS] Fetching RDS instances from: %s", r)
+		go func(region string, rdsClient rdsClient) {
+			defer wg.Done()
+
+			result, err := rdsClient.DescribeDBInstances(&rds.DescribeDBInstancesInput{})
+			if err != nil {
+				log.Errorf("[AWS] Failed to fetch the RDS instances in region: %s, err: %s", region, err)
+				return
+			}
+			databases := result.DBInstances
+			log.Debugf("[AWS] Processing databases (%d): %s", len(databases), databases)
+			for _, db := range databases {
+				dbChan <- newDatabase(*db)
+			}
+
+		}(r, c)
+	}
+
+	go func() {
+		wg.Wait()
+		close(dbChan)
+	}()
+
+	var databases []*types.Database
+	for db := range dbChan {
+		databases = append(databases, db)
+	}
+	return databases, nil
+}
+
 func getRegions(ec2Client ec2Client) ([]string, error) {
 	regionResult, e := ec2Client.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if e != nil {
@@ -266,6 +324,16 @@ func newIamClient() (*iam.IAM, error) {
 		return nil, err
 	}
 	return iam.New(awsSession), nil
+}
+
+func newRdsClient(region string) (*rds.RDS, error) {
+	awsSession, err := newSession(func(config *aws.Config) {
+		config.Region = &region
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rds.New(awsSession), nil
 }
 
 func newEc2Client(region string) (*ec2.EC2, error) {
@@ -334,7 +402,7 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 //    * 64 : stopping
 //
 //    * 80 : stopped
-func getInstanceState(instance *ec2.Instance) types.InstanceState {
+func getInstanceState(instance *ec2.Instance) types.State {
 	if instance.State == nil {
 		return types.Unknown
 	}
@@ -345,6 +413,27 @@ func getInstanceState(instance *ec2.Instance) types.InstanceState {
 		return types.Terminated
 	case 64, 80:
 		return types.Stopped
+	default:
+		return types.Unknown
+	}
+}
+
+func newDatabase(rds rds.DBInstance) *types.Database {
+	return &types.Database{
+		Id:           *rds.DbiResourceId,
+		Name:         *rds.DBInstanceIdentifier,
+		Created:      *rds.InstanceCreateTime,
+		Region:       getRegionFromAvailabilityZone(rds.AvailabilityZone),
+		InstanceType: *rds.DBInstanceClass,
+		State:        getDatabaseState(rds),
+		CloudType:    types.AWS,
+	}
+}
+
+func getDatabaseState(rds rds.DBInstance) types.State {
+	switch *rds.DBInstanceStatus {
+	case "available":
+		return types.Running
 	default:
 		return types.Unknown
 	}

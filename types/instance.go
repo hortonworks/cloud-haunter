@@ -2,13 +2,6 @@ package types
 
 import "time"
 
-const (
-	Running    = InstanceState("running")
-	Stopped    = InstanceState("stopped")
-	Terminated = InstanceState("terminated")
-	Unknown    = InstanceState("unknown")
-)
-
 type Instance struct {
 	Id           string                 `json:"Id"`
 	Name         string                 `json:"Name"`
@@ -17,12 +10,10 @@ type Instance struct {
 	Owner        string                 `json:"Owner"`
 	CloudType    CloudType              `json:"CloudType"`
 	InstanceType string                 `json:"InstanceType"`
-	State        InstanceState          `json:"State"`
+	State        State                  `json:"State"`
 	Metadata     map[string]interface{} `json:"Metadata"`
 	Region       string                 `json:"Region"`
 }
-
-type InstanceState string
 
 type Tags map[string]string
 

@@ -76,3 +76,7 @@ func (p dummyProvider) StopInstances(i []*types.Instance) (e error) {
 func (p dummyProvider) GetAccesses() (a []*types.Access, e error) {
 	return
 }
+
+func (p dummyProvider) GetDatabases() ([]*types.Database, error) {
+	return nil, nil
+}
