@@ -1,14 +1,23 @@
 package types
 
 const (
+	// LongRunningFilter filters the cloud items that are created/running after a certain time
 	LongRunningFilter = FilterType("longrunning")
-	OwnerlessFilter   = FilterType("ownerless")
-	OldAccessFilter   = FilterType("oldaccess")
-	StoppedFilter     = FilterType("stopped")
+
+	// OwnerlessFilter filters the cloud items that do not have the 'Owner' tag
+	OwnerlessFilter = FilterType("ownerless")
+
+	// OldAccessFilter filters the cloud access objects that are created a long time
+	OldAccessFilter = FilterType("oldaccess")
+
+	// StoppedFilter filters the cloud items that's state is stopped
+	StoppedFilter = FilterType("stopped")
 )
 
+// FilterType returns the type of the filter in string format
 type FilterType string
 
+// Filter interface that can be chained
 type Filter interface {
 	Execute([]CloudItem) []CloudItem
 }

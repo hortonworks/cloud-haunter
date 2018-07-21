@@ -1,5 +1,6 @@
 package types
 
+// Ignores structure that stores the information provided by the ignores flag
 type Ignores struct {
 	Access struct {
 		Aws struct {

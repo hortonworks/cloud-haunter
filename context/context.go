@@ -44,7 +44,7 @@ var CloudProviders = make(map[types.CloudType]func() types.CloudProvider)
 // IgnoreLabels contains all the ignore labes by cloud
 var IgnoreLabels = make(map[types.CloudType]string)
 
-// OwnerLabels contains all the owner labes by cloud
+// OwnerLabels contains all the owner labels by cloud
 var OwnerLabels = make(map[types.CloudType]string)
 
 // Dispatchers contains all the available dispatchers

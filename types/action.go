@@ -1,5 +1,6 @@
 package types
 
+// ActionType type of the action
 type ActionType string
 
 func (ot ActionType) String() string {
@@ -7,12 +8,20 @@ func (ot ActionType) String() string {
 }
 
 const (
-	LogAction          = ActionType("log")
-	StopAction         = ActionType("stop")
+	// LogAction will log the cloud items to the console
+	LogAction = ActionType("log")
+
+	// StopAction will stop the cloud item if the item itself supports such operation
+	StopAction = ActionType("stop")
+
+	// NotificationAction will send a notification through the dispatcher interface
 	NotificationAction = ActionType("notification")
-	TerminationAction  = ActionType("termination")
+
+	// TerminationAction terminates the cloud item if the item supports such operation
+	TerminationAction = ActionType("termination")
 )
 
+// Action to execute on the cloud items
 type Action interface {
 	Execute(OpType, []FilterType, []CloudItem)
 }
