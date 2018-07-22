@@ -81,6 +81,7 @@ func LoadIgnores(location string) (*types.Ignores, error) {
 	return ignores, nil
 }
 
+// GetCloudAccountNames returns the name of the configured cloud accounts
 func GetCloudAccountNames() map[types.CloudType]string {
 	var accounts = make(map[types.CloudType]string)
 	for cType, initFunc := range ctx.CloudProviders {

@@ -99,6 +99,8 @@ func main() {
 	for t := range ctx.CloudProviders {
 		if len(*cloudType) == 0 || t.String() == strings.ToUpper(*cloudType) {
 			clouds = append(clouds, t)
+		} else {
+			delete(ctx.CloudProviders, t)
 		}
 	}
 	if len(clouds) == 0 {
