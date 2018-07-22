@@ -9,6 +9,7 @@ import (
 	"github.com/hortonworks/cloud-haunter/utils"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2015-11-01/subscriptions"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	log "github.com/Sirupsen/logrus"
@@ -21,8 +22,9 @@ import (
 var provider = azureProvider{}
 
 type azureProvider struct {
-	subscriptionID string
-	vmClient       compute.VirtualMachinesClient
+	subscriptionID     string
+	vmClient           compute.VirtualMachinesClient
+	subscriptionClient subscriptions.Client
 	// rgClient       resources.GroupsClient
 	// resClient      resources.Client
 }
@@ -53,10 +55,20 @@ func (p *azureProvider) init(subscriptionID string, authorizer func() (autorest.
 	p.subscriptionID = subscriptionID
 	p.vmClient = compute.NewVirtualMachinesClient(subscriptionID)
 	p.vmClient.Authorizer = authorization
+	p.subscriptionClient = subscriptions.NewClient()
+	p.subscriptionClient.Authorizer = authorization
 	return nil
 }
 
 func (p azureProvider) GetAccountName() string {
+	if result, err := p.subscriptionClient.Get(context.Background(), p.subscriptionID); err != nil {
+		log.Errorf("[AZURE] Failed to retrieve subscription info, err: %s", err.Error())
+	} else {
+		displayName := result.DisplayName
+		if displayName != nil {
+			return *displayName
+		}
+	}
 	return p.subscriptionID
 }
 

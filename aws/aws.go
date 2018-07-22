@@ -22,7 +22,6 @@ import (
 var provider = awsProvider{}
 
 type awsProvider struct {
-	accountName        string
 	ec2Clients         map[string]*ec2.EC2
 	autoScalingClients map[string]*autoscaling.AutoScaling
 	rdsClients         map[string]*rds.RDS
@@ -83,11 +82,10 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 			p.iamClient = iamClient
 		}
 	}
-	p.setAccountInfo()
 	return nil
 }
 
-func (p *awsProvider) setAccountInfo() {
+func (p awsProvider) GetAccountName() string {
 	log.Debugf("[AWS] Fetch account aliases")
 	if result, err := p.iamClient.ListAccountAliases(&iam.ListAccountAliasesInput{}); err != nil {
 		log.Errorf("[AWS] Failed to retrieve account aliases, err: %s", err.Error())
@@ -96,16 +94,11 @@ func (p *awsProvider) setAccountInfo() {
 		for _, a := range result.AccountAliases {
 			aliases = append(aliases, *a)
 		}
-		if len(aliases) == 0 {
-			p.accountName = "unknown"
-		} else {
-			p.accountName = strings.Join(aliases, ",")
+		if len(aliases) != 0 {
+			return strings.Join(aliases, ",")
 		}
 	}
-}
-
-func (p awsProvider) GetAccountName() string {
-	return p.accountName
+	return "unknown"
 }
 
 func (p awsProvider) GetInstances() ([]*types.Instance, error) {
