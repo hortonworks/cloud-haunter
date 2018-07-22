@@ -10,6 +10,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
+	"github.com/hortonworks/cloud-haunter/utils"
 	"github.com/tbruyelle/hipchat-go/hipchat"
 	"strings"
 )
@@ -62,7 +63,7 @@ func (d hipchatDispatcher) Send(op types.OpType, filters []types.FilterType, ite
 func (d *hipchatDispatcher) generateMessage(op types.OpType, filters []types.FilterType, items []types.CloudItem) string {
 	var buffer bytes.Buffer
 	buffer.WriteString("/code\n")
-	buffer.WriteString(fmt.Sprintf("Operation: %s Filters: %s\n", op, getFilterNames(filters)))
+	buffer.WriteString(fmt.Sprintf("Operation: %s Filters: %s Accounts: %s\n", op, getFilterNames(filters), utils.GetCloudAccountNames()))
 	for _, item := range items {
 		switch item.GetItem().(type) {
 		case types.Instance:

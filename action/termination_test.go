@@ -17,6 +17,10 @@ type mockProvider struct {
 	calls int
 }
 
+func (p *mockProvider) GetAccountName() string {
+	return "mock"
+}
+
 func (p *mockProvider) GetInstances() ([]*types.Instance, error) {
 	return nil, nil
 }

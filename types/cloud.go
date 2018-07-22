@@ -23,6 +23,7 @@ const (
 
 // CloudProvider interface for the functions that can be used as operations/actions on the cloud providers
 type CloudProvider interface {
+	GetAccountName() string
 	GetInstances() ([]*Instance, error)
 	StopInstances([]*Instance) error
 	TerminateInstances([]*Instance) error

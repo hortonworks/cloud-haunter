@@ -8,8 +8,9 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
+	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 )
 
 // IsAnyMatch looks for any of the given tag in types.Tag
@@ -78,4 +79,12 @@ func LoadIgnores(location string) (*types.Ignores, error) {
 		return nil, err
 	}
 	return ignores, nil
+}
+
+func GetCloudAccountNames() map[types.CloudType]string {
+	var accounts = make(map[types.CloudType]string)
+	for cType, initFunc := range ctx.CloudProviders {
+		accounts[cType] = initFunc().GetAccountName()
+	}
+	return accounts
 }

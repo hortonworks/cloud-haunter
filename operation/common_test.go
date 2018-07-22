@@ -61,6 +61,10 @@ func TestConvertInstancesToCloudItems(t *testing.T) {
 type dummyProvider struct {
 }
 
+func (p dummyProvider) GetAccountName() string {
+	return "dummy"
+}
+
 func (p dummyProvider) GetInstances() (i []*types.Instance, e error) {
 	return
 }
