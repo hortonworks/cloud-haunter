@@ -95,7 +95,7 @@ func main() {
 		panic("Action is not found.")
 	}
 
-	clouds := []types.CloudType{}
+	var clouds []types.CloudType
 	for t := range ctx.CloudProviders {
 		if len(*cloudType) == 0 || t.String() == strings.ToUpper(*cloudType) {
 			clouds = append(clouds, t)

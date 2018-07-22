@@ -78,6 +78,10 @@ func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iam
 	return nil
 }
 
+func (p gcpProvider) GetAccountName() string {
+	return p.projectID
+}
+
 func (p gcpProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[GCP] Fetching instanes")
 	return getInstances(p.computeClient.Instances.AggregatedList(p.projectID))

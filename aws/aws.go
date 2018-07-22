@@ -16,14 +16,17 @@ import (
 	"github.com/aws/aws-sdk-go/service/rds"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
+	"strings"
 )
 
 var provider = awsProvider{}
 
 type awsProvider struct {
+	accountName        string
 	ec2Clients         map[string]*ec2.EC2
 	autoScalingClients map[string]*autoscaling.AutoScaling
 	rdsClients         map[string]*rds.RDS
+	iamClient          *iam.IAM
 }
 
 func init() {
@@ -74,8 +77,35 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 			p.rdsClients[region] = client
 		}
 
+		if iamClient, err := newIamClient(); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create IAM client, err: %s", err.Error()))
+		} else {
+			p.iamClient = iamClient
+		}
 	}
+	p.setAccountInfo()
 	return nil
+}
+
+func (p *awsProvider) setAccountInfo() {
+	log.Debugf("[AWS] Fetch account aliases")
+	if result, err := p.iamClient.ListAccountAliases(&iam.ListAccountAliasesInput{}); err != nil {
+		log.Errorf("[AWS] Failed to retrieve account aliases, err: %s", err.Error())
+	} else {
+		var aliases []string
+		for _, a := range result.AccountAliases {
+			aliases = append(aliases, *a)
+		}
+		if len(aliases) == 0 {
+			p.accountName = "unknown"
+		} else {
+			p.accountName = strings.Join(aliases, ",")
+		}
+	}
+}
+
+func (p awsProvider) GetAccountName() string {
+	return p.accountName
 }
 
 func (p awsProvider) GetInstances() ([]*types.Instance, error) {
@@ -177,11 +207,7 @@ func (p awsProvider) StopInstances(instances []*types.Instance) error {
 
 func (p awsProvider) GetAccesses() ([]*types.Access, error) {
 	log.Debug("[AWS] Fetching users")
-	iamClient, err := newIamClient()
-	if err != nil {
-		return nil, err
-	}
-	return getAccesses(iamClient)
+	return getAccesses(p.iamClient)
 }
 
 type ec2Client interface {
@@ -225,7 +251,7 @@ func getInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, error) {
 		wg.Wait()
 		close(instChan)
 	}()
-	instances := []*types.Instance{}
+	var instances []*types.Instance
 	for inst := range instChan {
 		instances = append(instances, inst)
 	}

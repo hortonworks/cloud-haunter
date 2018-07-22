@@ -56,6 +56,10 @@ func (p *azureProvider) init(subscriptionID string, authorizer func() (autorest.
 	return nil
 }
 
+func (p azureProvider) GetAccountName() string {
+	return p.subscriptionID
+}
+
 func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[AZURE] Fetching instances")
 	result, err := p.vmClient.ListAll(context.Background())
@@ -123,7 +127,7 @@ func (p azureProvider) TerminateInstances([]*types.Instance) error {
 	// }
 	// typesToCollect =: map[string]bool{"Microsoft.Compute/virtualMachines": true}
 	// for _, g := range groups.Values() {
-	// 	resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil) // TODO maybe we can filter for (running) instances
+	// 	resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil)
 	// 	if err != nil {
 	// 		log.Warn("[AZURE] Failed to fetch the resources for %s, err: %s", *g.Name, err.Error())
 	// 		continue
