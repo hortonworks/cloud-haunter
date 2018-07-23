@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"sync"
 
+	"encoding/json"
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/cloudtrail"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
@@ -24,6 +26,7 @@ var provider = awsProvider{}
 type awsProvider struct {
 	ec2Clients         map[string]*ec2.EC2
 	autoScalingClients map[string]*autoscaling.AutoScaling
+	cloudTrailClient   map[string]*cloudtrail.CloudTrail
 	rdsClients         map[string]*rds.RDS
 	iamClient          *iam.IAM
 }
@@ -57,6 +60,7 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 	p.ec2Clients = map[string]*ec2.EC2{}
 	p.autoScalingClients = map[string]*autoscaling.AutoScaling{}
 	p.rdsClients = map[string]*rds.RDS{}
+	p.cloudTrailClient = map[string]*cloudtrail.CloudTrail{}
 	for _, region := range regions {
 		if client, err := newEc2Client(region); err != nil {
 			panic(fmt.Sprintf("[AWS] Failed to create EC2 client in region %s, err: %s", region, err.Error()))
@@ -76,11 +80,16 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 			p.rdsClients[region] = client
 		}
 
-		if iamClient, err := newIamClient(); err != nil {
-			panic(fmt.Sprintf("[AWS] Failed to create IAM client, err: %s", err.Error()))
+		if ctClient, err := newCloudTrailClient(region); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create CloudTrail client, err: %s", err.Error()))
 		} else {
-			p.iamClient = iamClient
+			p.cloudTrailClient[region] = ctClient
 		}
+	}
+	if iamClient, err := newIamClient(); err != nil {
+		panic(fmt.Sprintf("[AWS] Failed to create IAM client, err: %s", err.Error()))
+	} else {
+		p.iamClient = iamClient
 	}
 	return nil
 }
@@ -104,10 +113,12 @@ func (p awsProvider) GetAccountName() string {
 func (p awsProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[AWS] Fetching instances")
 	ec2Clients := map[string]ec2Client{}
-	for k, v := range p.ec2Clients {
-		ec2Clients[k] = v
+	ctClients := map[string]cloudTrailClient{}
+	for k := range p.ec2Clients {
+		ec2Clients[k] = p.ec2Clients[k]
+		ctClients[k] = p.cloudTrailClient[k]
 	}
-	return getInstances(ec2Clients)
+	return getInstances(ec2Clients, ctClients)
 }
 
 func (p awsProvider) GetDatabases() ([]*types.Database, error) {
@@ -208,6 +219,10 @@ type ec2Client interface {
 	DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
 }
 
+type cloudTrailClient interface {
+	LookupEvents(input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
+}
+
 type iamClient interface {
 	ListUsers(*iam.ListUsersInput) (*iam.ListUsersOutput, error)
 	ListAccessKeys(*iam.ListAccessKeysInput) (*iam.ListAccessKeysOutput, error)
@@ -217,14 +232,14 @@ type rdsClient interface {
 	DescribeDBInstances(input *rds.DescribeDBInstancesInput) (*rds.DescribeDBInstancesOutput, error)
 }
 
-func getInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, error) {
+func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
 	instChan := make(chan *types.Instance, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
 
 	for r, c := range ec2Clients {
 		log.Debugf("[AWS] Fetching instances from: %s", r)
-		go func(region string, ec2Client ec2Client) {
+		go func(region string, ec2Client ec2Client, cloudTrailClient cloudTrailClient) {
 			defer wg.Done()
 
 			instanceResult, e := ec2Client.DescribeInstances(&ec2.DescribeInstancesInput{})
@@ -235,10 +250,17 @@ func getInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, error) {
 			log.Debugf("[AWS] Processing instances (%d): [%s] in region: %s", len(instanceResult.Reservations), instanceResult.Reservations, region)
 			for _, res := range instanceResult.Reservations {
 				for _, inst := range res.Instances {
-					instChan <- newInstance(inst)
+					i := newInstance(inst)
+					if len(i.Owner) == 0 && i.State == types.Running {
+						log.Debugf("[AWS] instance %s does not have an %s tag, check CloudTrail logs", i.Name, ctx.AwsOwnerLabel)
+						if iamUser := getIAMUserFromCloudTrail(*inst.InstanceId, cloudTrailClient); iamUser != nil {
+							i.Metadata = map[string]string{"IAMUser": *iamUser}
+						}
+					}
+					instChan <- i
 				}
 			}
-		}(r, c)
+		}(r, c, cloudTrailClients[r])
 	}
 	go func() {
 		wg.Wait()
@@ -249,6 +271,35 @@ func getInstances(ec2Clients map[string]ec2Client) ([]*types.Instance, error) {
 		instances = append(instances, inst)
 	}
 	return instances, nil
+}
+
+type cloudTrailEvent struct {
+	UserIdentity struct {
+		T string `json:"type"`
+	} `json:"userIdentity"`
+}
+
+func getIAMUserFromCloudTrail(instanceId string, cloudTrailClient cloudTrailClient) *string {
+	attributes := []*cloudtrail.LookupAttribute{{
+		AttributeKey:   &(&types.S{S: "ResourceName"}).S,
+		AttributeValue: &(&types.S{S: instanceId}).S,
+	}}
+	events, err := cloudTrailClient.LookupEvents(&cloudtrail.LookupEventsInput{LookupAttributes: attributes})
+	if err != nil {
+		log.Errorf("[AWS] Failed to retrieve CloudTrail events for instance %s, err: %s", instanceId, err.Error())
+		return nil
+	}
+	for _, event := range events.Events {
+		var eventSource cloudTrailEvent
+		if err := json.Unmarshal([]byte(*event.CloudTrailEvent), &eventSource); err != nil {
+			log.Errorf("[AWS] Failed to unmarshal the CloudTrail event source, err: %s", err.Error())
+			return nil
+		}
+		if eventSource.UserIdentity.T == "IAMUser" {
+			return event.Username
+		}
+	}
+	return nil
 }
 
 func getAccesses(iamClient iamClient) ([]*types.Access, error) {
@@ -373,6 +424,16 @@ func newAutoscalingClient(region string) (*autoscaling.AutoScaling, error) {
 		return nil, err
 	}
 	return autoscaling.New(awsSession), nil
+}
+
+func newCloudTrailClient(region string) (*cloudtrail.CloudTrail, error) {
+	awsSession, err := newSession(func(config *aws.Config) {
+		config.Region = &region
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cloudtrail.New(awsSession), nil
 }
 
 func newSession(configure func(*aws.Config)) (*session.Session, error) {
