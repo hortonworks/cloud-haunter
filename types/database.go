@@ -4,14 +4,15 @@ import "time"
 
 // Database is a general database struct processed by filters and actions
 type Database struct {
-	Id           string    `json:"Id"`
-	Name         string    `json:"Name"`
-	Created      time.Time `json:"Created"`
-	Owner        string    `json:"Owner"`
-	InstanceType string    `json:"InstanceType"`
-	State        State     `json:"State"`
-	CloudType    CloudType `json:"CloudType"`
-	Region       string    `json:"Region"`
+	Id           string            `json:"Id"`
+	Name         string            `json:"Name"`
+	Created      time.Time         `json:"Created"`
+	Owner        string            `json:"Owner"`
+	InstanceType string            `json:"InstanceType"`
+	State        State             `json:"State"`
+	CloudType    CloudType         `json:"CloudType"`
+	Region       string            `json:"Region"`
+	Metadata     map[string]string `json:"Metadata"`
 }
 
 // GetName returns the name of the database

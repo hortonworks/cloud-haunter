@@ -124,10 +124,12 @@ func (p awsProvider) GetInstances() ([]*types.Instance, error) {
 func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 	log.Debugf("[AWS] Fetch databases")
 	rdsClients := map[string]rdsClient{}
-	for k, v := range p.rdsClients {
-		rdsClients[k] = v
+	ctClients := map[string]cloudTrailClient{}
+	for k := range p.rdsClients {
+		rdsClients[k] = p.rdsClients[k]
+		ctClients[k] = p.cloudTrailClient[k]
 	}
-	return getDatabases(rdsClients)
+	return getDatabases(rdsClients, ctClients)
 }
 
 func (p awsProvider) TerminateInstances([]*types.Instance) error {
@@ -279,14 +281,14 @@ type cloudTrailEvent struct {
 	} `json:"userIdentity"`
 }
 
-func getIAMUserFromCloudTrail(instanceId string, cloudTrailClient cloudTrailClient) *string {
+func getIAMUserFromCloudTrail(resourceId string, cloudTrailClient cloudTrailClient) *string {
 	attributes := []*cloudtrail.LookupAttribute{{
 		AttributeKey:   &(&types.S{S: "ResourceName"}).S,
-		AttributeValue: &(&types.S{S: instanceId}).S,
+		AttributeValue: &(&types.S{S: resourceId}).S,
 	}}
 	events, err := cloudTrailClient.LookupEvents(&cloudtrail.LookupEventsInput{LookupAttributes: attributes})
 	if err != nil {
-		log.Errorf("[AWS] Failed to retrieve CloudTrail events for instance %s, err: %s", instanceId, err.Error())
+		log.Errorf("[AWS] Failed to retrieve CloudTrail events for resource %s, err: %s", resourceId, err.Error())
 		return nil
 	}
 	for _, event := range events.Events {
@@ -295,7 +297,8 @@ func getIAMUserFromCloudTrail(instanceId string, cloudTrailClient cloudTrailClie
 			log.Errorf("[AWS] Failed to unmarshal the CloudTrail event source, err: %s", err.Error())
 			return nil
 		}
-		if eventSource.UserIdentity.T == "IAMUser" {
+		idType := eventSource.UserIdentity.T
+		if idType == "IAMUser" || idType == "AssumedRole" {
 			return event.Username
 		}
 	}
@@ -338,14 +341,14 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 	return accesses, nil
 }
 
-func getDatabases(rdsClients map[string]rdsClient) ([]*types.Database, error) {
+func getDatabases(rdsClients map[string]rdsClient, cloudTrailClients map[string]cloudTrailClient) ([]*types.Database, error) {
 	dbChan := make(chan *types.Database)
 	wg := sync.WaitGroup{}
 	wg.Add(len(rdsClients))
 
 	for r, c := range rdsClients {
 		log.Debugf("[AWS] Fetching RDS instances from: %s", r)
-		go func(region string, rdsClient rdsClient) {
+		go func(region string, rdsClient rdsClient, cloudTrailClient cloudTrailClient) {
 			defer wg.Done()
 
 			result, err := rdsClient.DescribeDBInstances(&rds.DescribeDBInstancesInput{})
@@ -356,10 +359,17 @@ func getDatabases(rdsClients map[string]rdsClient) ([]*types.Database, error) {
 			databases := result.DBInstances
 			log.Debugf("[AWS] Processing databases (%d): %s", len(databases), databases)
 			for _, db := range databases {
-				dbChan <- newDatabase(*db)
+				d := newDatabase(*db)
+				if d.State == types.Running {
+					log.Debugf("[AWS] Check CloudTrail for database: %s", d.Name)
+					if iamUser := getIAMUserFromCloudTrail(d.Name, cloudTrailClient); iamUser != nil {
+						d.Metadata = map[string]string{"IAMUser": *iamUser}
+					}
+				}
+				dbChan <- d
 			}
 
-		}(r, c)
+		}(r, c, cloudTrailClients[r])
 	}
 
 	go func() {

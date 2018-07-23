@@ -77,7 +77,12 @@ func (d *hipchatDispatcher) generateMessage(op types.OpType, filters []types.Fil
 			buffer.WriteString(msg)
 		case types.Database:
 			db := item.GetItem().(types.Database)
-			buffer.WriteString(fmt.Sprintf("[%s] %s: %s type: %s created: %s region: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), db.InstanceType, displayTime, db.Region))
+			msg := fmt.Sprintf("[%s] %s: %s type: %s created: %s region: %s", item.GetCloudType(), item.GetType(), item.GetName(), db.InstanceType, displayTime, db.Region)
+			if len(db.Metadata) > 0 {
+				msg += fmt.Sprintf(" metadata: %s", db.Metadata)
+			}
+			msg += "\n"
+			buffer.WriteString(msg)
 		default:
 			buffer.WriteString(fmt.Sprintf("[%s] %s: %s created: %s owner: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), displayTime, item.GetOwner()))
 		}
