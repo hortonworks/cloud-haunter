@@ -63,11 +63,14 @@
     "internal/shareddefaults",
     "private/protocol",
     "private/protocol/ec2query",
+    "private/protocol/json/jsonutil",
+    "private/protocol/jsonrpc",
     "private/protocol/query",
     "private/protocol/query/queryutil",
     "private/protocol/rest",
     "private/protocol/xml/xmlutil",
     "service/autoscaling",
+    "service/cloudtrail",
     "service/ec2",
     "service/iam",
     "service/rds",
@@ -217,6 +220,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c262f04259c14d2432599cdc056862c395b8f569b617b9ec6c6267de030c2802"
+  inputs-digest = "e7ac86d52be1019d5e0cbd102ee12fd73fdd65c7c798b28921f3c37496c3fe2b"
   solver-name = "gps-cdcl"
   solver-version = 1

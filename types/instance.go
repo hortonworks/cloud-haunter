@@ -4,16 +4,16 @@ import "time"
 
 // Instance is a general cloud instance struct processed by filters and actions
 type Instance struct {
-	Id           string                 `json:"Id"`
-	Name         string                 `json:"Name"`
-	Created      time.Time              `json:"Created"`
-	Tags         Tags                   `json:"Tags"`
-	Owner        string                 `json:"Owner"`
-	CloudType    CloudType              `json:"CloudType"`
-	InstanceType string                 `json:"InstanceType"`
-	State        State                  `json:"State"`
-	Metadata     map[string]interface{} `json:"Metadata"`
-	Region       string                 `json:"Region"`
+	Id           string            `json:"Id"`
+	Name         string            `json:"Name"`
+	Created      time.Time         `json:"Created"`
+	Tags         Tags              `json:"Tags"`
+	Owner        string            `json:"Owner"`
+	CloudType    CloudType         `json:"CloudType"`
+	InstanceType string            `json:"InstanceType"`
+	State        State             `json:"State"`
+	Metadata     map[string]string `json:"Metadata"`
+	Region       string            `json:"Region"`
 }
 
 // Tags Key-value pairs of the tags on the instances

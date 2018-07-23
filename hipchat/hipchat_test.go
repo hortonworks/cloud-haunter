@@ -42,7 +42,7 @@ func TestGenerateMessage(t *testing.T) {
 	op := types.Instances
 	message := dispatcher.generateMessage(op, []types.FilterType{types.LongRunningFilter}, items)
 
-	assert.Equal(t, "/code\nOperation: getInstances Filters: longrunning Accounts: map[]\n[AWS] instance: instance type: large created: 1970-01-01 00:00:00 +0000 UTC owner: owner region: region\n[AWS] access: access created: 1970-01-01 00:00:00 +0000 UTC owner: owner\n", message)
+	assert.Equal(t, "/code\nOperation: getInstances Filters: longrunning Accounts: map[]\n[AWS] instance: instance type: large created: 1970-01-01 00:00:00 owner: owner region: region\n[AWS] access: access created: 1970-01-01 00:00:00 owner: owner\n", message)
 }
 
 type mockNotificationClient struct {

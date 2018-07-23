@@ -65,15 +65,21 @@ func (d *hipchatDispatcher) generateMessage(op types.OpType, filters []types.Fil
 	buffer.WriteString("/code\n")
 	buffer.WriteString(fmt.Sprintf("Operation: %s Filters: %s Accounts: %s\n", op, getFilterNames(filters), utils.GetCloudAccountNames()))
 	for _, item := range items {
+		displayTime := item.GetCreated().Format("2006-01-02 15:04:05")
 		switch item.GetItem().(type) {
 		case types.Instance:
 			inst := item.GetItem().(types.Instance)
-			buffer.WriteString(fmt.Sprintf("[%s] %s: %s type: %s created: %s owner: %s region: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), inst.InstanceType, item.GetCreated(), item.GetOwner(), inst.Region))
+			msg := fmt.Sprintf("[%s] %s: %s type: %s created: %s owner: %s region: %s", item.GetCloudType(), item.GetType(), item.GetName(), inst.InstanceType, displayTime, item.GetOwner(), inst.Region)
+			if len(inst.Metadata) > 0 {
+				msg += fmt.Sprintf(" metadata: %s", inst.Metadata)
+			}
+			msg += "\n"
+			buffer.WriteString(msg)
 		case types.Database:
 			db := item.GetItem().(types.Database)
-			buffer.WriteString(fmt.Sprintf("[%s] %s: %s type: %s created: %s region: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), db.InstanceType, item.GetCreated(), db.Region))
+			buffer.WriteString(fmt.Sprintf("[%s] %s: %s type: %s created: %s region: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), db.InstanceType, displayTime, db.Region))
 		default:
-			buffer.WriteString(fmt.Sprintf("[%s] %s: %s created: %s owner: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), item.GetCreated(), item.GetOwner()))
+			buffer.WriteString(fmt.Sprintf("[%s] %s: %s created: %s owner: %s\n", item.GetCloudType(), item.GetType(), item.GetName(), displayTime, item.GetOwner()))
 		}
 	}
 	return buffer.String()

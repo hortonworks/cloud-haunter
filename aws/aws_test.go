@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/service/cloudtrail"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/hortonworks/cloud-haunter/types"
@@ -22,8 +23,9 @@ func TestProviderInit(t *testing.T) {
 
 func TestGetRunningInstances(t *testing.T) {
 	ec2Clients := map[string]ec2Client{"region": mockEc2Client{}}
+	ctClients := map[string]cloudTrailClient{"region": mockCtClient{}}
 
-	instances, _ := getInstances(ec2Clients)
+	instances, _ := getInstances(ec2Clients, ctClients)
 
 	assert.Equal(t, 1, len(instances))
 }
@@ -93,6 +95,13 @@ func (t mockEc2Client) DescribeRegions(*ec2.DescribeRegionsInput) (*ec2.Describe
 			},
 		},
 	}, nil
+}
+
+type mockCtClient struct {
+}
+
+func (t mockCtClient) LookupEvents(input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+	return nil, nil
 }
 
 type mockIamClient struct {

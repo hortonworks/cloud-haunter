@@ -263,7 +263,7 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		CloudType:    types.GCP,
 		Tags:         inst.Labels,
 		Owner:        inst.Labels[ctx.GcpOwnerLabel],
-		Metadata:     map[string]interface{}{"zone": getZone(inst.Zone)},
+		Metadata:     map[string]string{"zone": getZone(inst.Zone)},
 		Region:       getRegionFromZoneURL(&inst.Zone),
 		InstanceType: inst.MachineType[strings.LastIndex(inst.MachineType, "/")+1:],
 		State:        getInstanceState(inst),
