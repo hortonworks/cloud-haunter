@@ -258,7 +258,7 @@ func newInstance(inst *compute.Instance) *types.Instance {
 	}
 	return &types.Instance{
 		Name:         inst.Name,
-		Id:           strconv.Itoa(int(inst.Id)),
+		ID:           strconv.Itoa(int(inst.Id)),
 		Created:      created,
 		CloudType:    types.GCP,
 		Tags:         inst.Labels,

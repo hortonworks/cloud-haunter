@@ -4,7 +4,7 @@ import "time"
 
 // Database is a general database struct processed by filters and actions
 type Database struct {
-	Id           string            `json:"Id"`
+	ID           string            `json:"Id"`
 	Name         string            `json:"Name"`
 	Created      time.Time         `json:"Created"`
 	Owner        string            `json:"Owner"`

@@ -8,6 +8,9 @@ import (
 
 	"github.com/hortonworks/cloud-haunter/utils"
 
+	"strings"
+	"sync"
+
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2015-11-01/subscriptions"
 	"github.com/Azure/go-autorest/autorest"
@@ -15,8 +18,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
-	"strings"
-	"sync"
 )
 
 var provider = azureProvider{}
@@ -188,7 +189,7 @@ func newInstance(inst compute.VirtualMachine, view compute.VirtualMachineInstanc
 	tags := convertTags(inst.Tags)
 	return &types.Instance{
 		Name:         *inst.Name,
-		Id:           *inst.ID,
+		ID:           *inst.ID,
 		Created:      getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 		CloudType:    types.AZURE,
 		Tags:         tags,

@@ -4,7 +4,7 @@ import "time"
 
 // Instance is a general cloud instance struct processed by filters and actions
 type Instance struct {
-	Id           string            `json:"Id"`
+	ID           string            `json:"Id"`
 	Name         string            `json:"Name"`
 	Created      time.Time         `json:"Created"`
 	Tags         Tags              `json:"Tags"`

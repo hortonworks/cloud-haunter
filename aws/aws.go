@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"encoding/json"
+	"strings"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -18,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/rds"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
-	"strings"
 )
 
 var provider = awsProvider{}
@@ -137,6 +138,7 @@ func (p awsProvider) TerminateInstances([]*types.Instance) error {
 }
 
 func (p awsProvider) StopInstances(instances []*types.Instance) error {
+	log.Debug("[AWS] Stopping instances")
 	regionInstances := map[string][]*types.Instance{}
 	for _, instance := range instances {
 		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance)
@@ -147,21 +149,21 @@ func (p awsProvider) StopInstances(instances []*types.Instance) error {
 	wg.Add(numRegions)
 	errChan := make(chan error, numRegions)
 
-	for region, instances := range regionInstances {
+	for r, i := range regionInstances {
 		go func(region string, instances []*types.Instance) {
 			defer wg.Done()
 
-			var instIdNames = make(map[string]string)
-			var instanceIds []*string
+			var instIDNames = make(map[string]string)
+			var instanceIDs []*string
 			for _, inst := range instances {
-				instIdNames[inst.Id] = inst.Name
-				instanceIds = append(instanceIds, &inst.Id)
+				instIDNames[inst.ID] = inst.Name
+				instanceIDs = append(instanceIDs, &inst.ID)
 			}
 
 			// We need to suspend the ASGs as it will terminate the stopped instances
 			// Instances that are not part of an ASG are not returned
 			asgInstances, err := p.autoScalingClients[region].DescribeAutoScalingInstances(&autoscaling.DescribeAutoScalingInstancesInput{
-				InstanceIds: instanceIds,
+				InstanceIds: instanceIDs,
 			})
 			if err != nil {
 				log.Errorf("[AWS] Failed to fetch the ASG instances in region: %s, err: %s", region, err)
@@ -169,30 +171,30 @@ func (p awsProvider) StopInstances(instances []*types.Instance) error {
 			}
 			for _, instance := range asgInstances.AutoScalingInstances {
 				asgName := instance.AutoScalingGroupName
-				compactInstanceName := fmt.Sprintf("%s:%s", *instance.InstanceId, instIdNames[*instance.InstanceId])
+				compactInstanceName := fmt.Sprintf("%s:%s", *instance.InstanceId, instIDNames[*instance.InstanceId])
 				log.Infof("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
 
 				if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{AutoScalingGroupName: asgName}); err != nil {
 					log.Errorf("[AWS] Failed to suspend ASG %s for instance %s", asgName, compactInstanceName)
 
 					// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
-					var tempInstanceIds []*string
-					for _, instId := range instanceIds {
-						if *instId == *instance.InstanceId {
+					var tempInstanceIDs []*string
+					for _, instID := range instanceIDs {
+						if *instID == *instance.InstanceId {
 							continue
 						}
-						tempInstanceIds = append(tempInstanceIds, instId)
+						tempInstanceIDs = append(tempInstanceIDs, instID)
 					}
-					instanceIds = tempInstanceIds
+					instanceIDs = tempInstanceIDs
 				}
 			}
 
-			log.Infof("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIds), instIdNames)
-			if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIds}); err != nil {
+			log.Infof("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), instIDNames)
+			if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
 				errChan <- err
 			}
 
-		}(region, instances)
+		}(r, i)
 	}
 
 	go func() {
@@ -264,10 +266,12 @@ func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]
 			}
 		}(r, c, cloudTrailClients[r])
 	}
+
 	go func() {
 		wg.Wait()
 		close(instChan)
 	}()
+
 	var instances []*types.Instance
 	for inst := range instChan {
 		instances = append(instances, inst)
@@ -467,7 +471,7 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		name = *inst.InstanceId
 	}
 	return &types.Instance{
-		Id:           *inst.InstanceId,
+		ID:           *inst.InstanceId,
 		Name:         name,
 		Created:      *inst.LaunchTime,
 		CloudType:    types.AWS,
@@ -510,7 +514,7 @@ func getInstanceState(instance *ec2.Instance) types.State {
 
 func newDatabase(rds rds.DBInstance) *types.Database {
 	return &types.Database{
-		Id:           *rds.DbiResourceId,
+		ID:           *rds.DbiResourceId,
 		Name:         *rds.DBInstanceIdentifier,
 		Created:      *rds.InstanceCreateTime,
 		Region:       getRegionFromAvailabilityZone(rds.AvailabilityZone),
