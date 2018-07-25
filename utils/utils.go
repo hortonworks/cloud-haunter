@@ -89,3 +89,16 @@ func GetCloudAccountNames() map[types.CloudType]string {
 	}
 	return accounts
 }
+
+// SplitListToMap splits comma separated list to key:true map
+func SplitListToMap(list string) (resp map[string]bool) {
+	resp = map[string]bool{}
+	for _, i := range strings.Split(list, ",") {
+		if len(i) != 0 {
+			trimmed := strings.Trim(i, " ")
+			resp[strings.ToLower(trimmed)] = true
+			resp[strings.ToUpper(trimmed)] = true
+		}
+	}
+	return
+}

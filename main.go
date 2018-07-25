@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"os"
-	"strings"
 
 	"github.com/hortonworks/cloud-haunter/utils"
 
@@ -31,7 +30,7 @@ func main() {
 	opType := flag.String("o", "", "type of operation")
 	filterTypes := flag.String("f", "", "type of filters")
 	actionType := flag.String("a", "log", "type of action")
-	cloudType := flag.String("c", "", "type of cloud")
+	cloudTypes := flag.String("c", "", "type of clouds")
 	ignoresLoc := flag.String("i", "", "ignores YAML")
 	dryRun := flag.Bool("d", false, "dry run")
 	verbose := flag.Bool("v", false, "verbose")
@@ -71,16 +70,12 @@ func main() {
 
 	var filters []types.Filter
 	var filterNames []types.FilterType
-	if filterTypes != nil {
-		filters = func() (f []types.Filter) {
-			for filter := range ctx.Filters {
-				if strings.Contains(*filterTypes, filter.String()) {
-					f = append(f, ctx.Filters[filter])
-					filterNames = append(filterNames, filter)
-				}
-			}
-			return f
-		}()
+	selectedFilters := utils.SplitListToMap(*filterTypes)
+	for f := range ctx.Filters {
+		if _, ok := selectedFilters[f.String()]; ok {
+			filters = append(filters, ctx.Filters[f])
+			filterNames = append(filterNames, f)
+		}
 	}
 
 	action := func() types.Action {
@@ -96,8 +91,11 @@ func main() {
 	}
 
 	var clouds []types.CloudType
+	selectedClouds := utils.SplitListToMap(*cloudTypes)
 	for t := range ctx.CloudProviders {
-		if len(*cloudType) == 0 || t.String() == strings.ToUpper(*cloudType) {
+		_, ok := selectedClouds[t.String()]
+		println(len(selectedClouds))
+		if len(selectedClouds) == 0 || ok {
 			clouds = append(clouds, t)
 		} else {
 			delete(ctx.CloudProviders, t)
@@ -118,7 +116,7 @@ func printHelp() {
 	println(`NAME:
    Cloud Haunter
 USAGE:
-   ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud]
+   ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud1,cloud2]
 VERSION:`)
 	println("   " + ctx.Version)
 	println(`

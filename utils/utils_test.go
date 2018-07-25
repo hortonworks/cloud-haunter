@@ -75,3 +75,11 @@ func TestLoadIgnores(t *testing.T) {
 	assert.Equal(t, []string{"azureOwner"}, ignores.Instance.Azure.Owners)
 	assert.Equal(t, []string{"gcpOwner"}, ignores.Instance.Gcp.Owners)
 }
+
+func TestSplitListToMap(t *testing.T) {
+	assert.Equal(t, map[string]bool{"a": true, "b": true, "A": true, "B": true}, SplitListToMap("a, b"))
+}
+
+func TestSplitListToMapEmpty(t *testing.T) {
+	assert.Equal(t, map[string]bool{}, SplitListToMap(""))
+}
