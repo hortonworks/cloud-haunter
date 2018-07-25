@@ -30,34 +30,6 @@ func TestProviderInit(t *testing.T) {
 	assert.NotNil(t, provider.vmClient.Authorizer)
 }
 
-func TestConvertVmsToInstances(t *testing.T) {
-	mockInstance := azureInstance{
-		instance:     *getInstance(),
-		instanceView: *getInstanceView(),
-	}
-
-	instances, _ := convertVmsToInstances([]azureInstance{mockInstance})
-
-	assert.Equal(t, 1, len(instances))
-}
-
-func Test_givenGetCreationTimeFromTagsReturnsCreationTime_whenNewInstance_thenCreatedWillContainCreationTime(t *testing.T) {
-	expectedTime := time.Date(2018, 5, 25, 11, 23, 23, 0, time.Local)
-	azureInstance := azureInstance{*getInstance(), *getInstanceView(), "RG"}
-	callInfo, stubGetCreationTimeFromTagsFunc := getStubGetCreationTimeFromTags(expectedTime)
-	tags := types.Tags{}
-	stubConvertTagsFunc := func(map[string]*string) types.Tags {
-		return tags
-	}
-
-	instance := newInstance(azureInstance, stubGetCreationTimeFromTagsFunc, stubConvertTagsFunc)
-
-	assert.Equal(t, instance.Created, expectedTime)
-	assert.Equal(t, len(callInfo.invocations), 1)
-	assert.Equal(t, callInfo.invocations[0].(types.Tags), tags)
-	assert.Equal(t, "RG", instance.Metadata["resourceGroupName"])
-}
-
 func Test_givenTimestampIsInTags_whenGetCreationTimeFromTags_thenReturnsConvertedTimestamp(t *testing.T) {
 	testValues := struct {
 		timeAsUnixTimeStamp string
@@ -111,14 +83,6 @@ func getInstanceView() *compute.VirtualMachineInstanceView {
 		Code: &code,
 	})
 	return &compute.VirtualMachineInstanceView{Statuses: &statuses}
-}
-
-func getStubGetCreationTimeFromTags(expectedTime time.Time) (*callInfo, getCreationTimeFromTagsFuncSignature) {
-	callInfo := callInfo{invocations: make([]interface{}, 0, 3)}
-	return &callInfo, func(tags types.Tags, timeConverterFunc func(string) time.Time) time.Time {
-		callInfo.invocations = append(callInfo.invocations, tags)
-		return expectedTime
-	}
 }
 
 func getStubConvertTimeUnixByTime(timeAsTime time.Time) (*callInfo, func(string) time.Time) {
