@@ -10,20 +10,21 @@ Cloud Haunter (ch) is supports the three major cloud providers.
 `The project is under construction, use on your own risk!`
 
 Current version of the software has limited features, it can monitor:
- * accesses and keys on AWS and GCP
- * databases on AWS
- * instances on all providers
+ * accesses and keys [AWS, GCP]
+ * databases [AWS]
+ * instances [AZURE, AWS, GCP]
 
 Can filter by:
  * long running
  * without owner
+ * actually running
  * already stopped
  * old cloud credentials
 
 And can do action:
  * send notification (only HipChat supported)
  * log result
- * stop instances
+ * stop instances [AZURE, AWS]
 
 For the proper work, you have to use some custom tags/labels on your cloud resources.
 
@@ -66,7 +67,7 @@ NAME:
 USAGE:
    ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud]
 VERSION:
-   0.3.7
+   0.3.8
 
 AUTHOR(S):
    Hortonworks
@@ -77,16 +78,18 @@ OPERATIONS:
 FILTERS:
 	-f oldaccess
 	-f ownerless
+	-f running
 	-f stopped
 	-f longrunning
 ACTIONS:
 	-a stop
 	-a log
 	-a notification
+	-a stop
 CLOUDS:
-	-c AWS
-	-c AZURE
-	-c GCP
+	-c azure
+	-c aws
+	-c gcp
 IGNORE:
 	-i=/location/of/ignore/config.yml
 DRY RUN:

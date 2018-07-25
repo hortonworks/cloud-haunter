@@ -25,8 +25,8 @@ const (
 type CloudProvider interface {
 	GetAccountName() string
 	GetInstances() ([]*Instance, error)
-	StopInstances([]*Instance) error
-	TerminateInstances([]*Instance) error
+	StopInstances([]*Instance) []error
+	TerminateInstances([]*Instance) []error
 	GetAccesses() ([]*Access, error)
 	GetDatabases() ([]*Database, error)
 }

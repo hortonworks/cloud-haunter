@@ -43,17 +43,19 @@ func TestConvertVmsToInstances(t *testing.T) {
 
 func Test_givenGetCreationTimeFromTagsReturnsCreationTime_whenNewInstance_thenCreatedWillContainCreationTime(t *testing.T) {
 	expectedTime := time.Date(2018, 5, 25, 11, 23, 23, 0, time.Local)
+	azureInstance := azureInstance{*getInstance(), *getInstanceView(), "RG"}
 	callInfo, stubGetCreationTimeFromTagsFunc := getStubGetCreationTimeFromTags(expectedTime)
 	tags := types.Tags{}
 	stubConvertTagsFunc := func(map[string]*string) types.Tags {
 		return tags
 	}
 
-	instance := newInstance(*getInstance(), *getInstanceView(), stubGetCreationTimeFromTagsFunc, stubConvertTagsFunc)
+	instance := newInstance(azureInstance, stubGetCreationTimeFromTagsFunc, stubConvertTagsFunc)
 
 	assert.Equal(t, instance.Created, expectedTime)
 	assert.Equal(t, len(callInfo.invocations), 1)
 	assert.Equal(t, callInfo.invocations[0].(types.Tags), tags)
+	assert.Equal(t, "RG", instance.Metadata["resourceGroupName"])
 }
 
 func Test_givenTimestampIsInTags_whenGetCreationTimeFromTags_thenReturnsConvertedTimestamp(t *testing.T) {
@@ -80,6 +82,18 @@ func Test_givenTimestampNotInTags_whenGetCreationTimeFromTags_thenReturnsEpochZe
 
 	assert.Equal(t, len(callInfo.invocations), 1)
 	assert.Equal(t, callInfo.invocations[0].(string), "0")
+}
+
+func TestGetResourceGroupName(t *testing.T) {
+	resourceGroupName := getResourceGroupName("/subscriptions/<sub_id>/resourceGroups/<rg_name>/providers/Microsoft.Compute/virtualMachines/<inst_name>")
+
+	assert.Equal(t, "<rg_name>", resourceGroupName)
+}
+
+func TestGetResourceGroupNameNotFound(t *testing.T) {
+	resourceGroupName := getResourceGroupName("")
+
+	assert.Equal(t, "", resourceGroupName)
 }
 
 func getInstance() *compute.VirtualMachine {

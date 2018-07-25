@@ -25,12 +25,12 @@ func (p *mockProvider) GetInstances() ([]*types.Instance, error) {
 	return nil, nil
 }
 
-func (p *mockProvider) TerminateInstances([]*types.Instance) error {
+func (p *mockProvider) TerminateInstances([]*types.Instance) []error {
 	p.calls++
 	return nil
 }
 
-func (p *mockProvider) StopInstances([]*types.Instance) error {
+func (p *mockProvider) StopInstances([]*types.Instance) []error {
 	p.calls++
 	return nil
 }

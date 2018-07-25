@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/hortonworks/cloud-haunter/utils"
 
-	"strings"
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
@@ -38,7 +38,7 @@ func init() {
 	}
 	ctx.CloudProviders[types.AZURE] = func() types.CloudProvider {
 		if len(provider.vmClient.SubscriptionID) == 0 {
-			log.Infof("[AZURE] Trying to prepare")
+			log.Debug("[AZURE] Trying to prepare")
 			if err := provider.init(subscriptionID, auth.NewAuthorizerFromEnvironment); err != nil {
 				panic("[AZURE] Failed to initialize provider: " + err.Error())
 			}
@@ -83,27 +83,24 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(result.Values()))
-	vms := make([]azureInstance, 0)
+	instances := make([]azureInstance, 0)
 	instanceChan := make(chan azureInstance)
 
 	for _, vm := range result.Values() {
 		go func(vm compute.VirtualMachine) {
 			defer wg.Done()
 
-			instanceIdParts := strings.Split(*vm.ID, "/")
-			// /subscriptions/<sub_id>/resourceGroups/<rg_name>/providers/Microsoft.Compute/virtualMachines/<inst_name>
-			if len(instanceIdParts) == 9 {
-				resourceGroupName := instanceIdParts[4]
-				instanceName := instanceIdParts[8]
+			resourceGroupName := getResourceGroupName(*vm.ID)
+			instanceName := *vm.Name
+			if len(resourceGroupName) != 0 {
 				log.Debugf("[AZURE] Fetch instance view of instance: %s", instanceName)
-				viewResult, err := p.vmClient.InstanceView(context.Background(), resourceGroupName, instanceName)
-				if err != nil {
+				if viewResult, err := p.vmClient.InstanceView(context.Background(), resourceGroupName, instanceName); err != nil {
 					log.Errorf("[AZURE] Failed to fetch the instance view of instance %s, err: %s", instanceName, err.Error())
 				} else {
-					instanceChan <- azureInstance{instance: vm, instanceView: viewResult}
+					instanceChan <- azureInstance{vm, viewResult, resourceGroupName}
 				}
 			} else {
-				log.Errorf("[AZURE] Failed to find the resource group and name of instance: %s", *vm.Name)
+				log.Errorf("[AZURE] Failed to find the resource group and name of instance: %s", instanceName)
 			}
 		}(vm)
 	}
@@ -114,20 +111,20 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 	}()
 
 	for inst := range instanceChan {
-		vms = append(vms, inst)
+		instances = append(instances, inst)
 	}
 
-	return convertVmsToInstances(vms)
+	return convertVmsToInstances(instances)
 }
 
 type azureInstance struct {
-	instance     compute.VirtualMachine
-	instanceView compute.VirtualMachineInstanceView
+	instance          compute.VirtualMachine
+	instanceView      compute.VirtualMachineInstanceView
+	resourceGroupName string
 }
 
-func (p azureProvider) TerminateInstances([]*types.Instance) error {
-	return errors.New("[AZURE] Termination not supported")
-	// AZURE
+func (p azureProvider) TerminateInstances([]*types.Instance) []error {
+	return []error{errors.New("[AZURE] Termination not supported")}
 	// rgClient = resources.NewGroupsClient(subscriptionId)
 	// 	rgClient.Authorizer = authorization
 	// 	resClient = resources.NewClient(subscriptionId)
@@ -162,8 +159,36 @@ func (p azureProvider) TerminateInstances([]*types.Instance) error {
 	// return instances, nil
 }
 
-func (p azureProvider) StopInstances([]*types.Instance) error {
-	return errors.New("[AZURE] Stop not supported")
+func (p azureProvider) StopInstances(instances []*types.Instance) []error {
+	log.Debugf("[AZURE] Stopping instances (%d): %s", len(instances), instances)
+	wg := sync.WaitGroup{}
+	wg.Add(len(instances))
+	errChan := make(chan error)
+
+	for _, i := range instances {
+		go func(instance *types.Instance) {
+			defer wg.Done()
+
+			log.Debugf("[AZURE] Stopping instance: %s", instance.Name)
+			_, err := p.vmClient.Deallocate(context.Background(), instance.Metadata["resourceGroupName"], instance.Name)
+			if err != nil {
+				errChan <- err
+			} else {
+				log.Debugf("[AZURE] Instance stopped: %s", instance.Name)
+			}
+		}(i)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	errors := []error{}
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+	return errors
 }
 
 func (p azureProvider) GetAccesses() ([]*types.Access, error) {
@@ -174,29 +199,38 @@ func (p azureProvider) GetDatabases() ([]*types.Database, error) {
 	return nil, errors.New("[AZURE] Get databases is not supported")
 }
 
-func convertVmsToInstances(vms []azureInstance) ([]*types.Instance, error) {
-	instances := make([]*types.Instance, 0)
-	for _, inst := range vms {
-		newInstance := newInstance(inst.instance, inst.instanceView, getCreationTimeFromTags, utils.ConvertTags)
+func convertVmsToInstances(instances []azureInstance) ([]*types.Instance, error) {
+	converted := make([]*types.Instance, 0)
+	for _, inst := range instances {
+		newInstance := newInstance(inst, getCreationTimeFromTags, utils.ConvertTags)
 		log.Debugf("[AZURE] Converted instance: %s", newInstance)
-		instances = append(instances, newInstance)
+		converted = append(converted, newInstance)
 	}
-	return instances, nil
+	return converted, nil
 }
 
-func newInstance(inst compute.VirtualMachine, view compute.VirtualMachineInstanceView,
-	getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(map[string]*string) types.Tags) *types.Instance {
-	tags := convertTags(inst.Tags)
+func getResourceGroupName(vmID string) (resourceGroupName string) {
+	instanceIDParts := strings.Split(vmID, "/")
+	// /subscriptions/<sub_id>/resourceGroups/<rg_name>/providers/Microsoft.Compute/virtualMachines/<inst_name>
+	if len(instanceIDParts) == 9 {
+		resourceGroupName = instanceIDParts[4]
+	}
+	return
+}
+
+func newInstance(inst azureInstance, getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(map[string]*string) types.Tags) *types.Instance {
+	tags := convertTags(inst.instance.Tags)
 	return &types.Instance{
-		Name:         *inst.Name,
-		ID:           *inst.ID,
+		Name:         *inst.instance.Name,
+		ID:           *inst.instance.ID,
 		Created:      getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 		CloudType:    types.AZURE,
 		Tags:         tags,
 		Owner:        tags[ctx.AzureOwnerLabel],
-		Region:       *inst.Location,
-		InstanceType: string(inst.HardwareProfile.VMSize),
-		State:        getInstanceState(view),
+		Region:       *inst.instance.Location,
+		InstanceType: string(inst.instance.HardwareProfile.VMSize),
+		State:        getInstanceState(inst.instanceView),
+		Metadata:     map[string]string{"resourceGroupName": inst.resourceGroupName},
 	}
 }
 

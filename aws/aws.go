@@ -35,7 +35,7 @@ type awsProvider struct {
 func init() {
 	ctx.CloudProviders[types.AWS] = func() types.CloudProvider {
 		if len(provider.ec2Clients) == 0 {
-			log.Infof("[AWS] Trying to prepare")
+			log.Debug("[AWS] Trying to prepare")
 			ec2Client, err := newEc2Client("eu-west-1")
 			if err != nil {
 				panic("[AWS] Failed to create ec2 client, err: " + err.Error())
@@ -47,7 +47,7 @@ func init() {
 			if err != nil {
 				panic("[AWS] Failed to initialize provider, err: " + err.Error())
 			}
-			log.Infof("[AWS] Successfully prepared")
+			log.Info("[AWS] Successfully prepared")
 		}
 		return provider
 	}
@@ -133,32 +133,28 @@ func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 	return getDatabases(rdsClients, ctClients)
 }
 
-func (p awsProvider) TerminateInstances([]*types.Instance) error {
-	return errors.New("[AWS] Termination not supported")
+func (p awsProvider) TerminateInstances([]*types.Instance) []error {
+	return []error{errors.New("[AWS] Termination not supported")}
 }
 
-func (p awsProvider) StopInstances(instances []*types.Instance) error {
+func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 	log.Debug("[AWS] Stopping instances")
 	regionInstances := map[string][]*types.Instance{}
 	for _, instance := range instances {
 		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance)
 	}
+	log.Debugf("[AWS] Stopping instances (%d): %s", len(regionInstances), regionInstances)
 
-	numRegions := len(regionInstances)
 	wg := sync.WaitGroup{}
-	wg.Add(numRegions)
-	errChan := make(chan error, numRegions)
+	wg.Add(len(regionInstances))
+	errChan := make(chan error)
 
 	for r, i := range regionInstances {
 		go func(region string, instances []*types.Instance) {
 			defer wg.Done()
 
-			var instIDNames = make(map[string]string)
-			var instanceIDs []*string
-			for _, inst := range instances {
-				instIDNames[inst.ID] = inst.Name
-				instanceIDs = append(instanceIDs, &inst.ID)
-			}
+			instIDNames, instanceIDs := getNameIDPairs(instances)
+			log.Debugf("[AWS] Detecting auto scaling group for instances at %s (%d): %s", region, len(instanceIDs), instanceIDs)
 
 			// We need to suspend the ASGs as it will terminate the stopped instances
 			// Instances that are not part of an ASG are not returned
@@ -170,30 +166,21 @@ func (p awsProvider) StopInstances(instances []*types.Instance) error {
 				return
 			}
 			for _, instance := range asgInstances.AutoScalingInstances {
-				asgName := instance.AutoScalingGroupName
 				compactInstanceName := fmt.Sprintf("%s:%s", *instance.InstanceId, instIDNames[*instance.InstanceId])
-				log.Infof("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
+				log.Debugf("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
 
-				if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{AutoScalingGroupName: asgName}); err != nil {
-					log.Errorf("[AWS] Failed to suspend ASG %s for instance %s", asgName, compactInstanceName)
+				if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{AutoScalingGroupName: instance.AutoScalingGroupName}); err != nil {
+					log.Errorf("[AWS] Failed to suspend ASG %s for instance %s", instance.AutoScalingGroupName, compactInstanceName)
 
 					// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
-					var tempInstanceIDs []*string
-					for _, instID := range instanceIDs {
-						if *instID == *instance.InstanceId {
-							continue
-						}
-						tempInstanceIDs = append(tempInstanceIDs, instID)
-					}
-					instanceIDs = tempInstanceIDs
+					instanceIDs = removeInstance(instanceIDs, instance.InstanceId)
 				}
 			}
 
-			log.Infof("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), instIDNames)
+			log.Debugf("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), instIDNames)
 			if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
 				errChan <- err
 			}
-
 		}(r, i)
 	}
 
@@ -202,15 +189,11 @@ func (p awsProvider) StopInstances(instances []*types.Instance) error {
 		close(errChan)
 	}()
 
-	var errorMessage = ""
+	errors := []error{}
 	for err := range errChan {
-		errorMessage += err.Error() + " "
+		errors = append(errors, err)
 	}
-	if len(errorMessage) > 0 {
-		return errors.New(errorMessage)
-	}
-
-	return nil
+	return errors
 }
 
 func (p awsProvider) GetAccesses() ([]*types.Access, error) {
@@ -285,14 +268,14 @@ type cloudTrailEvent struct {
 	} `json:"userIdentity"`
 }
 
-func getIAMUserFromCloudTrail(resourceId string, cloudTrailClient cloudTrailClient) *string {
+func getIAMUserFromCloudTrail(resourceID string, cloudTrailClient cloudTrailClient) *string {
 	attributes := []*cloudtrail.LookupAttribute{{
 		AttributeKey:   &(&types.S{S: "ResourceName"}).S,
-		AttributeValue: &(&types.S{S: resourceId}).S,
+		AttributeValue: &(&types.S{S: resourceID}).S,
 	}}
 	events, err := cloudTrailClient.LookupEvents(&cloudtrail.LookupEventsInput{LookupAttributes: attributes})
 	if err != nil {
-		log.Errorf("[AWS] Failed to retrieve CloudTrail events for resource %s, err: %s", resourceId, err.Error())
+		log.Errorf("[AWS] Failed to retrieve CloudTrail events for resource %s, err: %s", resourceID, err.Error())
 		return nil
 	}
 	for _, event := range events.Events {
@@ -400,6 +383,24 @@ func getRegions(ec2Client ec2Client) ([]string, error) {
 	}
 	log.Infof("[AWS] Available regions: %v", regions)
 	return regions, nil
+}
+
+func getNameIDPairs(instances []*types.Instance) (instIDNames map[string]string, instanceIDs []*string) {
+	instIDNames = map[string]string{}
+	for _, inst := range instances {
+		instIDNames[inst.ID] = inst.Name
+		instanceIDs = append(instanceIDs, &inst.ID)
+	}
+	return
+}
+
+func removeInstance(originalIDs []*string, instanceID *string) (instanceIDs []*string) {
+	for _, ID := range originalIDs {
+		if *ID != *instanceID {
+			instanceIDs = append(instanceIDs, ID)
+		}
+	}
+	return
 }
 
 func newIamClient() (*iam.IAM, error) {

@@ -40,8 +40,10 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 			log.Infof("[TERMINATION] Terminating %d instances on %s", len(instances), cType)
 			log.Debugf("[TERMINATION] Instances to terminate (%d): [%s]", len(instances), instances)
 			if len(instances) > 0 {
-				if err := provider.TerminateInstances(instances); err != nil {
-					log.Errorf("[TERMINATION] Failed to terminate instances on %s, err: %s", cType.String(), err.Error())
+				if errors := provider.TerminateInstances(instances); len(errors) != 0 {
+					for _, err := range errors {
+						log.Errorf("[TERMINATION] Failed to terminate instances on %s, err: %s", cType.String(), err.Error())
+					}
 				}
 			}
 		}(t, p())
