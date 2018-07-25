@@ -12,6 +12,9 @@ const (
 
 	// StoppedFilter filters the cloud items that's state is stopped
 	StoppedFilter = FilterType("stopped")
+
+	// RunningFilter filters the cloud items that's state is running
+	RunningFilter = FilterType("running")
 )
 
 // FilterType returns the type of the filter in string format

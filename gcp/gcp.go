@@ -37,7 +37,7 @@ func init() {
 	}
 	ctx.CloudProviders[types.GCP] = func() types.CloudProvider {
 		if len(provider.projectID) == 0 {
-			log.Infof("[GCP] Trying to prepare")
+			log.Debug("[GCP] Trying to prepare")
 			computeClient, iamClient, err := initClients()
 			if err != nil {
 				panic("[GCP] Failed to authenticate, err: " + err.Error())
@@ -87,8 +87,8 @@ func (p gcpProvider) GetInstances() ([]*types.Instance, error) {
 	return getInstances(p.computeClient.Instances.AggregatedList(p.projectID))
 }
 
-func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
-	return errors.New("[GCP] Termination not supported")
+func (p gcpProvider) TerminateInstances(instances []*types.Instance) []error {
+	return []error{errors.New("[GCP] Termination not supported")}
 	// 	log.Debug("[GCP] Terminating instanes")
 	// instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectId).Do()
 	// if err != nil {
@@ -155,8 +155,8 @@ func (p gcpProvider) TerminateInstances(instances []*types.Instance) error {
 	// return nil
 }
 
-func (p gcpProvider) StopInstances([]*types.Instance) error {
-	return errors.New("[GCP] Stop not supported")
+func (p gcpProvider) StopInstances([]*types.Instance) []error {
+	return []error{errors.New("[GCP] Stop not supported")}
 }
 
 func (p gcpProvider) GetAccesses() ([]*types.Access, error) {

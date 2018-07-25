@@ -69,11 +69,11 @@ func (p dummyProvider) GetInstances() (i []*types.Instance, e error) {
 	return
 }
 
-func (p dummyProvider) TerminateInstances(i []*types.Instance) (e error) {
+func (p dummyProvider) TerminateInstances(i []*types.Instance) (e []error) {
 	return
 }
 
-func (p dummyProvider) StopInstances(i []*types.Instance) (e error) {
+func (p dummyProvider) StopInstances(i []*types.Instance) (e []error) {
 	return
 }
 

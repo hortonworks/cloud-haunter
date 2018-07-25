@@ -72,6 +72,22 @@ func TestGetRegionFromAvailabilityZoneLessThanOne(t *testing.T) {
 	assert.Equal(t, "", getRegionFromAvailabilityZone(&(&types.S{S: "s"}).S))
 }
 
+func TestGgetNameIDPairs(t *testing.T) {
+	instIDNames, instanceIDs := getNameIDPairs([]*types.Instance{&types.Instance{Name: "name", ID: "id"}})
+
+	assert.Equal(t, 1, len(instIDNames))
+	assert.Equal(t, 1, len(instanceIDs))
+	assert.Equal(t, "name", instIDNames["id"])
+	assert.Equal(t, "id", *instanceIDs[0])
+}
+
+func TestRemoveInstance(t *testing.T) {
+	instanceIDs := removeInstance([]*string{&(&types.S{S: "ID1"}).S, &(&types.S{S: "ID2"}).S}, &(&types.S{S: "ID1"}).S)
+
+	assert.Equal(t, 1, len(instanceIDs))
+	assert.Equal(t, "ID2", *instanceIDs[0])
+}
+
 type mockEc2Client struct {
 }
 
