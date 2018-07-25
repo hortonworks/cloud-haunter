@@ -26,6 +26,8 @@ type azureProvider struct {
 	subscriptionID     string
 	vmClient           compute.VirtualMachinesClient
 	subscriptionClient subscriptions.Client
+	vmScaleSetClient   compute.VirtualMachineScaleSetsClient
+	vmScaleSetVMClient compute.VirtualMachineScaleSetVMsClient
 	// rgClient       resources.GroupsClient
 	// resClient      resources.Client
 }
@@ -58,6 +60,10 @@ func (p *azureProvider) init(subscriptionID string, authorizer func() (autorest.
 	p.vmClient.Authorizer = authorization
 	p.subscriptionClient = subscriptions.NewClient()
 	p.subscriptionClient.Authorizer = authorization
+	p.vmScaleSetClient = compute.NewVirtualMachineScaleSetsClient(subscriptionID)
+	p.vmScaleSetClient.Authorizer = authorization
+	p.vmScaleSetVMClient = compute.NewVirtualMachineScaleSetVMsClient(subscriptionID)
+	p.vmScaleSetVMClient.Authorizer = authorization
 	return nil
 }
 
@@ -75,18 +81,23 @@ func (p azureProvider) GetAccountName() string {
 
 func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[AZURE] Fetching instances")
-	result, err := p.vmClient.ListAll(context.Background())
+	vms, err := p.vmClient.ListAll(context.Background())
 	if err != nil {
 		log.Errorf("[AZURE] Failed to fetch the instances, err: %s", err.Error())
 		return nil, err
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(len(result.Values()))
-	instances := make([]azureInstance, 0)
-	instanceChan := make(chan azureInstance)
+	scaleSets, err := p.vmScaleSetClient.ListAll(context.Background())
+	if err != nil {
+		log.Errorf("[AZURE] Failed to fetch the VM scale sets, err: %s", err.Error())
+		return nil, err
+	}
 
-	for _, vm := range result.Values() {
+	wg := sync.WaitGroup{}
+	wg.Add(len(vms.Values()) + len(scaleSets.Values()))
+	instanceChan := make(chan interface{})
+
+	for _, vm := range vms.Values() {
 		go func(vm compute.VirtualMachine) {
 			defer wg.Done()
 
@@ -95,7 +106,7 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 			if len(resourceGroupName) != 0 {
 				log.Debugf("[AZURE] Fetch instance view of instance: %s", instanceName)
 				if viewResult, err := p.vmClient.InstanceView(context.Background(), resourceGroupName, instanceName); err != nil {
-					log.Errorf("[AZURE] Failed to fetch the instance view of instance %s, err: %s", instanceName, err.Error())
+					log.Errorf("[AZURE] Failed to fetch the instance view of %s, err: %s", instanceName, err.Error())
 				} else {
 					instanceChan <- azureInstance{vm, viewResult, resourceGroupName}
 				}
@@ -105,22 +116,60 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 		}(vm)
 	}
 
+	for _, ss := range scaleSets.Values() {
+		go func(scaleSet compute.VirtualMachineScaleSet) {
+			defer wg.Done()
+
+			resourceGroupName := getResourceGroupName(*scaleSet.ID)
+			if len(resourceGroupName) != 0 {
+				ssVms, err := p.vmScaleSetVMClient.List(context.Background(), resourceGroupName, *scaleSet.Name, "", "", "")
+				if err != nil {
+					log.Errorf("[AZURE] Failed to fetch the VMs in scale set, err: %s", err.Error())
+					return
+				}
+				for _, vm := range ssVms.Values() {
+					if viewResult, err := p.vmScaleSetVMClient.GetInstanceView(context.Background(), resourceGroupName, *scaleSet.Name, getScaleSetVMInstanceID(*vm.Name)); err != nil {
+						log.Errorf("[AZURE] Failed to fetch the instance view of %s, err: %s", *vm.Name, err.Error())
+					} else {
+						instanceChan <- azureScaleSetInstance{vm, viewResult, resourceGroupName, *scaleSet.Name}
+					}
+				}
+			} else {
+				log.Errorf("[AZURE] Failed to find the resource group and name of scale set: %s", *scaleSet.Name)
+			}
+		}(ss)
+	}
+
 	go func() {
 		wg.Wait()
 		close(instanceChan)
 	}()
 
+	instances := []*types.Instance{}
 	for inst := range instanceChan {
-		instances = append(instances, inst)
+		switch inst.(type) {
+		case azureInstance:
+			instances = append(instances, newInstanceByVM(inst.(azureInstance)))
+		case azureScaleSetInstance:
+			instances = append(instances, newInstanceByScaleSetVM(inst.(azureScaleSetInstance)))
+
+		}
 	}
 
-	return convertVmsToInstances(instances)
+	return instances, nil
 }
 
 type azureInstance struct {
 	instance          compute.VirtualMachine
 	instanceView      compute.VirtualMachineInstanceView
 	resourceGroupName string
+}
+
+type azureScaleSetInstance struct {
+	instance          compute.VirtualMachineScaleSetVM
+	instanceView      compute.VirtualMachineScaleSetVMInstanceView
+	resourceGroupName string
+	scaleSetName      string
 }
 
 func (p azureProvider) TerminateInstances([]*types.Instance) []error {
@@ -170,7 +219,13 @@ func (p azureProvider) StopInstances(instances []*types.Instance) []error {
 			defer wg.Done()
 
 			log.Debugf("[AZURE] Stopping instance: %s", instance.Name)
-			_, err := p.vmClient.Deallocate(context.Background(), instance.Metadata["resourceGroupName"], instance.Name)
+			var err error
+			if _, ok := instance.Metadata["scaleSetName"]; ok {
+				// _, err = p.vmScaleSetVMClient.Deallocate(context.Background(), instance.Metadata["resourceGroupName"], instance.Metadata["scaleSetName"], getScaleSetVMInstanceID(instance.Name))
+				err = errors.New("Stop is not allowed for: " + instance.Name)
+			} else {
+				_, err = p.vmClient.Deallocate(context.Background(), instance.Metadata["resourceGroupName"], instance.Name)
+			}
 			if err != nil {
 				errChan <- err
 			} else {
@@ -199,16 +254,6 @@ func (p azureProvider) GetDatabases() ([]*types.Database, error) {
 	return nil, errors.New("[AZURE] Get databases is not supported")
 }
 
-func convertVmsToInstances(instances []azureInstance) ([]*types.Instance, error) {
-	converted := make([]*types.Instance, 0)
-	for _, inst := range instances {
-		newInstance := newInstance(inst, getCreationTimeFromTags, utils.ConvertTags)
-		log.Debugf("[AZURE] Converted instance: %s", newInstance)
-		converted = append(converted, newInstance)
-	}
-	return converted, nil
-}
-
 func getResourceGroupName(vmID string) (resourceGroupName string) {
 	instanceIDParts := strings.Split(vmID, "/")
 	// /subscriptions/<sub_id>/resourceGroups/<rg_name>/providers/Microsoft.Compute/virtualMachines/<inst_name>
@@ -218,20 +263,53 @@ func getResourceGroupName(vmID string) (resourceGroupName string) {
 	return
 }
 
-func newInstance(inst azureInstance, getCreationTimeFromTags getCreationTimeFromTagsFuncSignature, convertTags func(map[string]*string) types.Tags) *types.Instance {
-	tags := convertTags(inst.instance.Tags)
+func getScaleSetVMInstanceID(name string) string {
+	parts := strings.Split(name, "_")
+	return parts[len(parts)-1]
+}
+
+func newInstanceByVM(inst azureInstance) *types.Instance {
+	return newInstance(*inst.instance.Name, *inst.instance.ID, *inst.instance.Location, string(inst.instance.HardwareProfile.VMSize), inst.resourceGroupName, getInstanceState(inst.instanceView), inst.instance.Tags)
+}
+
+func newInstanceByScaleSetVM(inst azureScaleSetInstance) *types.Instance {
+	instance := newInstance(*inst.instance.Name, *inst.instance.ID, *inst.instance.Location, string(inst.instance.HardwareProfile.VMSize), inst.resourceGroupName, getScaleSetInstanceState(inst.instanceView), inst.instance.Tags)
+	instance.Metadata["scaleSetName"] = inst.scaleSetName
+	return instance
+}
+
+func newInstance(name, ID, location, instanceType, resourceGroupName string, state types.State, tagMap map[string]*string) *types.Instance {
+	tags := utils.ConvertTags(tagMap)
 	return &types.Instance{
-		Name:         *inst.instance.Name,
-		ID:           *inst.instance.ID,
+		Name:         name,
+		ID:           ID,
 		Created:      getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 		CloudType:    types.AZURE,
 		Tags:         tags,
 		Owner:        tags[ctx.AzureOwnerLabel],
-		Region:       *inst.instance.Location,
-		InstanceType: string(inst.instance.HardwareProfile.VMSize),
-		State:        getInstanceState(inst.instanceView),
-		Metadata:     map[string]string{"resourceGroupName": inst.resourceGroupName},
+		Region:       location,
+		InstanceType: instanceType,
+		State:        state,
+		Metadata:     map[string]string{"resourceGroupName": resourceGroupName},
 	}
+}
+
+func getInstanceState(view compute.VirtualMachineInstanceView) types.State {
+	for _, v := range *view.Statuses {
+		if v.Time == nil {
+			return convertViewStatusToState(v)
+		}
+	}
+	return types.Unknown
+}
+
+func getScaleSetInstanceState(view compute.VirtualMachineScaleSetVMInstanceView) types.State {
+	for _, v := range *view.Statuses {
+		if v.Time == nil {
+			return convertViewStatusToState(v)
+		}
+	}
+	return types.Unknown
 }
 
 // Possible values:
@@ -243,30 +321,18 @@ func newInstance(inst azureInstance, getCreationTimeFromTags getCreationTimeFrom
 //   "PowerState/stopping"
 //   "PowerState/unknown"
 // The assumption is that the status without time is the currently active status
-func getInstanceState(view compute.VirtualMachineInstanceView) types.State {
-	var actualStatus *compute.InstanceViewStatus
-	for _, v := range *view.Statuses {
-		if v.Time == nil {
-			actualStatus = &v
-			break
-		}
+func convertViewStatusToState(actualStatus compute.InstanceViewStatus) types.State {
+	switch *actualStatus.Code {
+	case "PowerState/deallocated", "PowerState/deallocating":
+		return types.Stopped
+	case "PowerState/running", "PowerState/starting":
+		return types.Running
+	case "PowerState/stopped", "PowerState/stopping":
+		return types.Stopped
+	default:
+		return types.Unknown
 	}
-	if actualStatus != nil {
-		switch *actualStatus.Code {
-		case "PowerState/deallocated", "PowerState/deallocating":
-			return types.Stopped
-		case "PowerState/running", "PowerState/starting":
-			return types.Running
-		case "PowerState/stopped", "PowerState/stopping":
-			return types.Stopped
-		default:
-			return types.Unknown
-		}
-	}
-	return types.Unknown
 }
-
-type getCreationTimeFromTagsFuncSignature func(types.Tags, func(unixTimestamp string) time.Time) time.Time
 
 func getCreationTimeFromTags(tags types.Tags, convertTimeUnix func(unixTimestamp string) time.Time) time.Time {
 	if creationTimestamp, ok := tags[ctx.AzureCreationTimeLabel]; ok {
