@@ -596,7 +596,7 @@ func newDatabase(rds rds.DBInstance) *types.Database {
 func getVolumeState(volume *ec2.Volume) types.State {
 	switch *volume.State {
 	case "available":
-		return types.Available
+		return types.Unused
 	case "in-use":
 		return types.InUse
 	default:
