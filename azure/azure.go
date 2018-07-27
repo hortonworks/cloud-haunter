@@ -172,6 +172,10 @@ type azureScaleSetInstance struct {
 	scaleSetName      string
 }
 
+func (p azureProvider) GetDisks() ([]*types.Disk, error) {
+	return nil, errors.New("[AZURE] Disk operations are not supported")
+}
+
 func (p azureProvider) TerminateInstances([]*types.Instance) []error {
 	return []error{errors.New("[AZURE] Termination not supported")}
 	// rgClient = resources.NewGroupsClient(subscriptionId)

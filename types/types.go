@@ -14,6 +14,12 @@ const (
 	// Terminated state of the cloud item
 	Terminated = State("terminated")
 
+	// Unused state of the cloud item
+	Unused = State("unused")
+
+	// InUse state of the cloud item
+	InUse = State("in-use")
+
 	// Unknown state of the cloud item
 	Unknown = State("unknown")
 )

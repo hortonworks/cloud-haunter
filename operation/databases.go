@@ -14,9 +14,9 @@ type databases struct {
 }
 
 func (o databases) Execute(clouds []types.CloudType) []types.CloudItem {
-	log.Debugf("[GETDATABASES] Collecting databases on: [%s]", clouds)
+	log.Debugf("[GET_DATABASES] Collecting databases on: [%s]", clouds)
 	itemsChan, errChan := o.collect(clouds)
-	return wait(itemsChan, errChan, "[GETDATABASES] Failed to collect databases")
+	return wait(itemsChan, errChan, "[GET_DATABASES] Failed to collect databases")
 }
 
 func (o databases) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {

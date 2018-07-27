@@ -113,6 +113,10 @@ func (t mockEc2Client) DescribeRegions(*ec2.DescribeRegionsInput) (*ec2.Describe
 	}, nil
 }
 
+func (t mockEc2Client) DescribeVolumes(input *ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error) {
+	return nil, nil
+}
+
 type mockCtClient struct {
 }
 

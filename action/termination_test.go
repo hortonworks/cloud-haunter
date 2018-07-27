@@ -43,6 +43,10 @@ func (p *mockProvider) GetDatabases() ([]*types.Database, error) {
 	return nil, nil
 }
 
+func (p *mockProvider) GetDisks() ([]*types.Disk, error) {
+	return nil, nil
+}
+
 type terminationSuite struct {
 	suite.Suite
 	providers    map[types.CloudType]func() types.CloudProvider

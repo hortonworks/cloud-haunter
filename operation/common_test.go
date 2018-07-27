@@ -84,3 +84,7 @@ func (p dummyProvider) GetAccesses() (a []*types.Access, e error) {
 func (p dummyProvider) GetDatabases() ([]*types.Database, error) {
 	return nil, nil
 }
+
+func (p dummyProvider) GetDisks() ([]*types.Disk, error) {
+	return nil, nil
+}
