@@ -94,7 +94,6 @@ func main() {
 	selectedClouds := utils.SplitListToMap(*cloudTypes)
 	for t := range ctx.CloudProviders {
 		_, ok := selectedClouds[t.String()]
-		println(len(selectedClouds))
 		if len(selectedClouds) == 0 || ok {
 			clouds = append(clouds, t)
 		} else {
