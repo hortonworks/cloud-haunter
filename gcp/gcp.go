@@ -87,6 +87,10 @@ func (p gcpProvider) GetInstances() ([]*types.Instance, error) {
 	return getInstances(p.computeClient.Instances.AggregatedList(p.projectID))
 }
 
+func (p gcpProvider) GetDisks() ([]*types.Disk, error) {
+	return nil, errors.New("[GCP] Disk operations are not supported")
+}
+
 func (p gcpProvider) TerminateInstances(instances []*types.Instance) []error {
 	return []error{errors.New("[GCP] Termination not supported")}
 	// 	log.Debug("[GCP] Terminating instanes")

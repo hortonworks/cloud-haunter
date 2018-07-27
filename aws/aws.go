@@ -113,17 +113,12 @@ func (p awsProvider) GetAccountName() string {
 
 func (p awsProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[AWS] Fetching instances")
-	ec2Clients := map[string]ec2Client{}
-	ctClients := map[string]cloudTrailClient{}
-	for k := range p.ec2Clients {
-		ec2Clients[k] = p.ec2Clients[k]
-		ctClients[k] = p.cloudTrailClient[k]
-	}
+	ec2Clients, ctClients := p.getEc2AndCTClientsByRegion()
 	return getInstances(ec2Clients, ctClients)
 }
 
 func (p awsProvider) GetDatabases() ([]*types.Database, error) {
-	log.Debugf("[AWS] Fetch databases")
+	log.Debug("[AWS] Fetch databases")
 	rdsClients := map[string]rdsClient{}
 	ctClients := map[string]cloudTrailClient{}
 	for k := range p.rdsClients {
@@ -131,6 +126,22 @@ func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 		ctClients[k] = p.cloudTrailClient[k]
 	}
 	return getDatabases(rdsClients, ctClients)
+}
+
+func (p awsProvider) GetDisks() ([]*types.Disk, error) {
+	log.Debug("[AWS] Fetch disks")
+	ec2Clients, ctClients := p.getEc2AndCTClientsByRegion()
+	return getDisks(ec2Clients, ctClients)
+}
+
+func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[string]cloudTrailClient) {
+	ec2Clients := map[string]ec2Client{}
+	ctClients := map[string]cloudTrailClient{}
+	for k := range p.ec2Clients {
+		ec2Clients[k] = p.ec2Clients[k]
+		ctClients[k] = p.cloudTrailClient[k]
+	}
+	return ec2Clients, ctClients
 }
 
 func (p awsProvider) TerminateInstances([]*types.Instance) []error {
@@ -189,11 +200,11 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 		close(errChan)
 	}()
 
-	errors := []error{}
+	var errs []error
 	for err := range errChan {
-		errors = append(errors, err)
+		errs = append(errs, err)
 	}
-	return errors
+	return errs
 }
 
 func (p awsProvider) GetAccesses() ([]*types.Access, error) {
@@ -204,6 +215,7 @@ func (p awsProvider) GetAccesses() ([]*types.Access, error) {
 type ec2Client interface {
 	DescribeRegions(*ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error)
 	DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
+	DescribeVolumes(input *ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error)
 }
 
 type cloudTrailClient interface {
@@ -260,6 +272,42 @@ func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]
 		instances = append(instances, inst)
 	}
 	return instances, nil
+}
+
+func getDisks(ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Disk, error) {
+	diskChan := make(chan *types.Disk)
+	wg := sync.WaitGroup{}
+	wg.Add(len(ec2Clients))
+
+	for r, c := range ec2Clients {
+		log.Debugf("[AWS] Fetching volumes from region: %s", r)
+		go func(region string, ec2Client ec2Client, cloudTrailClient cloudTrailClient) {
+			defer wg.Done()
+
+			result, err := ec2Client.DescribeVolumes(&ec2.DescribeVolumesInput{})
+			if err != nil {
+				log.Errorf("[AWS] Failed to fetch the volumes in region: %s, err: %s", region, err)
+				return
+			}
+			log.Debugf("[AWS] Processing volumes (%d): [%s] in region: %s", len(result.Volumes), result.Volumes, region)
+			for _, vol := range result.Volumes {
+				diskChan <- newDisk(vol)
+			}
+
+		}(r, c, cloudTrailClients[r])
+	}
+
+	go func() {
+		wg.Wait()
+		close(diskChan)
+	}()
+
+	var disks []*types.Disk
+	for d := range diskChan {
+		disks = append(disks, d)
+	}
+
+	return disks, nil
 }
 
 type cloudTrailEvent struct {
@@ -513,6 +561,26 @@ func getInstanceState(instance *ec2.Instance) types.State {
 	}
 }
 
+func newDisk(volume *ec2.Volume) *types.Disk {
+	tags := getTags(volume.Tags)
+	var name string
+	if n, ok := tags["Name"]; ok {
+		name = n
+	} else {
+		name = *volume.VolumeId
+	}
+	return &types.Disk{
+		ID:        *volume.VolumeId,
+		Name:      name,
+		State:     getVolumeState(volume),
+		CloudType: types.AWS,
+		Region:    getRegionFromAvailabilityZone(volume.AvailabilityZone),
+		Created:   *volume.CreateTime,
+		Size:      *volume.Size,
+		Type:      *volume.VolumeType,
+	}
+}
+
 func newDatabase(rds rds.DBInstance) *types.Database {
 	return &types.Database{
 		ID:           *rds.DbiResourceId,
@@ -522,6 +590,17 @@ func newDatabase(rds rds.DBInstance) *types.Database {
 		InstanceType: *rds.DBInstanceClass,
 		State:        getDatabaseState(rds),
 		CloudType:    types.AWS,
+	}
+}
+
+func getVolumeState(volume *ec2.Volume) types.State {
+	switch *volume.State {
+	case "available":
+		return types.Available
+	case "in-use":
+		return types.InUse
+	default:
+		return types.Unknown
 	}
 }
 

@@ -9,6 +9,9 @@ const (
 
 	// Databases operation to return all the databases
 	Databases = OpType("getDatabases")
+
+	// Disks operation to return all the disks
+	Disks = OpType("getDisks")
 )
 
 // OpType type of the operation
