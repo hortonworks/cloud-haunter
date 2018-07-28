@@ -39,7 +39,7 @@ formatcheck:
 	([ -z "$(shell gofmt -d $(GOFILES_NOVENDOR))" ]) || (echo "Source is unformatted"; exit 1)
 
 format:
-	gofmt -w $(GOFILES_NOVENDOR)
+	gofmt -s -w $(GOFILES_NOVENDOR)
 
 vet:
 	go vet ./...

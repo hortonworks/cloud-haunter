@@ -73,7 +73,7 @@ func TestGetRegionFromAvailabilityZoneLessThanOne(t *testing.T) {
 }
 
 func TestGgetNameIDPairs(t *testing.T) {
-	instIDNames, instanceIDs := getNameIDPairs([]*types.Instance{&types.Instance{Name: "name", ID: "id"}})
+	instIDNames, instanceIDs := getNameIDPairs([]*types.Instance{{Name: "name", ID: "id"}})
 
 	assert.Equal(t, 1, len(instIDNames))
 	assert.Equal(t, 1, len(instanceIDs))
