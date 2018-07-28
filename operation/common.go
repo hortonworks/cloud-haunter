@@ -67,7 +67,7 @@ func collectInstances(clouds []types.CloudType) (chan []types.CloudItem, chan er
 }
 
 func convertInstancesToCloudItems(instances []*types.Instance) []types.CloudItem {
-	items := []types.CloudItem{}
+	var items []types.CloudItem
 	for _, inst := range instances {
 		items = append(items, inst)
 	}

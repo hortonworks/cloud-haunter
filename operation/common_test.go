@@ -88,3 +88,7 @@ func (p dummyProvider) GetDatabases() ([]*types.Database, error) {
 func (p dummyProvider) GetDisks() ([]*types.Disk, error) {
 	return nil, nil
 }
+
+func (p dummyProvider) DeleteDisks([]*types.Disk) []error {
+	return nil
+}

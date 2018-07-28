@@ -145,7 +145,11 @@ func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[str
 }
 
 func (p awsProvider) TerminateInstances([]*types.Instance) []error {
-	return []error{errors.New("[AWS] Termination not supported")}
+	return []error{errors.New("[AWS] Termination is not supported")}
+}
+
+func (p awsProvider) DeleteDisks([]*types.Disk) []error {
+	return []error{errors.New("[AWS] Disk deletion is not supported")}
 }
 
 func (p awsProvider) StopInstances(instances []*types.Instance) []error {
