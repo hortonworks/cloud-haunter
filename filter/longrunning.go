@@ -45,7 +45,12 @@ func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 			}
 		case types.Database:
 			if item.GetItem().(types.Database).State != types.Running {
-				log.Debugf("[LONGRUNNING] Filter instance, because it's not in RUNNING state: %s", item.GetName())
+				log.Debugf("[LONGRUNNING] Filter database, because it's not in RUNNING state: %s", item.GetName())
+				return false
+			}
+		case types.Disk:
+			if item.GetItem().(types.Disk).State != types.Unused {
+				log.Debugf("[LONGRUNNING] Filter disk, because it's in used state: %s", item.GetName())
 				return false
 			}
 		default:
@@ -53,7 +58,7 @@ func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 			return true
 		}
 		match := item.GetCreated().Add(f.runningPeriod).Before(now)
-		log.Debugf("[LONGRUNNING] Instances: %s match: %b", item.GetName(), match)
+		log.Debugf("[LONGRUNNING] %s: %s match: %b", item.GetType(), item.GetName(), match)
 		return match
 	})
 }
