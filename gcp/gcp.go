@@ -83,7 +83,7 @@ func (p gcpProvider) GetAccountName() string {
 }
 
 func (p gcpProvider) GetInstances() ([]*types.Instance, error) {
-	log.Debug("[GCP] Fetching instanes")
+	log.Debug("[GCP] Fetching instances")
 	return getInstances(p.computeClient.Instances.AggregatedList(p.projectID))
 }
 
@@ -91,8 +91,12 @@ func (p gcpProvider) GetDisks() ([]*types.Disk, error) {
 	return nil, errors.New("[GCP] Disk operations are not supported")
 }
 
+func (p gcpProvider) DeleteDisks([]*types.Disk) []error {
+	return []error{errors.New("[GCP] Disk deletion is not supported")}
+}
+
 func (p gcpProvider) TerminateInstances(instances []*types.Instance) []error {
-	return []error{errors.New("[GCP] Termination not supported")}
+	return []error{errors.New("[GCP] Termination is not supported")}
 	// 	log.Debug("[GCP] Terminating instanes")
 	// instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectId).Do()
 	// if err != nil {

@@ -145,7 +145,13 @@ func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[str
 }
 
 func (p awsProvider) TerminateInstances([]*types.Instance) []error {
-	return []error{errors.New("[AWS] Termination not supported")}
+	return []error{errors.New("[AWS] Termination is not supported")}
+}
+
+func (p awsProvider) DeleteDisks(volumes []*types.Disk) []error {
+	log.Debug("[AWS] Delete volumes")
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	return deleteVolumes(ec2Clients, volumes)
 }
 
 func (p awsProvider) StopInstances(instances []*types.Instance) []error {
@@ -154,7 +160,7 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 	for _, instance := range instances {
 		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance)
 	}
-	log.Debugf("[AWS] Stopping instances (%d): %s", len(regionInstances), regionInstances)
+	log.Debugf("[AWS] Stopping instances: %s", regionInstances)
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(regionInstances))
@@ -207,6 +213,46 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 	return errs
 }
 
+func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []error {
+	regionVolumes := map[string][]*types.Disk{}
+	for _, vol := range volumes {
+		regionVolumes[vol.Region] = append(regionVolumes[vol.Region], vol)
+	}
+	log.Debugf("[AWS] Delete volumes: %s", regionVolumes)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(regionVolumes))
+	errChan := make(chan error)
+
+	for r, v := range regionVolumes {
+		go func(ec2Client ec2Client, region string, volumes []*types.Disk) {
+			defer wg.Done()
+
+			for _, vol := range volumes {
+				if ctx.DryRun {
+					log.Infof("[AWS] Dry-run set, volume is not deleted: %s:%s, region: %s", vol.Name, vol.ID, region)
+				} else {
+					log.Infof("[AWS] Delete volume: %s:%s", vol.Name, vol.ID)
+					if _, err := ec2Client.DeleteVolume(&ec2.DeleteVolumeInput{VolumeId: &vol.ID}); err != nil {
+						errChan <- err
+					}
+				}
+			}
+		}(ec2Clients[r], r, v)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
 func (p awsProvider) GetAccesses() ([]*types.Access, error) {
 	log.Debug("[AWS] Fetching users")
 	return getAccesses(p.iamClient)
@@ -216,6 +262,7 @@ type ec2Client interface {
 	DescribeRegions(*ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error)
 	DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
 	DescribeVolumes(input *ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error)
+	DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error)
 }
 
 type cloudTrailClient interface {
