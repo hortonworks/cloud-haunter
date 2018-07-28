@@ -129,9 +129,9 @@ func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 }
 
 func (p awsProvider) GetDisks() ([]*types.Disk, error) {
-	log.Debug("[AWS] Fetch disks")
-	ec2Clients, ctClients := p.getEc2AndCTClientsByRegion()
-	return getDisks(ec2Clients, ctClients)
+	log.Debug("[AWS] Fetch volumes")
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	return getDisks(ec2Clients)
 }
 
 func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[string]cloudTrailClient) {
@@ -274,14 +274,14 @@ func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]
 	return instances, nil
 }
 
-func getDisks(ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Disk, error) {
+func getDisks(ec2Clients map[string]ec2Client) ([]*types.Disk, error) {
 	diskChan := make(chan *types.Disk)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
 
 	for r, c := range ec2Clients {
 		log.Debugf("[AWS] Fetching volumes from region: %s", r)
-		go func(region string, ec2Client ec2Client, cloudTrailClient cloudTrailClient) {
+		go func(region string, ec2Client ec2Client) {
 			defer wg.Done()
 
 			result, err := ec2Client.DescribeVolumes(&ec2.DescribeVolumesInput{})
@@ -294,7 +294,7 @@ func getDisks(ec2Clients map[string]ec2Client, cloudTrailClients map[string]clou
 				diskChan <- newDisk(vol)
 			}
 
-		}(r, c, cloudTrailClients[r])
+		}(r, c)
 	}
 
 	go func() {
