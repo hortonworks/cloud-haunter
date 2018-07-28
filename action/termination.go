@@ -26,7 +26,8 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 			var cloudItems []*types.CloudItem
 			for _, item := range items {
 				if item.GetCloudType() == cType {
-					cloudItems = append(cloudItems, &item)
+					i := item
+					cloudItems = append(cloudItems, &i)
 				}
 			}
 
@@ -39,7 +40,7 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 				case types.Instance:
 					errors = terminateInstances(provider, cloudItems)
 				case types.Disk:
-					errors = terminateDisks(provider, cloudItems)
+					errors = deleteDisks(provider, cloudItems)
 				default:
 					panic(fmt.Sprintf("[TERMINATION] Operation on type %T is not allowed", t))
 				}
@@ -54,25 +55,19 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 }
 
 func terminateInstances(provider types.CloudProvider, items []*types.CloudItem) []error {
-	log.Debugf("[TERMINATION] Instances to terminate (%d): [%s]", len(items), items)
-
 	var instances []*types.Instance
 	for _, item := range items {
 		inst := (*item).GetItem().(types.Instance)
 		instances = append(instances, &inst)
 	}
-
 	return provider.TerminateInstances(instances)
 }
 
-func terminateDisks(provider types.CloudProvider, items []*types.CloudItem) []error {
-	log.Debugf("[TERMINATION] Disks to terminate (%d): [%s]", len(items), items)
-
+func deleteDisks(provider types.CloudProvider, items []*types.CloudItem) []error {
 	var disks []*types.Disk
 	for _, item := range items {
 		disk := (*item).GetItem().(types.Disk)
 		disks = append(disks, &disk)
 	}
-
 	return provider.DeleteDisks(disks)
 }
