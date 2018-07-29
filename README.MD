@@ -22,7 +22,7 @@ Can filter by:
  * old cloud credentials
 
 And can do action:
- * send notification (only HipChat supported)
+ * send notification
  * log result
  * stop instances [AZURE, AWS]
 
@@ -57,7 +57,7 @@ CH will skip all the resources where the name, owner, or any of the tags are sta
 
 ## Installation
 
-`# curl -Ls https://github.com/hortonworks/cloud-haunter/releases/download/v0.3.7/cloud-haunter_0.3.7_$(uname)_x86_64.tgz | tar x`
+`# curl -Ls https://github.com/hortonworks/cloud-haunter/releases/download/v0.4.0/cloud-haunter_0.4.0_$(uname)_x86_64.tgz | tar x`
 
 ## Usage
 
@@ -65,27 +65,29 @@ CH will skip all the resources where the name, owner, or any of the tags are sta
 NAME:
    Cloud Haunter
 USAGE:
-   ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud]
+   ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud1,cloud2]
 VERSION:
-   0.3.8
+   0.4.0
 
 AUTHOR(S):
    Hortonworks
 OPERATIONS:
 	-o getAccess
 	-o getDatabases
+	-o getDisks
 	-o getInstances
 FILTERS:
+	-f longrunning
 	-f oldaccess
 	-f ownerless
 	-f running
 	-f stopped
-	-f longrunning
+	-f unused
 ACTIONS:
-	-a stop
 	-a log
 	-a notification
 	-a stop
+	-a termination
 CLOUDS:
 	-c azure
 	-c aws
@@ -120,6 +122,9 @@ HELP:
  * HIPCHAT_TOKEN
  * HIPCHAT_SERVER
  * HIPCHAT_ROOM
+
+### Slack
+ * SLACK_WEBHOOK_URL
 
 #### Long running
  * RUNNING_PERIOD, default: 24h
