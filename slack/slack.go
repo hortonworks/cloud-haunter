@@ -34,6 +34,13 @@ type attachment struct {
 	Pretext    string   `json:"pretext"`
 	Text       string   `json:"text"`
 	MarkdownIn []string `json:"mrkdwn_in"`
+	Fields     []field  `json:"fields"`
+}
+
+type field struct {
+	Title string `json:"title"`
+	Value string `json:"value"`
+	Short bool   `json:"short"`
 }
 
 func init() {
@@ -101,7 +108,12 @@ func (d slackDispatcher) generateMessage(op types.OpType, filters []types.Filter
 		}
 	}
 
-	attach := attachment{
+	detailsAttach := attachment{
+		MarkdownIn: []string{"text", "pretext"},
+		Color:      color,
+	}
+
+	summaryAttach := attachment{
 		MarkdownIn: []string{"text", "pretext"},
 		Color:      color,
 	}
@@ -110,6 +122,11 @@ func (d slackDispatcher) generateMessage(op types.OpType, filters []types.Filter
 
 	for owner, items := range itemsPerOwner {
 		buffer.WriteString(fmt.Sprintf("\n*Owner*: %s *items*: %d\n", owner, len(items)))
+		summaryAttach.Fields = append(summaryAttach.Fields, field{
+			Title: fmt.Sprintf("*%s*: %d", owner, len(items)),
+			Short: true,
+		})
+
 		for _, item := range items {
 			displayTime := item.GetCreated().Format("2006-01-02 15:04:05")
 			switch item.GetItem().(type) {
@@ -133,11 +150,12 @@ func (d slackDispatcher) generateMessage(op types.OpType, filters []types.Filter
 				buffer.WriteString(fmt.Sprintf("*[%s]* *%s*: %s\n", item.GetCloudType(), item.GetType(), item.GetName()))
 			}
 		}
+
 		buffer.WriteString("\n")
 	}
 
-	attach.Text = buffer.String()
-	message.Attachments = []attachment{attach}
+	detailsAttach.Text = buffer.String()
+	message.Attachments = []attachment{summaryAttach, detailsAttach}
 
 	return message
 }
