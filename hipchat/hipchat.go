@@ -12,7 +12,6 @@ import (
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
 	"github.com/tbruyelle/hipchat-go/hipchat"
-	"strings"
 )
 
 var dispatcher = hipchatDispatcher{}
@@ -63,7 +62,7 @@ func (d hipchatDispatcher) Send(op types.OpType, filters []types.FilterType, ite
 func (d *hipchatDispatcher) generateMessage(op types.OpType, filters []types.FilterType, items []types.CloudItem) string {
 	var buffer bytes.Buffer
 	buffer.WriteString("/code\n")
-	buffer.WriteString(fmt.Sprintf("Operation: %s Filters: %s Accounts: %s\n", op, getFilterNames(filters), utils.GetCloudAccountNames()))
+	buffer.WriteString(fmt.Sprintf("Operation: %s Filters: %s Accounts: %s\n", op, utils.GetFilterNames(filters), utils.GetCloudAccountNames()))
 	for _, item := range items {
 		displayTime := item.GetCreated().Format("2006-01-02 15:04:05")
 		switch item.GetItem().(type) {
@@ -88,17 +87,6 @@ func (d *hipchatDispatcher) generateMessage(op types.OpType, filters []types.Fil
 		}
 	}
 	return buffer.String()
-}
-
-func getFilterNames(filters []types.FilterType) string {
-	if len(filters) == 0 {
-		return "noFilter"
-	}
-	fNames := make([]string, 0)
-	for _, f := range filters {
-		fNames = append(fNames, f.String())
-	}
-	return strings.Join(fNames, ",")
 }
 
 type notificationClient interface {

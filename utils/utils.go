@@ -8,6 +8,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
+	"encoding/json"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"gopkg.in/yaml.v2"
@@ -101,4 +102,25 @@ func SplitListToMap(list string) (resp map[string]bool) {
 		}
 	}
 	return
+}
+
+// CovertJsonToString converts a struct to json string
+func CovertJsonToString(source interface{}) (*string, error) {
+	if j, err := json.Marshal(source); err != nil {
+		return nil, err
+	} else {
+		return &(&types.S{S: string(j)}).S, nil
+	}
+}
+
+// GetFilterNames returns the name of the applied filters separated by colon
+func GetFilterNames(filters []types.FilterType) string {
+	if len(filters) == 0 {
+		return "noFilter"
+	}
+	fNames := make([]string, 0)
+	for _, f := range filters {
+		fNames = append(fNames, f.String())
+	}
+	return strings.Join(fNames, ",")
 }
