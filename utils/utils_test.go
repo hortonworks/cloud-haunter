@@ -53,27 +53,27 @@ func TestConvertTags(t *testing.T) {
 }
 
 func TestLoadIgnores(t *testing.T) {
-	ignores, _ := LoadIgnores("testdata/ignores.yml")
+	filterConfig, _ := LoadFilterConfig("testdata/filterConfig.yml")
 
-	assert.Equal(t, []string{"awsName"}, ignores.Access.Aws.Names)
-	assert.Equal(t, []string{"azureName"}, ignores.Access.Azure.Names)
-	assert.Equal(t, []string{"gcpName"}, ignores.Access.Gcp.Names)
+	assert.Equal(t, []string{"awsName"}, filterConfig.ExcludeAccess.Aws.Names)
+	assert.Equal(t, []string{"azureName"}, filterConfig.ExcludeAccess.Azure.Names)
+	assert.Equal(t, []string{"gcpName"}, filterConfig.ExcludeAccess.Gcp.Names)
 
-	assert.Equal(t, []string{"awsOwner"}, ignores.Access.Aws.Owners)
-	assert.Equal(t, []string{"azureOwner"}, ignores.Access.Azure.Owners)
-	assert.Equal(t, []string{"gcpOwner"}, ignores.Access.Gcp.Owners)
+	assert.Equal(t, []string{"awsOwner"}, filterConfig.ExcludeAccess.Aws.Owners)
+	assert.Equal(t, []string{"azureOwner"}, filterConfig.ExcludeAccess.Azure.Owners)
+	assert.Equal(t, []string{"gcpOwner"}, filterConfig.ExcludeAccess.Gcp.Owners)
 
-	assert.Equal(t, []string{"awsLabel"}, ignores.Instance.Aws.Labels)
-	assert.Equal(t, []string{"azureLabel"}, ignores.Instance.Azure.Labels)
-	assert.Equal(t, []string{"gcpLabel"}, ignores.Instance.Gcp.Labels)
+	assert.Equal(t, []string{"awsLabel"}, filterConfig.ExcludeInstance.Aws.Labels)
+	assert.Equal(t, []string{"azureLabel"}, filterConfig.ExcludeInstance.Azure.Labels)
+	assert.Equal(t, []string{"gcpLabel"}, filterConfig.ExcludeInstance.Gcp.Labels)
 
-	assert.Equal(t, []string{"awsName"}, ignores.Instance.Aws.Names)
-	assert.Equal(t, []string{"azureName"}, ignores.Instance.Azure.Names)
-	assert.Equal(t, []string{"gcpName"}, ignores.Instance.Gcp.Names)
+	assert.Equal(t, []string{"awsName"}, filterConfig.ExcludeInstance.Aws.Names)
+	assert.Equal(t, []string{"azureName"}, filterConfig.ExcludeInstance.Azure.Names)
+	assert.Equal(t, []string{"gcpName"}, filterConfig.ExcludeInstance.Gcp.Names)
 
-	assert.Equal(t, []string{"awsOwner"}, ignores.Instance.Aws.Owners)
-	assert.Equal(t, []string{"azureOwner"}, ignores.Instance.Azure.Owners)
-	assert.Equal(t, []string{"gcpOwner"}, ignores.Instance.Gcp.Owners)
+	assert.Equal(t, []string{"awsOwner"}, filterConfig.ExcludeInstance.Aws.Owners)
+	assert.Equal(t, []string{"azureOwner"}, filterConfig.ExcludeInstance.Azure.Owners)
+	assert.Equal(t, []string{"gcpOwner"}, filterConfig.ExcludeInstance.Gcp.Owners)
 }
 
 func TestSplitListToMap(t *testing.T) {

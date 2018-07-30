@@ -32,7 +32,7 @@ func main() {
 	filterTypes := flag.String("f", "", "type of filters")
 	actionType := flag.String("a", "log", "type of action")
 	cloudTypes := flag.String("c", "", "type of clouds")
-	ignoresLoc := flag.String("i", "", "ignores YAML")
+	filterConfigLoc := flag.String("fc", "", "filterConfig YAML")
 	dryRun := flag.Bool("d", false, "dry run")
 	verbose := flag.Bool("v", false, "verbose")
 
@@ -43,18 +43,18 @@ func main() {
 		os.Exit(0)
 	}
 
-	if ignoresLoc != nil && len(*ignoresLoc) != 0 {
-		var err error
-		ctx.Ignores, err = utils.LoadIgnores(*ignoresLoc)
-		if err != nil {
-			panic("Unable to parse ignore configuration: " + err.Error())
-		}
-	}
-
 	ctx.DryRun = *dryRun
 	ctx.Verbose = *verbose
 	if ctx.Verbose {
 		log.SetLevel(log.DebugLevel)
+	}
+
+	if filterConfigLoc != nil && len(*filterConfigLoc) != 0 {
+		var err error
+		ctx.FilterConfig, err = utils.LoadFilterConfig(*filterConfigLoc)
+		if err != nil {
+			panic("Unable to parse filter configuration: " + err.Error())
+		}
 	}
 
 	op := func() *types.OpType {
@@ -138,7 +138,7 @@ OPERATIONS:`)
 	for ct := range ctx.CloudProviders {
 		println("\t-c " + ct.String())
 	}
-	println("IGNORE:\n\t-i=/location/of/ignore/config.yml")
+	println("FILTER_CONFIG:\n\t-fc=/location/of/filter/config.yml")
 	println("DRY RUN:\n\t-d")
 	println("VERBOSE:\n\t-v")
 	println("HELP:\n\t-h")

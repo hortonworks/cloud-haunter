@@ -68,18 +68,19 @@ func ConvertTags(tagMap map[string]*string) types.Tags {
 	return tags
 }
 
-// LoadIgnores loads and unmarshalls ignore config YAML
-func LoadIgnores(location string) (*types.Ignores, error) {
+// LoadFilterConfig loads and unmarshalls filter config YAML
+func LoadFilterConfig(location string) (*types.FilterConfig, error) {
 	raw, err := ioutil.ReadFile(location)
 	if err != nil {
 		return nil, err
 	}
-	ignores := &types.Ignores{}
-	err = yaml.Unmarshal(raw, ignores)
+	config := &types.FilterConfig{}
+	err = yaml.Unmarshal(raw, config)
 	if err != nil {
 		return nil, err
 	}
-	return ignores, nil
+	log.Debugf("[UTIL] Filter config loaded:\n%s", raw)
+	return config, nil
 }
 
 // GetCloudAccountNames returns the name of the configured cloud accounts

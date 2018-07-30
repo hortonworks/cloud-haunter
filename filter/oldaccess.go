@@ -34,7 +34,7 @@ func init() {
 
 func (f oldAccess) Execute(items []types.CloudItem) []types.CloudItem {
 	log.Debugf("[OLDACCESS] Filtering accesses (%d): [%s]", len(items), items)
-	return filter(items, func(item types.CloudItem) bool {
+	return filter("OLDACCESS", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
 		if isInstance(item) {
 			log.Debugf("[OLDACCESS] Filter does not apply for cloud item: %s", item.GetName())
 			return true

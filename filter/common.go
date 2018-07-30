@@ -7,10 +7,21 @@ import (
 	"github.com/hortonworks/cloud-haunter/utils"
 )
 
-func filter(items []types.CloudItem, isNeeded func(types.CloudItem) bool) []types.CloudItem {
+func filter(filterName string, items []types.CloudItem, filterType types.FilterConfigType, isNeeded func(types.CloudItem) bool) []types.CloudItem {
 	var filtered []types.CloudItem
 	for _, item := range items {
-		if isNeeded(item) && !isIgnored(item, ctx.Ignores) {
+		var include bool
+		if filterType.IsInclusive() {
+			include = isFilterMatch(filterName, item, filterType, ctx.FilterConfig)
+		} else {
+			include = !isFilterMatch(filterName, item, filterType, ctx.FilterConfig)
+		}
+		if include {
+			log.Debugf("[%s] item %s is not filtered, because of filter config", filterName, item.GetName())
+		} else {
+			log.Debugf("[%s] item %s is filtered, because of filter config", filterName, item.GetName())
+		}
+		if isNeeded(item) && include {
 			filtered = append(filtered, item)
 		}
 	}
@@ -26,52 +37,80 @@ func isInstance(item types.CloudItem) bool {
 	}
 }
 
-func isIgnored(item types.CloudItem, ignores *types.Ignores) bool {
+func isFilterMatch(filterName string, item types.CloudItem, filterType types.FilterConfigType, filterConfig *types.FilterConfig) bool {
 	switch item.GetItem().(type) {
 	case types.Instance:
 		inst := item.GetItem().(types.Instance)
-		if utils.IsAnyMatch(inst.Tags, ctx.IgnoreLabels[item.GetCloudType()]) {
+		name := item.GetName()
+		ignoreLabelFound := utils.IsAnyMatch(inst.Tags, ctx.IgnoreLabels[item.GetCloudType()])
+		if ignoreLabelFound {
+			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabels[item.GetCloudType()])
+			if filterType.IsInclusive() {
+				log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
+				return false
+			}
+			log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
 			return true
 		}
-		if ignores != nil {
+		_, instanceFilter := getFilterConfigs(filterConfig, filterType)
+		if instanceFilter != nil {
 			switch item.GetCloudType() {
 			case types.AWS:
-				return isMatchWithIgnores(item, inst.Tags,
-					ignores.Instance.Aws.Names, ignores.Instance.Aws.Owners, ignores.Instance.Aws.Labels)
+				return isMatchWithIgnores(filterName, item, inst.Tags,
+					instanceFilter.Aws.Names, instanceFilter.Aws.Owners, instanceFilter.Aws.Labels)
 			case types.AZURE:
-				return isMatchWithIgnores(item, inst.Tags,
-					ignores.Instance.Azure.Names, ignores.Instance.Azure.Owners, ignores.Instance.Azure.Labels)
+				return isMatchWithIgnores(filterName, item, inst.Tags,
+					instanceFilter.Azure.Names, instanceFilter.Azure.Owners, instanceFilter.Azure.Labels)
 			case types.GCP:
-				return isMatchWithIgnores(item, inst.Tags,
-					ignores.Instance.Gcp.Names, ignores.Instance.Gcp.Owners, ignores.Instance.Gcp.Labels)
+				return isMatchWithIgnores(filterName, item, inst.Tags,
+					instanceFilter.Gcp.Names, instanceFilter.Gcp.Owners, instanceFilter.Gcp.Labels)
 			default:
-				log.Warnf("[FILTER] Cloud type not supported: ", item.GetCloudType())
+				log.Warnf("[%s] Cloud type not supported: ", filterName, item.GetCloudType())
 			}
 		}
 	case types.Access:
-		if ignores != nil {
+		accessFilter, _ := getFilterConfigs(filterConfig, filterType)
+		if accessFilter != nil {
 			switch item.GetCloudType() {
 			case types.AWS:
-				return isNameOrOwnerMatch(item, ignores.Access.Aws.Names, ignores.Access.Aws.Owners)
+				return isNameOrOwnerMatch(filterName, item, accessFilter.Aws.Names, accessFilter.Aws.Owners)
 			case types.AZURE:
-				return isNameOrOwnerMatch(item, ignores.Access.Azure.Names, ignores.Access.Azure.Owners)
+				return isNameOrOwnerMatch(filterName, item, accessFilter.Azure.Names, accessFilter.Azure.Owners)
 			case types.GCP:
-				return isNameOrOwnerMatch(item, ignores.Access.Gcp.Names, ignores.Access.Gcp.Owners)
+				return isNameOrOwnerMatch(filterName, item, accessFilter.Gcp.Names, accessFilter.Gcp.Owners)
 			default:
-				log.Warnf("[FILTER] Cloud type not supported: ", item.GetCloudType())
+				log.Warnf("[%s] Cloud type not supported: ", filterName, item.GetCloudType())
 			}
 		}
 	}
 	return false
 }
 
-func isMatchWithIgnores(item types.CloudItem, tags map[string]string, names, owners []string, labels []string) bool {
-	if isNameOrOwnerMatch(item, names, owners) || utils.IsAnyStartsWith(tags, labels...) {
+func getFilterConfigs(filterConfig *types.FilterConfig, filterType types.FilterConfigType) (accessConfig *types.FilterAccessConfig, instanceConfig *types.FilterInstanceConfig) {
+	if filterConfig != nil {
+		if filterType.IsInclusive() {
+			return filterConfig.IncludeAccess, filterConfig.IncludeInstance
+		} else {
+			return filterConfig.ExcludeAccess, filterConfig.ExcludeInstance
+		}
+	}
+	return nil, nil
+}
+
+func isMatchWithIgnores(filterName string, item types.CloudItem, tags map[string]string, names, owners []string, labels []string) bool {
+	if isNameOrOwnerMatch(filterName, item, names, owners) || utils.IsAnyStartsWith(tags, labels...) {
+		log.Debugf("[%s] item %s match with name/owner or tag %s", filterName, item.GetName(), labels)
 		return true
 	}
+	log.Debugf("[%s] item %s does not match with name/owner or tag %s", filterName, item.GetName(), labels)
 	return false
 }
 
-func isNameOrOwnerMatch(item types.CloudItem, names, owners []string) bool {
-	return utils.IsStartsWith(item.GetName(), names...) || utils.IsStartsWith(item.GetOwner(), owners...)
+func isNameOrOwnerMatch(filterName string, item types.CloudItem, names, owners []string) bool {
+	if utils.IsStartsWith(item.GetName(), names...) || utils.IsStartsWith(item.GetOwner(), owners...) {
+		log.Debugf("[%s] item %s match with filter config name %s or owner %s", filterName, item.GetName(), names, owners)
+		return true
+	}
+	log.Debugf("[%s] item %s does not match with filter config name %s or owner %s", filterName, item.GetName(), names, owners)
+	return false
 }
