@@ -46,7 +46,7 @@ There is an option to use custom tags/labels, but you have to recompile the proj
 ### Ignorance config
 
 This tool works well if you use it from early days of your cloud account and all of your users are following the basic rules of tagging instances. On the other hand introducing it on an existing environment should be pain in the back.
-There is an option to declare your ignore policies in a YAML file (please have look at utils/testdata/ignores.yml).
+There is an option to declare your ignore policies in a YAML file (please have look at utils/testdata/filterConfig.yml).
 CH will skip all the resources where the name, owner, or any of the tags are starting with the given configuration.
 
 ## Future plans
@@ -57,7 +57,7 @@ CH will skip all the resources where the name, owner, or any of the tags are sta
 
 ## Installation
 
-`# curl -Ls https://github.com/hortonworks/cloud-haunter/releases/download/v0.4.0/cloud-haunter_0.4.0_$(uname)_x86_64.tgz | tar x`
+`# curl -Ls https://github.com/hortonworks/cloud-haunter/releases/download/v0.5.0/cloud-haunter_0.5.0_$(uname)_x86_64.tgz | tar x`
 
 ## Usage
 
@@ -67,7 +67,7 @@ NAME:
 USAGE:
    ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud1,cloud2]
 VERSION:
-   0.4.0
+   0.5.0
 
 AUTHOR(S):
    Hortonworks
@@ -83,6 +83,7 @@ FILTERS:
 	-f running
 	-f stopped
 	-f unused
+	-f match
 ACTIONS:
 	-a log
 	-a notification
@@ -92,8 +93,8 @@ CLOUDS:
 	-c azure
 	-c aws
 	-c gcp
-IGNORE:
-	-i=/location/of/ignore/config.yml
+FILTER_CONFIG:
+	-fc=/location/of/filter/config.yml
 DRY RUN:
 	-d
 VERBOSE:
