@@ -53,8 +53,8 @@ var Dispatchers = make(map[string]types.Dispatcher)
 // Actions contains all the available actions
 var Actions = make(map[types.ActionType]types.Action)
 
-// Ignores contains the ignore configurations from config file
-var Ignores *types.Ignores
+// FilterConfig contains the include/exclude configurations from config file
+var FilterConfig *types.FilterConfig
 
 func init() {
 	IgnoreLabels[types.AWS] = AwsIgnoreLabel

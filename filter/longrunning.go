@@ -36,7 +36,7 @@ func init() {
 func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 	log.Debugf("[LONGRUNNING] Filtering instances (%d): [%s]", len(items), items)
 	now := time.Now()
-	return filter(items, func(item types.CloudItem) bool {
+	return filter("LONGRUNNING", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
 		switch item.GetItem().(type) {
 		case types.Instance:
 			if item.GetItem().(types.Instance).State != types.Running {

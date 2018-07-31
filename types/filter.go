@@ -18,7 +18,24 @@ const (
 
 	// UnusedFilter filters the items that are not used
 	UnusedFilter = FilterType("unused")
+
+	// MatchFilter filters the items that match the include criteria of the filter config
+	MatchFilter = FilterType("match")
+
+	// InclusiveFilter filter type that will return only the matching entries from the filter's inclusive configuration
+	InclusiveFilter = FilterConfigType("inclusive")
+
+	// ExclusiveFilter filter type that will filter the matching entries from the filter's exclusive configuration
+	ExclusiveFilter = FilterConfigType("exclusive")
 )
+
+// FilterConfigType inclusive or exclusive filter type
+type FilterConfigType string
+
+// IsInclusive returns true if it's an inclusive filter
+func (f FilterConfigType) IsInclusive() bool {
+	return f == InclusiveFilter
+}
 
 // FilterType returns the type of the filter in string format
 type FilterType string

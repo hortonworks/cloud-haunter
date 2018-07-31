@@ -1,15 +1,53 @@
 --- 
-access: 
+excludeAccess:
   aws: 
     names: 
       - skipThisAccess
     owners: 
       - skipThisOwner
-instance: 
-  aws: 
-    names: 
+  azure:
+    names:
+    - skipThisAccess
+    owners:
+    - skipThisOwner
+excludeInstance:
+  aws:
+    names:
       - skipThisName
-    owners: 
+    owners:
       - skipThisOwner
     labels:
       - skipThisLabel
+  azure:
+    names:
+    - skipThisName
+    owners:
+    - skipThisOwner
+    labels:
+    - skipThisLabel
+includeAccess:
+  aws:
+    names:
+      - includeMeName
+    owners:
+      - includeMeOwner
+  azure:
+    names:
+    - includeMeName
+    owners:
+    - includeMeOwner
+includeInstance:
+  aws:
+    names:
+      - includeMeName
+    owners:
+      - includeMeOwner
+    labels:
+      - includeMeLabel
+  azure:
+    names:
+    - includeMeName
+    owners:
+    - includeMeOwner
+    labels:
+    - includeMeLabel

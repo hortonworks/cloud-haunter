@@ -1,5 +1,5 @@
 --- 
-access: 
+excludeAccess:
   aws: 
     names: 
       - awsName
@@ -15,7 +15,7 @@ access:
       - gcpName
     owners: 
       - gcpOwner
-instance: 
+excludeInstance:
   aws: 
     labels: 
       - awsLabel
