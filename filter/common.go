@@ -90,9 +90,8 @@ func getFilterConfigs(filterConfig *types.FilterConfig, filterType types.FilterC
 	if filterConfig != nil {
 		if filterType.IsInclusive() {
 			return filterConfig.IncludeAccess, filterConfig.IncludeInstance
-		} else {
-			return filterConfig.ExcludeAccess, filterConfig.ExcludeInstance
 		}
+		return filterConfig.ExcludeAccess, filterConfig.ExcludeInstance
 	}
 	return nil, nil
 }
