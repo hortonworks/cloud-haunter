@@ -131,7 +131,7 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 					if viewResult, err := p.vmScaleSetVMClient.GetInstanceView(context.Background(), resourceGroupName, *scaleSet.Name, getScaleSetVMInstanceID(*vm.Name)); err != nil {
 						log.Errorf("[AZURE] Failed to fetch the instance view of %s, err: %s", *vm.Name, err.Error())
 					} else {
-						instanceChan <- azureScaleSetInstance{vm, viewResult, resourceGroupName, *scaleSet.Name}
+						instanceChan <- azureScaleSetInstance{vm, viewResult, resourceGroupName, *scaleSet.Name, scaleSet.Tags}
 					}
 				}
 			} else {
@@ -170,6 +170,7 @@ type azureScaleSetInstance struct {
 	instanceView      compute.VirtualMachineScaleSetVMInstanceView
 	resourceGroupName string
 	scaleSetName      string
+	tagMap            map[string]*string
 }
 
 func (p azureProvider) GetDisks() ([]*types.Disk, error) {
@@ -229,8 +230,7 @@ func (p azureProvider) StopInstances(instances []*types.Instance) []error {
 			log.Debugf("[AZURE] Stopping instance: %s", instance.Name)
 			var err error
 			if _, ok := instance.Metadata["scaleSetName"]; ok {
-				// _, err = p.vmScaleSetVMClient.Deallocate(context.Background(), instance.Metadata["resourceGroupName"], instance.Metadata["scaleSetName"], getScaleSetVMInstanceID(instance.Name))
-				err = errors.New("Stop is not allowed for: " + instance.Name)
+				_, err = p.vmScaleSetVMClient.Deallocate(context.Background(), instance.Metadata["resourceGroupName"], instance.Metadata["scaleSetName"], getScaleSetVMInstanceID(instance.Name))
 			} else {
 				_, err = p.vmClient.Deallocate(context.Background(), instance.Metadata["resourceGroupName"], instance.Name)
 			}
@@ -281,7 +281,7 @@ func newInstanceByVM(inst azureInstance) *types.Instance {
 }
 
 func newInstanceByScaleSetVM(inst azureScaleSetInstance) *types.Instance {
-	instance := newInstance(*inst.instance.Name, *inst.instance.ID, *inst.instance.Location, string(inst.instance.HardwareProfile.VMSize), inst.resourceGroupName, getScaleSetInstanceState(inst.instanceView), inst.instance.Tags)
+	instance := newInstance(*inst.instance.Name, *inst.instance.ID, *inst.instance.Location, string(inst.instance.HardwareProfile.VMSize), inst.resourceGroupName, getScaleSetInstanceState(inst.instanceView), inst.tagMap)
 	instance.Metadata["scaleSetName"] = inst.scaleSetName
 	return instance
 }
