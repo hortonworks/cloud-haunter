@@ -65,7 +65,7 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 				return isMatchWithIgnores(filterName, item, inst.Tags,
 					instanceFilter.Gcp.Names, instanceFilter.Gcp.Owners, instanceFilter.Gcp.Labels)
 			default:
-				log.Warnf("[%s] Cloud type not supported: ", filterName, item.GetCloudType())
+				log.Warnf("[%s] Cloud type not supported: %s", filterName, item.GetCloudType())
 			}
 		}
 	case types.Access:
@@ -79,7 +79,7 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 			case types.GCP:
 				return isNameOrOwnerMatch(filterName, item, accessFilter.Gcp.Names, accessFilter.Gcp.Owners)
 			default:
-				log.Warnf("[%s] Cloud type not supported: ", filterName, item.GetCloudType())
+				log.Warnf("[%s] Cloud type not supported: %s", filterName, item.GetCloudType())
 			}
 		}
 	}

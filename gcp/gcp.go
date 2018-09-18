@@ -189,7 +189,7 @@ func getInstances(aggregator instancesListAggregator) ([]*types.Instance, error)
 		log.Errorf("[GCP] Failed to fetch the running instances, err: %s", err.Error())
 		return nil, err
 	}
-	log.Debugf("[GCP] Processing instances (%d): [%s]", len(instanceList.Items), instanceList.Items)
+	log.Debugf("[GCP] Processing instances (%d): [%v]", len(instanceList.Items), instanceList.Items)
 	for _, items := range instanceList.Items {
 		for _, inst := range items.Instances {
 			instances = append(instances, newInstance(inst))
@@ -211,7 +211,7 @@ func getAccesses(serviceAccountAggregator serviceAccountsListAggregator, getKeys
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("[GCP] Processing service accounts (%d): [%s]", len(accounts.Accounts), accounts.Accounts)
+	log.Debugf("[GCP] Processing service accounts (%d): [%v]", len(accounts.Accounts), accounts.Accounts)
 	now := time.Now()
 	var accesses []*types.Access
 	for _, account := range accounts.Accounts {
@@ -220,7 +220,7 @@ func getAccesses(serviceAccountAggregator serviceAccountsListAggregator, getKeys
 		if err != nil {
 			return nil, err
 		}
-		log.Debugf("[GCP] Processing keys of %s (%d): [%s]", account.Name, len(keys.Keys), keys.Keys)
+		log.Debugf("[GCP] Processing keys of %s (%d): [%v]", account.Name, len(keys.Keys), keys.Keys)
 		for _, key := range keys.Keys {
 			validBefore, err := utils.ConvertTimeRFC3339(key.ValidBeforeTime)
 			if err != nil {

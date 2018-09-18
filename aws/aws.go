@@ -171,7 +171,7 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 			defer wg.Done()
 
 			instIDNames, instanceIDs := getNameIDPairs(instances)
-			log.Debugf("[AWS] Detecting auto scaling group for instances at %s (%d): %s", region, len(instanceIDs), instanceIDs)
+			log.Debugf("[AWS] Detecting auto scaling group for instances at %s (%d): %v", region, len(instanceIDs), instanceIDs)
 
 			// We need to suspend the ASGs as it will terminate the stopped instances
 			// Instances that are not part of an ASG are not returned
@@ -186,8 +186,20 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 				compactInstanceName := fmt.Sprintf("%s:%s", *instance.InstanceId, instIDNames[*instance.InstanceId])
 				log.Debugf("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
 
-				if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{AutoScalingGroupName: instance.AutoScalingGroupName}); err != nil {
-					log.Errorf("[AWS] Failed to suspend ASG %s for instance %s", instance.AutoScalingGroupName, compactInstanceName)
+				if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{
+					AutoScalingGroupName: instance.AutoScalingGroupName,
+					ScalingProcesses: []*string{
+						&(&types.S{S: "Launch"}).S,
+						&(&types.S{S: "HealthCheck"}).S,
+						&(&types.S{S: "ReplaceUnhealthy"}).S,
+						&(&types.S{S: "AZRebalance"}).S,
+						&(&types.S{S: "AlarmNotification"}).S,
+						&(&types.S{S: "ScheduledActions"}).S,
+						&(&types.S{S: "AddToLoadBalancer"}).S,
+						&(&types.S{S: "RemoveFromLoadBalancerLowPriority"}).S,
+					},
+				}); err != nil {
+					log.Errorf("[AWS] Failed to suspend ASG %v for instance %s", instance.AutoScalingGroupName, compactInstanceName)
 
 					// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
 					instanceIDs = removeInstance(instanceIDs, instance.InstanceId)
@@ -218,7 +230,7 @@ func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []err
 	for _, vol := range volumes {
 		regionVolumes[vol.Region] = append(regionVolumes[vol.Region], vol)
 	}
-	log.Debugf("[AWS] Delete volumes: %s", regionVolumes)
+	log.Debugf("[AWS] Delete volumes: %v", regionVolumes)
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(regionVolumes))
