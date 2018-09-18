@@ -171,7 +171,7 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 			defer wg.Done()
 
 			instIDNames, instanceIDs := getNameIDPairs(instances)
-			log.Debugf("[AWS] Detecting auto scaling group for instances at %s (%d): %s", region, len(instanceIDs), instanceIDs)
+			log.Debugf("[AWS] Detecting auto scaling group for instances at %s (%d): %v", region, len(instanceIDs), instanceIDs)
 
 			// We need to suspend the ASGs as it will terminate the stopped instances
 			// Instances that are not part of an ASG are not returned
@@ -199,7 +199,7 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 						&(&types.S{S: "RemoveFromLoadBalancerLowPriority"}).S,
 					},
 				}); err != nil {
-					log.Errorf("[AWS] Failed to suspend ASG %s for instance %s", instance.AutoScalingGroupName, compactInstanceName)
+					log.Errorf("[AWS] Failed to suspend ASG %v for instance %s", instance.AutoScalingGroupName, compactInstanceName)
 
 					// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
 					instanceIDs = removeInstance(instanceIDs, instance.InstanceId)
@@ -230,7 +230,7 @@ func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []err
 	for _, vol := range volumes {
 		regionVolumes[vol.Region] = append(regionVolumes[vol.Region], vol)
 	}
-	log.Debugf("[AWS] Delete volumes: %s", regionVolumes)
+	log.Debugf("[AWS] Delete volumes: %v", regionVolumes)
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(regionVolumes))

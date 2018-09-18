@@ -58,7 +58,7 @@ func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 			return true
 		}
 		match := item.GetCreated().Add(f.runningPeriod).Before(now)
-		log.Debugf("[LONGRUNNING] %s: %s match: %b", item.GetType(), item.GetName(), match)
+		log.Debugf("[LONGRUNNING] %s: %s match: %v", item.GetType(), item.GetName(), match)
 		return match
 	})
 }

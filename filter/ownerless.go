@@ -23,7 +23,7 @@ func (o ownerless) Execute(items []types.CloudItem) []types.CloudItem {
 		}
 		inst := item.(*types.Instance)
 		match := !utils.IsAnyMatch(inst.Tags, ctx.OwnerLabels[item.GetCloudType()])
-		log.Debugf("[OWNERLESS] Instances: %s match: %b", inst.Name, match)
+		log.Debugf("[OWNERLESS] Instances: %s match: %v", inst.Name, match)
 		return match
 	})
 }

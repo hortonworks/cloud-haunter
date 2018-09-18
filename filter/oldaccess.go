@@ -40,7 +40,7 @@ func (f oldAccess) Execute(items []types.CloudItem) []types.CloudItem {
 			return true
 		}
 		match := item.GetCreated().Add(f.availablePeriod).Before(time.Now())
-		log.Debugf("[OLDACCESS] Access: %s match: %b", item.GetName(), match)
+		log.Debugf("[OLDACCESS] Access: %s match: %v", item.GetName(), match)
 		return match
 	})
 }
