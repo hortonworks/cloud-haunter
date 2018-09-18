@@ -186,7 +186,19 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 				compactInstanceName := fmt.Sprintf("%s:%s", *instance.InstanceId, instIDNames[*instance.InstanceId])
 				log.Debugf("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
 
-				if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{AutoScalingGroupName: instance.AutoScalingGroupName}); err != nil {
+				if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{
+					AutoScalingGroupName: instance.AutoScalingGroupName,
+					ScalingProcesses: []*string{
+						&(&types.S{S: "Launch"}).S,
+						&(&types.S{S: "HealthCheck"}).S,
+						&(&types.S{S: "ReplaceUnhealthy"}).S,
+						&(&types.S{S: "AZRebalance"}).S,
+						&(&types.S{S: "AlarmNotification"}).S,
+						&(&types.S{S: "ScheduledActions"}).S,
+						&(&types.S{S: "AddToLoadBalancer"}).S,
+						&(&types.S{S: "RemoveFromLoadBalancerLowPriority"}).S,
+					},
+				}); err != nil {
 					log.Errorf("[AWS] Failed to suspend ASG %s for instance %s", instance.AutoScalingGroupName, compactInstanceName)
 
 					// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
