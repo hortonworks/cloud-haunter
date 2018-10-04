@@ -42,7 +42,7 @@ format:
 	gofmt -s -w $(GOFILES_NOVENDOR)
 
 vet:
-	go vet ./...
+	go vet -shadow ./...
 
 test:
 	go test -timeout 30s -coverprofile coverage -race $$(go list ./... | grep -v /vendor/)
