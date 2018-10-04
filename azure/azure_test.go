@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/Azure/go-autorest/autorest"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
@@ -68,35 +67,18 @@ func TestGetResourceGroupNameNotFound(t *testing.T) {
 	assert.Equal(t, "", resourceGroupName)
 }
 
-func getInstance() *compute.VirtualMachine {
-	instanceName := "testInstance"
-	instanceID := "id-1234"
-	instanceLocation := "testLocation"
-	hwInfo := compute.VirtualMachineProperties{HardwareProfile: &compute.HardwareProfile{VMSize: "Standard_DS1_v2"}}
-	return &compute.VirtualMachine{Name: &instanceName, ID: &instanceID, Location: &instanceLocation, VirtualMachineProperties: &hwInfo}
-}
-
-func getInstanceView() *compute.VirtualMachineInstanceView {
-	code := "PowerState/running"
-	statuses := make([]compute.InstanceViewStatus, 0)
-	statuses = append(statuses, compute.InstanceViewStatus{
-		Code: &code,
-	})
-	return &compute.VirtualMachineInstanceView{Statuses: &statuses}
-}
-
 func getStubConvertTimeUnixByTime(timeAsTime time.Time) (*callInfo, func(string) time.Time) {
-	callInfo := callInfo{invocations: make([]interface{}, 0, 3)}
-	return &callInfo, func(unixTimestamp string) time.Time {
-		callInfo.invocations = append(callInfo.invocations, unixTimestamp)
+	cInfo := callInfo{invocations: make([]interface{}, 0, 3)}
+	return &cInfo, func(unixTimestamp string) time.Time {
+		cInfo.invocations = append(cInfo.invocations, unixTimestamp)
 		return timeAsTime
 	}
 }
 
 func getStubConvertTimeUnixEpochZero() (*callInfo, func(string) time.Time) {
-	callInfo := callInfo{invocations: make([]interface{}, 0, 3)}
-	return &callInfo, func(unixTimestamp string) time.Time {
-		callInfo.invocations = append(callInfo.invocations, unixTimestamp)
+	cInfo := callInfo{invocations: make([]interface{}, 0, 3)}
+	return &cInfo, func(unixTimestamp string) time.Time {
+		cInfo.invocations = append(cInfo.invocations, unixTimestamp)
 		return time.Date(1970, 1, 1, 0, 0, 0, 0, time.Local)
 	}
 }
