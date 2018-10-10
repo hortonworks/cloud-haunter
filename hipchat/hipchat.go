@@ -26,7 +26,9 @@ func init() {
 	server := os.Getenv("HIPCHAT_SERVER")
 	room := os.Getenv("HIPCHAT_ROOM")
 	if len(token) == 0 || len(server) == 0 || len(room) == 0 {
-		log.Warn("[HIPCHAT] HIPCHAT_TOKEN or HIPCHAT_SERVER or HIPCHAT_ROOM environment variables are missing")
+		if len(token+server+room) != 0 {
+			log.Warn("[HIPCHAT] HIPCHAT_TOKEN or HIPCHAT_SERVER or HIPCHAT_ROOM environment variables are missing")
+		}
 		return
 	}
 	if serverURL, err := url.Parse(server); err != nil {
