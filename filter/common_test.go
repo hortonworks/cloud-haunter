@@ -1,11 +1,12 @@
 package operation
 
 import (
+	"testing"
+
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestIsIgnored(t *testing.T) {
@@ -319,4 +320,12 @@ func TestExclusiveFilter(t *testing.T) {
 	})
 
 	assert.Equal(t, 3, len(filtered))
+}
+
+func TestIsInstance(t *testing.T) {
+	assert.True(t, isInstance(types.Instance{}))
+}
+
+func TestIsNotInstance(t *testing.T) {
+	assert.False(t, isInstance(types.Access{}))
 }
