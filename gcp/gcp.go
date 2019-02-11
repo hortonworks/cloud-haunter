@@ -264,18 +264,27 @@ func newInstance(inst *compute.Instance) *types.Instance {
 	if err != nil {
 		log.Warnf("[GCP] cannot convert time: %s, err: %s", inst.CreationTimestamp, err.Error())
 	}
+	tags := convertTags(inst.Labels)
 	return &types.Instance{
 		Name:         inst.Name,
 		ID:           strconv.Itoa(int(inst.Id)),
 		Created:      created,
 		CloudType:    types.GCP,
-		Tags:         inst.Labels,
-		Owner:        inst.Labels[ctx.GcpOwnerLabel],
+		Tags:         tags,
+		Owner:        tags[ctx.OwnerLabel],
 		Metadata:     map[string]string{"zone": getZone(inst.Zone)},
 		Region:       getRegionFromZoneURL(&inst.Zone),
 		InstanceType: inst.MachineType[strings.LastIndex(inst.MachineType, "/")+1:],
 		State:        getInstanceState(inst),
 	}
+}
+
+func convertTags(tags map[string]string) map[string]string {
+	result := make(map[string]string, 0)
+	for k, v := range tags {
+		result[strings.ToLower(k)] = v
+	}
+	return result
 }
 
 // Possible values:

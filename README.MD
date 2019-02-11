@@ -29,11 +29,11 @@ And can do action:
 For the proper work, you have to use some custom tags/labels on your cloud resources.
 
 #### AWS
- * Owner tag: `Owner`
+ * Owner tag: `owner` or `Owner`
  * Ignore tag: `cloud-cost-reducer-ignore`
 
 #### Azure
- * Owner tag: `Owner`
+ * Owner tag: `owner` or `Owner`
  * Ignore tag: `cloud-cost-reducer-ignore`
  * Resource creation time, because Azure SDK doesn't response it: `cb-creation-timestamp`
 

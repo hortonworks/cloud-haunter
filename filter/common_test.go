@@ -14,7 +14,7 @@ func TestIsIgnored(t *testing.T) {
 		&types.Instance{
 			CloudType: types.AWS,
 			Name:      "ignored-by-ignore-label",
-			Tags:      types.Tags{ctx.AwsIgnoreLabel: "true"},
+			Tags:      types.Tags{ctx.IgnoreLabel: "true"},
 		},
 		&types.Instance{
 			CloudType: types.AWS,
@@ -87,7 +87,7 @@ func TestIncludedAndExcludedWithInclusiveFilter(t *testing.T) {
 		&types.Instance{
 			CloudType: types.AZURE,
 			Name:      "ignored-by-ignore-label",
-			Tags:      types.Tags{ctx.AwsIgnoreLabel: "true"},
+			Tags:      types.Tags{ctx.IgnoreLabel: "true"},
 		},
 		&types.Instance{
 			CloudType: types.AZURE,
@@ -153,7 +153,7 @@ func TestIncludedAndExcludedWithExclusiveFilter(t *testing.T) {
 		&types.Instance{
 			CloudType: types.AZURE,
 			Name:      "ignored-by-ignore-label",
-			Tags:      types.Tags{ctx.AwsIgnoreLabel: "true"},
+			Tags:      types.Tags{ctx.IgnoreLabel: "true"},
 		},
 		&types.Instance{
 			CloudType: types.AZURE,
