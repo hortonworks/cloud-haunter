@@ -310,7 +310,7 @@ func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]
 				for _, inst := range res.Instances {
 					i := newInstance(inst)
 					if len(i.Owner) == 0 && i.State == types.Running {
-						log.Debugf("[AWS] instance %s does not have an %s tag, check CloudTrail logs", i.Name, ctx.AwsOwnerLabel)
+						log.Debugf("[AWS] instance %s does not have an %s tag, check CloudTrail logs", i.Name, ctx.OwnerLabel)
 						if iamUser := getIAMUserFromCloudTrail(*inst.InstanceId, cloudTrailClient); iamUser != nil {
 							i.Metadata = map[string]string{"IAMUser": *iamUser}
 						}
@@ -573,7 +573,7 @@ func newSession(configure func(*aws.Config)) (*session.Session, error) {
 func newInstance(inst *ec2.Instance) *types.Instance {
 	tags := getTags(inst.Tags)
 	var name string
-	if n, ok := tags["Name"]; ok {
+	if n, ok := tags["name"]; ok {
 		name = n
 	} else {
 		name = *inst.InstanceId
@@ -584,7 +584,7 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		Created:      *inst.LaunchTime,
 		CloudType:    types.AWS,
 		Tags:         tags,
-		Owner:        tags[ctx.AwsOwnerLabel],
+		Owner:        tags[ctx.OwnerLabel],
 		Region:       getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
 		InstanceType: *inst.InstanceType,
 		State:        getInstanceState(inst),
@@ -675,7 +675,7 @@ func getDatabaseState(rds rds.DBInstance) types.State {
 func getTags(ec2Tags []*ec2.Tag) types.Tags {
 	tags := make(types.Tags, 0)
 	for _, t := range ec2Tags {
-		tags[*t.Key] = *t.Value
+		tags[strings.ToLower(*t.Key)] = *t.Value
 	}
 	return tags
 }

@@ -42,9 +42,9 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 	case types.Instance:
 		inst := item.GetItem().(types.Instance)
 		name := item.GetName()
-		ignoreLabelFound := utils.IsAnyMatch(inst.Tags, ctx.IgnoreLabels[item.GetCloudType()])
+		ignoreLabelFound := utils.IsAnyMatch(inst.Tags, ctx.IgnoreLabel)
 		if ignoreLabelFound {
-			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabels[item.GetCloudType()])
+			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
 			if filterType.IsInclusive() {
 				log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
 				return false

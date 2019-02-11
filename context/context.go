@@ -8,19 +8,11 @@ var (
 	// BuildTime is global variable to store build time generated during release
 	BuildTime string
 
-	// AwsIgnoreLabel is the instance label on AWS to skip from operation
-	AwsIgnoreLabel = "cloud-cost-reducer-ignore"
-	// AzureIgnoreLabel is the instance label on Azure to skip from operation
-	AzureIgnoreLabel = "cloud-cost-reducer-ignore"
-	// GcpIgnoreLabel is the instance label on GCP to skip from operation
-	GcpIgnoreLabel = "cloud-cost-reducer-ignore"
+	// IgnoreLabel across all cloud providers
+	IgnoreLabel = "cloud-cost-reducer-ignore"
 
-	// AwsOwnerLabel is the owner label on AWS
-	AwsOwnerLabel = "Owner"
-	// AzureOwnerLabel is the owner label on Azure
-	AzureOwnerLabel = "Owner"
-	// GcpOwnerLabel is the owner label on GCP
-	GcpOwnerLabel = "owner"
+	// OwnerLabel across all cloud providers
+	OwnerLabel = "owner"
 
 	// AzureCreationTimeLabel is the instance creation tim on Azure, because Azure is stupid and doesn't tell
 	AzureCreationTimeLabel = "cb-creation-timestamp"
@@ -41,12 +33,6 @@ var Filters = make(map[types.FilterType]types.Filter)
 // CloudProviders contains all the available cloud providers
 var CloudProviders = make(map[types.CloudType]func() types.CloudProvider)
 
-// IgnoreLabels contains all the ignore labes by cloud
-var IgnoreLabels = make(map[types.CloudType]string)
-
-// OwnerLabels contains all the owner labels by cloud
-var OwnerLabels = make(map[types.CloudType]string)
-
 // Dispatchers contains all the available dispatchers
 var Dispatchers = make(map[string]types.Dispatcher)
 
@@ -55,13 +41,3 @@ var Actions = make(map[types.ActionType]types.Action)
 
 // FilterConfig contains the include/exclude configurations from config file
 var FilterConfig *types.FilterConfig
-
-func init() {
-	IgnoreLabels[types.AWS] = AwsIgnoreLabel
-	IgnoreLabels[types.AZURE] = AzureIgnoreLabel
-	IgnoreLabels[types.GCP] = GcpIgnoreLabel
-
-	OwnerLabels[types.AWS] = AwsOwnerLabel
-	OwnerLabels[types.AZURE] = AzureOwnerLabel
-	OwnerLabels[types.GCP] = GcpOwnerLabel
-}

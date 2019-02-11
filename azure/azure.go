@@ -145,7 +145,7 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 		close(instanceChan)
 	}()
 
-	instances := []*types.Instance{}
+	var instances []*types.Instance
 	for inst := range instanceChan {
 		switch inst.(type) {
 		case azureInstance:
@@ -247,11 +247,11 @@ func (p azureProvider) StopInstances(instances []*types.Instance) []error {
 		close(errChan)
 	}()
 
-	errors := []error{}
+	var ers []error
 	for err := range errChan {
-		errors = append(errors, err)
+		ers = append(ers, err)
 	}
-	return errors
+	return ers
 }
 
 func (p azureProvider) GetAccesses() ([]*types.Access, error) {
@@ -294,7 +294,7 @@ func newInstance(name, ID, location, instanceType, resourceGroupName string, sta
 		Created:      getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 		CloudType:    types.AZURE,
 		Tags:         tags,
-		Owner:        tags[ctx.AzureOwnerLabel],
+		Owner:        tags[ctx.OwnerLabel],
 		Region:       location,
 		InstanceType: instanceType,
 		State:        state,
