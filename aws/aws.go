@@ -160,7 +160,7 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 	for _, instance := range instances {
 		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance)
 	}
-	log.Debugf("[AWS] Stopping instances: %s", regionInstances)
+	log.Debugf("[AWS] Stopping instances: %v", regionInstances)
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(regionInstances))
