@@ -48,8 +48,8 @@ func (s stopAction) Execute(op types.OpType, filters []types.FilterType, items [
 
 func getInstanceNames(instances []*types.Instance) []string {
 	result := make([]string, len(instances))
-	for _, inst := range instances {
-		result = append(result, fmt.Sprintf("%s:%s", inst.ID, inst.Name))
+	for i, inst := range instances {
+		result[i] = fmt.Sprintf("%s:%s", inst.ID, inst.Name)
 	}
 	return result
 }
