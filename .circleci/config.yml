@@ -18,10 +18,6 @@ jobs:
             - pkg-cache
 
       - run:
-          name: Downloading dependencies
-          command: make deps-errcheck
-
-      - run:
           name: Analyzing code
           command: make _check
 

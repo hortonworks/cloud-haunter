@@ -218,7 +218,7 @@ func (p azureProvider) TerminateInstances([]*types.Instance) []error {
 }
 
 func (p azureProvider) StopInstances(instances []*types.Instance) []error {
-	log.Debugf("[AZURE] Stopping instances (%d): %s", len(instances), instances)
+	log.Debugf("[AZURE] Stopping instances (%d): %v", len(instances), instances)
 	wg := sync.WaitGroup{}
 	wg.Add(len(instances))
 	errChan := make(chan error)

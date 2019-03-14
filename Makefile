@@ -25,15 +25,10 @@ GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -
 
 all: deps build
 
-deps: deps-errcheck
-	go get -u github.com/golang/dep/cmd/dep
-	# go get -u golang.org/x/tools/cmd/goimports
+deps:
 	go get -u github.com/keyki/glu
 
-deps-errcheck:
-	go get -u github.com/kisielk/errcheck
-
-_check: errcheck formatcheck vet
+_check: formatcheck vet
 
 formatcheck:
 	([ -z "$(shell gofmt -d $(GOFILES_NOVENDOR))" ]) || (echo "Source is unformatted"; exit 1)
@@ -42,13 +37,10 @@ format:
 	gofmt -s -w $(GOFILES_NOVENDOR)
 
 vet:
-	go vet -shadow ./...
+	go vet ./...
 
 test:
 	go test -timeout 30s -coverprofile coverage -race $$(go list ./... | grep -v /vendor/)
-
-errcheck:
-	errcheck -ignoretests ./...
 
 _build: build-darwin build-linux
 
@@ -59,7 +51,7 @@ cleanup:
 
 build-docker:
 	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
-	docker run --rm ${USER_NS} -v "${PWD}":/go/src/$(PKG_BASE) -w /go/src/$(PKG_BASE) golang:1.9 make deps-errcheck build
+	docker run --rm ${USER_NS} -v "${PWD}":/go/src/$(PKG_BASE) -w /go/src/$(PKG_BASE) golang:1.12 make build
 
 build-darwin:
 	GOOS=darwin CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Darwin/${BINARY} main.go
