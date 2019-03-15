@@ -181,6 +181,10 @@ func (p azureProvider) DeleteDisks([]*types.Disk) []error {
 	return []error{errors.New("[AZURE] Disk deletion is not supported")}
 }
 
+func (p azureProvider) GetImages() ([]*types.Image, error) {
+	return nil, errors.New("[AZURE] List of images is not supported")
+}
+
 func (p azureProvider) TerminateInstances([]*types.Instance) []error {
 	return []error{errors.New("[AZURE] Termination is not supported")}
 	// rgClient = resources.NewGroupsClient(subscriptionId)

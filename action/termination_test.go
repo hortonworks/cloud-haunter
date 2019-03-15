@@ -5,13 +5,8 @@ import (
 
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
-
-func xTestTerminationInit(t *testing.T) {
-	assert.NotNil(t, ctx.Actions[types.TerminationAction])
-}
 
 type mockProvider struct {
 	calls int
@@ -49,6 +44,10 @@ func (p *mockProvider) GetDisks() ([]*types.Disk, error) {
 
 func (p *mockProvider) DeleteDisks([]*types.Disk) []error {
 	return nil
+}
+
+func (p *mockProvider) GetImages() ([]*types.Image, error) {
+	return nil, nil
 }
 
 type terminationSuite struct {

@@ -95,6 +95,10 @@ func (p gcpProvider) DeleteDisks([]*types.Disk) []error {
 	return []error{errors.New("[GCP] Disk deletion is not supported")}
 }
 
+func (p gcpProvider) GetImages() ([]*types.Image, error) {
+	return nil, errors.New("[GCP] List of images is not supported")
+}
+
 func (p gcpProvider) TerminateInstances(instances []*types.Instance) []error {
 	return []error{errors.New("[GCP] Termination is not supported")}
 	// 	log.Debug("[GCP] Terminating instanes")

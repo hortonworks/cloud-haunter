@@ -31,4 +31,5 @@ type CloudProvider interface {
 	GetDatabases() ([]*Database, error)
 	GetDisks() ([]*Disk, error)
 	DeleteDisks([]*Disk) []error
+	GetImages() ([]*Image, error)
 }
