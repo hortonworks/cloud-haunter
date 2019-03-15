@@ -2,13 +2,14 @@ package aws
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hortonworks/cloud-haunter/utils"
 	"net/http"
-	"sync"
-
-	"encoding/json"
 	"strings"
+	"sync"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
@@ -154,6 +155,12 @@ func (p awsProvider) DeleteDisks(volumes []*types.Disk) []error {
 	return deleteVolumes(ec2Clients, volumes)
 }
 
+func (p awsProvider) GetImages() ([]*types.Image, error) {
+	log.Debug("[AWS] Fetch images")
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	return getImages(ec2Clients)
+}
+
 func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 	log.Debug("[AWS] Stopping instances")
 	regionInstances := map[string][]*types.Instance{}
@@ -275,6 +282,7 @@ type ec2Client interface {
 	DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
 	DescribeVolumes(input *ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error)
 	DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error)
+	DescribeImages(input *ec2.DescribeImagesInput) (*ec2.DescribeImagesOutput, error)
 }
 
 type cloudTrailClient interface {
@@ -331,6 +339,42 @@ func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]
 		instances = append(instances, inst)
 	}
 	return instances, nil
+}
+
+func getImages(ec2Clients map[string]ec2Client) ([]*types.Image, error) {
+	imgChan := make(chan *types.Image)
+	wg := sync.WaitGroup{}
+	wg.Add(len(ec2Clients))
+
+	for r, c := range ec2Clients {
+		log.Debugf("[AWS] Fetching images from region: %s", r)
+		go func(region string, ec2Client ec2Client) {
+			defer wg.Done()
+
+			result, err := ec2Client.DescribeImages(&ec2.DescribeImagesInput{Owners: []*string{&(&types.S{S: "self"}).S}})
+			if err != nil {
+				log.Errorf("[AWS] Failed to fetch the images in region: %s, err: %s", region, err)
+				return
+			}
+			log.Debugf("[AWS] Processing images (%d): [%s] in region: %s", len(result.Images), result.Images, region)
+			for _, img := range result.Images {
+				imgChan <- newImage(img, region)
+			}
+
+		}(r, c)
+	}
+
+	go func() {
+		wg.Wait()
+		close(imgChan)
+	}()
+
+	var images []*types.Image
+	for img := range imgChan {
+		images = append(images, img)
+	}
+
+	return images, nil
 }
 
 func getDisks(ec2Clients map[string]ec2Client) ([]*types.Disk, error) {
@@ -637,6 +681,22 @@ func newDisk(volume *ec2.Volume) *types.Disk {
 		Created:   *volume.CreateTime,
 		Size:      *volume.Size,
 		Type:      *volume.VolumeType,
+	}
+}
+
+func newImage(image *ec2.Image, region string) *types.Image {
+	createdAt, err := utils.ConvertTimeLayout("2006-01-02T15:04:05.000Z", *image.CreationDate)
+	if err != nil {
+		log.Debugf("Failed to parse time: %s for image: %s", *image.CreationDate, *image.ImageId)
+		createdAt = time.Now()
+	}
+
+	return &types.Image{
+		ID:        *image.ImageId,
+		Name:      *image.Name,
+		CloudType: types.AWS,
+		Region:    region,
+		Created:   createdAt,
 	}
 }
 

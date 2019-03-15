@@ -52,6 +52,11 @@ func ConvertTimeRFC3339(stringTime string) (time.Time, error) {
 	return time.Parse(time.RFC3339, stringTime)
 }
 
+// ConvertTimeLayout converts a string in the format of the layout to time.Time
+func ConvertTimeLayout(layout, timeString string) (time.Time, error) {
+	return time.Parse(layout, timeString)
+}
+
 // ConvertTimeUnix parses a unix timestamp (seconds since epoch start) from string to time.Time
 func ConvertTimeUnix(unixTimestamp string) time.Time {
 	timestamp, err := strconv.ParseInt(unixTimestamp, 10, 64)

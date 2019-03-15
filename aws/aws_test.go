@@ -117,6 +117,10 @@ func (t mockEc2Client) DescribeVolumes(input *ec2.DescribeVolumesInput) (*ec2.De
 	return nil, nil
 }
 
+func (t mockEc2Client) DescribeImages(input *ec2.DescribeImagesInput) (*ec2.DescribeImagesOutput, error) {
+	return nil, nil
+}
+
 func (t mockEc2Client) DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error) {
 	return nil, nil
 }

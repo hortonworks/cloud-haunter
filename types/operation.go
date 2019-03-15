@@ -12,6 +12,9 @@ const (
 
 	// Disks operation to return all the disks
 	Disks = OpType("getDisks")
+
+	// Images operation to return all the images
+	Images = OpType("getImages")
 )
 
 // OpType type of the operation

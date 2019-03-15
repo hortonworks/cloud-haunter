@@ -92,3 +92,7 @@ func (p dummyProvider) GetDisks() ([]*types.Disk, error) {
 func (p dummyProvider) DeleteDisks([]*types.Disk) []error {
 	return nil
 }
+
+func (p dummyProvider) GetImages() ([]*types.Image, error) {
+	return nil, nil
+}
