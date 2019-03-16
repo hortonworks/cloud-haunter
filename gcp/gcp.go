@@ -96,7 +96,8 @@ func (p gcpProvider) DeleteDisks([]*types.Disk) []error {
 }
 
 func (p gcpProvider) GetImages() ([]*types.Image, error) {
-	return nil, errors.New("[GCP] List of images is not supported")
+	log.Debug("[GCP] Fetching images")
+	return getImages(p.computeClient.Images.List(p.projectID))
 }
 
 func (p gcpProvider) TerminateInstances(instances []*types.Instance) []error {
@@ -210,6 +211,24 @@ type keysListAggregator interface {
 	Do(opts ...googleapi.CallOption) (*iam.ListServiceAccountKeysResponse, error)
 }
 
+type imageListAggregator interface {
+	Do(opts ...googleapi.CallOption) (*compute.ImageList, error)
+}
+
+func getImages(listImages imageListAggregator) ([]*types.Image, error) {
+	imagesResponse, err := listImages.Do()
+	if err != nil {
+		return nil, err
+	}
+	items := imagesResponse.Items
+	log.Debugf("[GCP] Processing images (%d): [%v]", len(items), items)
+	images := make([]*types.Image, 0)
+	for _, image := range items {
+		images = append(images, newImage(image))
+	}
+	return images, nil
+}
+
 func getAccesses(serviceAccountAggregator serviceAccountsListAggregator, getKeysAggregator func(string) keysListAggregator) ([]*types.Access, error) {
 	accounts, err := serviceAccountAggregator.Do()
 	if err != nil {
@@ -262,6 +281,20 @@ func getAccesses(serviceAccountAggregator serviceAccountsListAggregator, getKeys
 // 	log.Infof("[GCP] Available regions: %v", regions)
 // 	return regions, nil
 // }
+
+func newImage(image *compute.Image) *types.Image {
+	created, err := utils.ConvertTimeRFC3339(image.CreationTimestamp)
+	if err != nil {
+		log.Warnf("[GCP] cannot convert time: %s, err: %s", image.CreationTimestamp, err.Error())
+	}
+	return &types.Image{
+		Name:      image.Name,
+		ID:        strconv.Itoa(int(image.Id)),
+		Created:   created,
+		CloudType: types.GCP,
+		Region:    "",
+	}
+}
 
 func newInstance(inst *compute.Instance) *types.Instance {
 	created, err := utils.ConvertTimeRFC3339(inst.CreationTimestamp)
