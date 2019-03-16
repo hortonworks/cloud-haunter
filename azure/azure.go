@@ -28,6 +28,7 @@ type azureProvider struct {
 	subscriptionClient subscriptions.Client
 	vmScaleSetClient   compute.VirtualMachineScaleSetsClient
 	vmScaleSetVMClient compute.VirtualMachineScaleSetVMsClient
+	imageClient        compute.ImagesClient
 	// rgClient       resources.GroupsClient
 	// resClient      resources.Client
 }
@@ -64,6 +65,8 @@ func (p *azureProvider) init(subscriptionID string, authorizer func() (autorest.
 	p.vmScaleSetClient.Authorizer = authorization
 	p.vmScaleSetVMClient = compute.NewVirtualMachineScaleSetVMsClient(subscriptionID)
 	p.vmScaleSetVMClient.Authorizer = authorization
+	p.imageClient = compute.NewImagesClient(subscriptionID)
+	p.imageClient.Authorizer = authorization
 	return nil
 }
 
@@ -182,7 +185,19 @@ func (p azureProvider) DeleteDisks([]*types.Disk) []error {
 }
 
 func (p azureProvider) GetImages() ([]*types.Image, error) {
-	return nil, errors.New("[AZURE] List of images is not supported")
+	log.Debug("[AZURE] Fetching images")
+	imageResult, err := p.imageClient.List(context.Background())
+	if err != nil {
+		log.Errorf("[AZURE] Failed to fetch the images, err: %s", err.Error())
+		return nil, err
+	}
+
+	var images []*types.Image
+	for _, image := range imageResult.Values() {
+		images = append(images, newImage(image))
+	}
+
+	return images, nil
 }
 
 func (p azureProvider) TerminateInstances([]*types.Instance) []error {
@@ -288,6 +303,15 @@ func newInstanceByScaleSetVM(inst azureScaleSetInstance) *types.Instance {
 	instance := newInstance(*inst.instance.Name, *inst.instance.ID, *inst.instance.Location, string(inst.instance.HardwareProfile.VMSize), inst.resourceGroupName, getScaleSetInstanceState(inst.instanceView), inst.tagMap)
 	instance.Metadata["scaleSetName"] = inst.scaleSetName
 	return instance
+}
+
+func newImage(image compute.Image) *types.Image {
+	return &types.Image{
+		ID:        *image.ID,
+		Name:      *image.Name,
+		Region:    *image.Location,
+		CloudType: types.AZURE,
+	}
 }
 
 func newInstance(name, ID, location, instanceType, resourceGroupName string, state types.State, tagMap map[string]*string) *types.Instance {
