@@ -2,6 +2,24 @@ package types
 
 import "time"
 
+type DiskContainer struct {
+	disks []*Disk
+}
+
+func (c *DiskContainer) Get(cloudType CloudType) []*Disk {
+	items := []*Disk{}
+	for _, item := range c.disks {
+		if item.CloudType == cloudType {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func NewDiskContainer(disks []*Disk) *DiskContainer {
+	return &DiskContainer{disks}
+}
+
 // Disk represents the root and attached disks for the instances
 type Disk struct {
 	ID        string    `json:"Id"`

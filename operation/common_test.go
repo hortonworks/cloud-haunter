@@ -69,11 +69,11 @@ func (p dummyProvider) GetInstances() (i []*types.Instance, e error) {
 	return
 }
 
-func (p dummyProvider) TerminateInstances(i []*types.Instance) (e []error) {
+func (p dummyProvider) TerminateInstances(i *types.InstanceContainer) (e []error) {
 	return
 }
 
-func (p dummyProvider) StopInstances(i []*types.Instance) (e []error) {
+func (p dummyProvider) StopInstances(i *types.InstanceContainer) (e []error) {
 	return
 }
 
@@ -89,10 +89,14 @@ func (p dummyProvider) GetDisks() ([]*types.Disk, error) {
 	return nil, nil
 }
 
-func (p dummyProvider) DeleteDisks([]*types.Disk) []error {
+func (p dummyProvider) DeleteDisks(*types.DiskContainer) []error {
 	return nil
 }
 
 func (p dummyProvider) GetImages() ([]*types.Image, error) {
 	return nil, nil
+}
+
+func (p dummyProvider) DeleteImages(*types.ImageContainer) []error {
+	return nil
 }

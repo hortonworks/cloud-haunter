@@ -14,6 +14,7 @@ import (
 
 	"context"
 	"strconv"
+	"sync"
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/compute/v1"
@@ -91,7 +92,7 @@ func (p gcpProvider) GetDisks() ([]*types.Disk, error) {
 	return nil, errors.New("[GCP] Disk operations are not supported")
 }
 
-func (p gcpProvider) DeleteDisks([]*types.Disk) []error {
+func (p gcpProvider) DeleteDisks(*types.DiskContainer) []error {
 	return []error{errors.New("[GCP] Disk deletion is not supported")}
 }
 
@@ -100,7 +101,15 @@ func (p gcpProvider) GetImages() ([]*types.Image, error) {
 	return getImages(p.computeClient.Images.List(p.projectID))
 }
 
-func (p gcpProvider) TerminateInstances(instances []*types.Instance) []error {
+func (p gcpProvider) DeleteImages(images *types.ImageContainer) []error {
+	log.Debug("[GCP] Deleting images")
+	getAggregator := func(image string) imageDeleteAggregator {
+		return p.computeClient.Images.Delete(p.projectID, image)
+	}
+	return deleteImages(getAggregator, images.Get(types.GCP))
+}
+
+func (p gcpProvider) TerminateInstances(instances *types.InstanceContainer) []error {
 	return []error{errors.New("[GCP] Termination is not supported")}
 	// 	log.Debug("[GCP] Terminating instanes")
 	// instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectId).Do()
@@ -168,7 +177,7 @@ func (p gcpProvider) TerminateInstances(instances []*types.Instance) []error {
 	// return nil
 }
 
-func (p gcpProvider) StopInstances([]*types.Instance) []error {
+func (p gcpProvider) StopInstances(*types.InstanceContainer) []error {
 	return []error{errors.New("[GCP] Stop not supported")}
 }
 
@@ -227,6 +236,47 @@ func getImages(listImages imageListAggregator) ([]*types.Image, error) {
 		images = append(images, newImage(image))
 	}
 	return images, nil
+}
+
+type imageDeleteAggregator interface {
+	Do(opts ...googleapi.CallOption) (*compute.Operation, error)
+}
+
+func deleteImages(getAggregator func(string) imageDeleteAggregator, images []*types.Image) []error {
+	wg := sync.WaitGroup{}
+	wg.Add(len(images))
+	errChan := make(chan error)
+	sem := make(chan bool, 10)
+
+	for _, image := range images {
+		parts := strings.Split(image.ID, "/")
+		ID := strings.Replace(parts[len(parts)-1], ".tar.gz", "", 1)
+		go func() {
+			sem <- true
+			defer func() {
+				wg.Done()
+				<-sem
+			}()
+
+			log.Infof("[GCP] Delete image: %s", ID)
+			_, err := getAggregator(ID).Do()
+			if err != nil {
+				log.Errorf("[GCP] Unable to delete image: %s because: %s", ID, err.Error())
+				errChan <- errors.New(ID)
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 func getAccesses(serviceAccountAggregator serviceAccountsListAggregator, getKeysAggregator func(string) keysListAggregator) ([]*types.Access, error) {

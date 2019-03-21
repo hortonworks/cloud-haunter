@@ -60,7 +60,7 @@ func terminateInstances(provider types.CloudProvider, items []*types.CloudItem) 
 		inst := (*item).GetItem().(types.Instance)
 		instances = append(instances, &inst)
 	}
-	return provider.TerminateInstances(instances)
+	return provider.TerminateInstances(types.NewInstanceContainer(instances))
 }
 
 func deleteDisks(provider types.CloudProvider, items []*types.CloudItem) []error {
@@ -69,5 +69,5 @@ func deleteDisks(provider types.CloudProvider, items []*types.CloudItem) []error
 		disk := (*item).GetItem().(types.Disk)
 		disks = append(disks, &disk)
 	}
-	return provider.DeleteDisks(disks)
+	return provider.DeleteDisks(types.NewDiskContainer(disks))
 }
