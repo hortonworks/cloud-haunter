@@ -54,7 +54,7 @@ func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 				return false
 			}
 		default:
-			log.Debugf("[LONGRUNNING] Filter does not apply for cloud item: %s", item.GetName())
+			log.Fatalf("[LONGRUNNING] Filter does not apply for cloud item: %s", item.GetName())
 			return true
 		}
 		match := item.GetCreated().Add(f.runningPeriod).Before(now)

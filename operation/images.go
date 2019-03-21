@@ -25,14 +25,6 @@ func (o images) collect(clouds []types.CloudType) (chan []types.CloudItem, chan 
 		if err != nil {
 			return nil, err
 		}
-		return o.convertToCloudItems(images), nil
+		return convertToCloudItems(images), nil
 	})
-}
-
-func (o images) convertToCloudItems(images []*types.Image) []types.CloudItem {
-	var items []types.CloudItem
-	for _, img := range images {
-		items = append(items, img)
-	}
-	return items
 }

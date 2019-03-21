@@ -321,11 +321,15 @@ func deleteImages(imagesClient imagesClient, imagesToDelete []azureImage, existi
 					wg.Add(1)
 					go func(i compute.Image, ai azureImage) {
 						defer wg.Done()
-						log.Infof("[AZURE] Delete image: %s", ai.ID)
-						_, err := imagesClient.Delete(context.Background(), resourceGroup, *i.Name)
-						if err != nil {
-							log.Errorf("[AZURE] Unable to delete image: %s because: %s", ai.ID, err.Error())
-							errorChan <- errors.New(ai.ID)
+						if ctx.DryRun {
+							log.Infof("[AZURE] Dry-run set, image is not deleted: %s:%s, region: %s", *i.Name, ai.ID, *i.Location)
+						} else {
+							log.Infof("[AZURE] Delete image: %s", *i.ID)
+							_, err := imagesClient.Delete(context.Background(), resourceGroup, *i.Name)
+							if err != nil {
+								log.Errorf("[AZURE] Unable to delete image: %s because: %s", ai.ID, err.Error())
+								errorChan <- errors.New(ai.ID)
+							}
 						}
 					}(image, imageToDelete)
 				}

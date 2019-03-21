@@ -13,6 +13,8 @@ Current version of the software has limited features, it can monitor:
  * accesses and keys [AWS, GCP]
  * databases [AWS]
  * instances [AZURE, AWS, GCP]
+ * disks [AWS]
+ * images [AWS, AZURE, GCP]
 
 Can filter by:
  * long running
@@ -20,11 +22,14 @@ Can filter by:
  * actually running
  * already stopped
  * old cloud credentials
+ * resource unused
 
 And can do action:
  * send notification
  * log result
- * stop instances [AZURE, AWS]
+ * stop instances [AWS, AZURE]
+ * terminate disks [AWS]
+ * terminate images [AWS, AZURE, GCP]
 
 For the proper work, you have to use some custom tags/labels on your cloud resources.
 

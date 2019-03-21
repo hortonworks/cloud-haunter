@@ -18,7 +18,7 @@ func (o ownerless) Execute(items []types.CloudItem) []types.CloudItem {
 	log.Debugf("[OWNERLESS] Filtering instances (%d): [%s]", len(items), items)
 	return filter("OWNERLESS", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
 		if !isInstance(item) {
-			log.Debugf("[OWNERLESS] Filter does not apply for cloud item: %s", item.GetName())
+			log.Fatalf("[OWNERLESS] Filter does not apply for cloud item: %s", item.GetName())
 			return true
 		}
 		inst := item.(*types.Instance)

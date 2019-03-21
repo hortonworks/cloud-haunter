@@ -41,6 +41,8 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 					errors = terminateInstances(provider, cloudItems)
 				case types.Disk:
 					errors = deleteDisks(provider, cloudItems)
+				case types.Image:
+					errors = deleteImages(provider, cloudItems)
 				default:
 					panic(fmt.Sprintf("[TERMINATION] Operation on type %T is not allowed", t))
 				}
@@ -70,4 +72,13 @@ func deleteDisks(provider types.CloudProvider, items []*types.CloudItem) []error
 		disks = append(disks, &disk)
 	}
 	return provider.DeleteDisks(types.NewDiskContainer(disks))
+}
+
+func deleteImages(provider types.CloudProvider, items []*types.CloudItem) []error {
+	var images []*types.Image
+	for _, item := range items {
+		image := (*item).GetItem().(types.Image)
+		images = append(images, &image)
+	}
+	return provider.DeleteImages(types.NewImageContainer(images))
 }

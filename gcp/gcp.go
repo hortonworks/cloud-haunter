@@ -258,11 +258,15 @@ func deleteImages(getAggregator func(string) imageDeleteAggregator, images []*ty
 				<-sem
 			}()
 
-			log.Infof("[GCP] Delete image: %s", ID)
-			_, err := getAggregator(ID).Do()
-			if err != nil {
-				log.Errorf("[GCP] Unable to delete image: %s because: %s", ID, err.Error())
-				errChan <- errors.New(ID)
+			if ctx.DryRun {
+				log.Infof("[GCP] Dry-run set, image is not deleted: %s", ID)
+			} else {
+				log.Infof("[GCP] Delete image: %s", ID)
+				_, err := getAggregator(ID).Do()
+				if err != nil {
+					log.Errorf("[GCP] Unable to delete image: %s because: %s", ID, err.Error())
+					errChan <- errors.New(ID)
+				}
 			}
 		}()
 	}

@@ -23,7 +23,7 @@ func (f unused) Execute(items []types.CloudItem) []types.CloudItem {
 				return false
 			}
 		default:
-			return true
+			log.Fatalf("[UNUSED] Filter does not apply for cloud item: %s", item.GetName())
 		}
 		return true
 	})
