@@ -15,6 +15,7 @@ Current version of the software has limited features, it can monitor:
  * instances [AZURE, AWS, GCP]
  * disks [AWS]
  * images [AWS, AZURE, GCP]
+ * read images JSON from SDIN
 
 Can filter by:
  * long running

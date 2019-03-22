@@ -50,13 +50,13 @@ func (o readImages) Execute(clouds []types.CloudType) []types.CloudItem {
 	for _, cloud := range clouds {
 		switch cloud {
 		case types.AWS:
-			images = appendToImages(images, cloudImages.Aws)
+			images = appendToImages(images, cloudImages.Aws, types.AWS)
 			break
 		case types.AZURE:
-			images = appendToImages(images, cloudImages.Azure)
+			images = appendToImages(images, cloudImages.Azure, types.AZURE)
 			break
 		case types.GCP:
-			images = appendToImages(images, cloudImages.Gcp)
+			images = appendToImages(images, cloudImages.Gcp, types.GCP)
 			break
 		default:
 			log.Warnf("[READ_IMAGES]  Cloud type not supported: %s", cloud.String())
@@ -81,9 +81,9 @@ func parseCloudImagesJSON(raw []byte) (*cloudImages, error) {
 	return &cloudImages, nil
 }
 
-func appendToImages(images []*types.Image, cloudImages map[string]string) []*types.Image {
+func appendToImages(images []*types.Image, cloudImages map[string]string, cloudType types.CloudType) []*types.Image {
 	for k, v := range cloudImages {
-		images = append(images, &types.Image{ID: k, Region: v})
+		images = append(images, &types.Image{ID: k, Region: v, CloudType: cloudType})
 	}
 	return images
 }
