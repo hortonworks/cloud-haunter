@@ -104,7 +104,7 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 		go func(vm compute.VirtualMachine) {
 			defer wg.Done()
 
-			resourceGroupName := getResourceGroupName(*vm.ID)
+			resourceGroupName, _ := getResourceGroupName(*vm.ID)
 			instanceName := *vm.Name
 			if len(resourceGroupName) != 0 {
 				log.Debugf("[AZURE] Fetch instance view of instance: %s", instanceName)
@@ -123,7 +123,7 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 		go func(scaleSet compute.VirtualMachineScaleSet) {
 			defer wg.Done()
 
-			resourceGroupName := getResourceGroupName(*scaleSet.ID)
+			resourceGroupName, _ := getResourceGroupName(*scaleSet.ID)
 			if len(resourceGroupName) != 0 {
 				ssVms, err := p.vmScaleSetVMClient.List(context.Background(), resourceGroupName, *scaleSet.Name, "", "", "")
 				if err != nil {
@@ -155,7 +155,6 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 			instances = append(instances, newInstanceByVM(inst.(azureInstance)))
 		case azureScaleSetInstance:
 			instances = append(instances, newInstanceByScaleSetVM(inst.(azureScaleSetInstance)))
-
 		}
 	}
 
@@ -180,7 +179,7 @@ func (p azureProvider) GetDisks() ([]*types.Disk, error) {
 	return nil, errors.New("[AZURE] Disk operations are not supported")
 }
 
-func (p azureProvider) DeleteDisks([]*types.Disk) []error {
+func (p azureProvider) DeleteDisks(*types.DiskContainer) []error {
 	return []error{errors.New("[AZURE] Disk deletion is not supported")}
 }
 
@@ -200,7 +199,31 @@ func (p azureProvider) GetImages() ([]*types.Image, error) {
 	return images, nil
 }
 
-func (p azureProvider) TerminateInstances([]*types.Instance) []error {
+func (p azureProvider) DeleteImages(images *types.ImageContainer) []error {
+	log.Debug("[AZURE] Delete images")
+	imagesToDelete := []azureImage{}
+	for _, image := range images.Get(types.AZURE) {
+		resourceGroup, name := getImageResourceGroupAndName(image.ID)
+		imagesToDelete = append(imagesToDelete, azureImage{image, resourceGroup, name})
+	}
+	existingImages, err := p.imageClient.List(context.Background())
+	if err != nil {
+		return []error{errors.New("Failed to fetch available images, err: " + err.Error())}
+	}
+	return deleteImages(imagesClient{p.imageClient}, imagesToDelete, existingImages.Values())
+}
+
+type imagesClient struct {
+	compute.ImagesClient
+}
+
+type azureImage struct {
+	*types.Image
+	resourceGroup string
+	name          string
+}
+
+func (p azureProvider) TerminateInstances(*types.InstanceContainer) []error {
 	return []error{errors.New("[AZURE] Termination is not supported")}
 	// rgClient = resources.NewGroupsClient(subscriptionId)
 	// 	rgClient.Authorizer = authorization
@@ -236,15 +259,21 @@ func (p azureProvider) TerminateInstances([]*types.Instance) []error {
 	// return instances, nil
 }
 
-func (p azureProvider) StopInstances(instances []*types.Instance) []error {
-	log.Debugf("[AZURE] Stopping instances (%d): %v", len(instances), instances)
+func (p azureProvider) StopInstances(instances *types.InstanceContainer) []error {
+	azureInstances := instances.Get(types.AZURE)
+	log.Debugf("[AZURE] Stopping instances (%d): %v", len(azureInstances), azureInstances)
 	wg := sync.WaitGroup{}
-	wg.Add(len(instances))
+	wg.Add(len(azureInstances))
 	errChan := make(chan error)
+	sem := make(chan bool, 5)
 
-	for _, i := range instances {
+	for _, i := range azureInstances {
 		go func(instance *types.Instance) {
-			defer wg.Done()
+			sem <- true
+			defer func() {
+				wg.Done()
+				<-sem
+			}()
 
 			log.Debugf("[AZURE] Stopping instance: %s", instance.Name)
 			var err error
@@ -281,11 +310,64 @@ func (p azureProvider) GetDatabases() ([]*types.Database, error) {
 	return nil, errors.New("[AZURE] Get databases is not supported")
 }
 
-func getResourceGroupName(vmID string) (resourceGroupName string) {
-	instanceIDParts := strings.Split(vmID, "/")
-	// /subscriptions/<sub_id>/resourceGroups/<rg_name>/providers/Microsoft.Compute/virtualMachines/<inst_name>
+func deleteImages(imagesClient imagesClient, imagesToDelete []azureImage, existingImages []compute.Image) []error {
+	wg := sync.WaitGroup{}
+	errorChan := make(chan error)
+	for _, image := range existingImages {
+		for _, imageToDelete := range imagesToDelete {
+			if imageToDelete.name == *image.Name && imageToDelete.Region == *image.Location {
+				resourceGroup, _ := getResourceGroupName(*image.ID)
+				if resourceGroup == imageToDelete.resourceGroup {
+					wg.Add(1)
+					go func(i compute.Image, ai azureImage) {
+						defer wg.Done()
+						if ctx.DryRun {
+							log.Infof("[AZURE] Dry-run set, image is not deleted: %s:%s, region: %s", *i.Name, ai.ID, *i.Location)
+						} else {
+							log.Infof("[AZURE] Delete image: %s", *i.ID)
+							_, err := imagesClient.Delete(context.Background(), resourceGroup, *i.Name)
+							if err != nil {
+								log.Errorf("[AZURE] Unable to delete image: %s because: %s", ai.ID, err.Error())
+								errorChan <- errors.New(ai.ID)
+							}
+						}
+					}(image, imageToDelete)
+				}
+				break
+			}
+		}
+	}
+	go func() {
+		wg.Wait()
+		close(errorChan)
+	}()
+
+	errors := []error{}
+	for err := range errorChan {
+		errors = append(errors, err)
+	}
+
+	return errors
+}
+
+func getImageResourceGroupAndName(url string) (string, string) {
+	uri := strings.Replace(url, "https://", "", 1)
+	parts := strings.Split(uri, "/")
+
+	return strings.Split(parts[0], ".")[0], parts[len(parts)-1]
+}
+
+func getResourceGroupName(resourceID string) (resourceGroupName, resourceName string) {
+	if strings.Index(resourceID, "https://") == 0 {
+		uri := strings.Replace(resourceID, "https://", "", 1)
+		parts := strings.Split(uri, "/")
+
+		return strings.Split(parts[0], ".")[0], parts[len(parts)-1]
+	}
+	instanceIDParts := strings.Split(resourceID, "/")
+	// /subscriptions/<sub_id>/resourceGroups/<rg_name>/providers/Microsoft.Compute/<type>/<inst_name>
 	if len(instanceIDParts) == 9 {
-		resourceGroupName = instanceIDParts[4]
+		return instanceIDParts[4], instanceIDParts[8]
 	}
 	return
 }

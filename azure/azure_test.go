@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -55,16 +57,79 @@ func Test_givenTimestampNotInTags_whenGetCreationTimeFromTags_thenReturnsEpochZe
 	assert.Equal(t, callInfo.invocations[0].(string), "0")
 }
 
-func TestGetResourceGroupName(t *testing.T) {
-	resourceGroupName := getResourceGroupName("/subscriptions/<sub_id>/resourceGroups/<rg_name>/providers/Microsoft.Compute/virtualMachines/<inst_name>")
+func TestGetResourceGroupNameByURL(t *testing.T) {
+	resourceGroupName, name := getResourceGroupName("https://<rg_name>.blob.core.windows.net/images/<inst_name>")
 
 	assert.Equal(t, "<rg_name>", resourceGroupName)
+	assert.Equal(t, "<inst_name>", name)
+}
+
+func TestGetResourceGroupName(t *testing.T) {
+	resourceGroupName, name := getResourceGroupName("/subscriptions/<sub_id>/resourceGroups/<rg_name>/providers/Microsoft.Compute/virtualMachines/<inst_name>")
+
+	assert.Equal(t, "<rg_name>", resourceGroupName)
+	assert.Equal(t, "<inst_name>", name)
 }
 
 func TestGetResourceGroupNameNotFound(t *testing.T) {
-	resourceGroupName := getResourceGroupName("")
+	resourceGroupName, name := getResourceGroupName("")
 
 	assert.Equal(t, "", resourceGroupName)
+	assert.Equal(t, "", name)
+}
+
+func TestGetImageResourceGroupAndName(t *testing.T) {
+	resourceGroupName, name := getImageResourceGroupAndName("https://hwxaustraliaeast.blob.core.windows.net/images/cb-hdp--1801311614.vhd")
+
+	assert.Equal(t, "hwxaustraliaeast", resourceGroupName)
+	assert.Equal(t, "cb-hdp--1801311614.vhd", name)
+}
+
+var deleteRgChan = make(chan string)
+var deleteNameChan = make(chan string)
+
+func (ic imagesClient) Delete(ctx context.Context, resourceGroupName string, imageName string) (f compute.ImagesDeleteFuture, e error) {
+	deleteRgChan <- resourceGroupName
+	deleteNameChan <- imageName
+	return
+}
+
+func TestDeleteImages(t *testing.T) {
+	imagesToDelete := []azureImage{
+		{&types.Image{CloudType: types.AZURE, ID: "https://hwxaustraliaeast.blob.core.windows.net/images/cb-hdp--1801311614.vhd", Region: "Australia East"}, "hwxaustraliaeast", "cb-hdp--1801311614.vhd"},
+	}
+	existingImages := []compute.Image{
+		{
+			ID:       &(&types.S{S: "/subscriptions/<sub_id>/resourceGroups/hwxaustraliaeast/providers/Microsoft.Compute/Image/cb-hdp--1801311614.vhd"}).S,
+			Name:     &(&types.S{S: "different name"}).S,
+			Location: &(&types.S{S: "Australia East"}).S,
+		},
+		{
+			ID:       &(&types.S{S: "/subscriptions/<sub_id>/resourceGroups/different_resourcegroup/providers/Microsoft.Compute/Image/cb-hdp--1801311614.vhd"}).S,
+			Name:     &(&types.S{S: "cb-hdp--1801311614.vhd"}).S,
+			Location: &(&types.S{S: "Australia East"}).S,
+		},
+		{
+			ID:       &(&types.S{S: "/subscriptions/<sub_id>/resourceGroups/hwxaustraliaeast/providers/Microsoft.Compute/Image/cb-hdp--1801311614.vhd"}).S,
+			Name:     &(&types.S{S: "cb-hdp--1801311614.vhd"}).S,
+			Location: &(&types.S{S: "different location"}).S,
+		},
+		{
+			ID:       &(&types.S{S: "/subscriptions/<sub_id>/resourceGroups/hwxaustraliaeast/providers/Microsoft.Compute/Image/cb-hdp--1801311614.vhd"}).S,
+			Name:     &(&types.S{S: "cb-hdp--1801311614.vhd"}).S,
+			Location: &(&types.S{S: "Australia East"}).S,
+		},
+	}
+
+	go func() {
+		defer close(deleteRgChan)
+		defer close(deleteNameChan)
+
+		deleteImages(imagesClient{}, imagesToDelete, existingImages)
+	}()
+
+	assert.Equal(t, "hwxaustraliaeast", <-deleteRgChan)
+	assert.Equal(t, "cb-hdp--1801311614.vhd", <-deleteNameChan)
 }
 
 func getStubConvertTimeUnixByTime(timeAsTime time.Time) (*callInfo, func(string) time.Time) {

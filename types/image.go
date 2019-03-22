@@ -2,6 +2,24 @@ package types
 
 import "time"
 
+type ImageContainer struct {
+	images []*Image
+}
+
+func (c *ImageContainer) Get(cloudType CloudType) []*Image {
+	items := []*Image{}
+	for _, item := range c.images {
+		if item.CloudType == cloudType {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func NewImageContainer(images []*Image) *ImageContainer {
+	return &ImageContainer{images}
+}
+
 // Image represents the images on the cloud providers
 type Image struct {
 	ID        string    `json:"Id"`

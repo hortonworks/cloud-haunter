@@ -42,6 +42,52 @@ func TestGetRegions(t *testing.T) {
 	assert.Equal(t, 1, len(regions))
 }
 
+func TestDeleteVolumes(t *testing.T) {
+	region1Chan := make(chan string)
+	region2Chan := make(chan string)
+	clients := map[string]ec2Client{
+		"region-1": mockEc2Client{deregisterVolumesChannel: region1Chan},
+		"region-2": mockEc2Client{deregisterVolumesChannel: region2Chan},
+	}
+	volumes := []*types.Disk{
+		{CloudType: types.AWS, ID: "disk-id-1", Region: "region-1"},
+		{CloudType: types.AWS, ID: "disk-id-2", Region: "region-2"},
+	}
+
+	go func() {
+		defer close(region1Chan)
+		defer close(region2Chan)
+
+		deleteVolumes(clients, volumes)
+	}()
+
+	assert.Equal(t, "disk-id-1", <-region1Chan)
+	assert.Equal(t, "disk-id-2", <-region2Chan)
+}
+
+func TestDeleteImages(t *testing.T) {
+	region1Chan := make(chan string)
+	region2Chan := make(chan string)
+	clients := map[string]ec2Client{
+		"region-1": mockEc2Client{deregisterImagesChannel: region1Chan},
+		"region-2": mockEc2Client{deregisterImagesChannel: region2Chan},
+	}
+	images := []*types.Image{
+		{CloudType: types.AWS, ID: "ami-id-1", Region: "region-1"},
+		{CloudType: types.AWS, ID: "ami-id-2", Region: "region-2"},
+	}
+
+	go func() {
+		defer close(region1Chan)
+		defer close(region2Chan)
+
+		deleteImages(clients, images)
+	}()
+
+	assert.Equal(t, "ami-id-1", <-region1Chan)
+	assert.Equal(t, "ami-id-2", <-region2Chan)
+}
+
 func TestNewInstanceWithName(t *testing.T) {
 	ec2Instance := newTestInstance()
 	ec2Instance.Tags = []*ec2.Tag{{Key: &(&types.S{S: "Name"}).S, Value: &(&types.S{S: "name"}).S}}
@@ -89,6 +135,8 @@ func TestRemoveInstance(t *testing.T) {
 }
 
 type mockEc2Client struct {
+	deregisterVolumesChannel chan (string)
+	deregisterImagesChannel  chan (string)
 }
 
 func (t mockEc2Client) DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
@@ -122,6 +170,12 @@ func (t mockEc2Client) DescribeImages(input *ec2.DescribeImagesInput) (*ec2.Desc
 }
 
 func (t mockEc2Client) DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error) {
+	t.deregisterVolumesChannel <- *input.VolumeId
+	return nil, nil
+}
+
+func (t mockEc2Client) DeregisterImage(input *ec2.DeregisterImageInput) (*ec2.DeregisterImageOutput, error) {
+	t.deregisterImagesChannel <- *input.ImageId
 	return nil, nil
 }
 

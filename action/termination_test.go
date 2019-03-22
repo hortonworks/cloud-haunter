@@ -20,12 +20,12 @@ func (p *mockProvider) GetInstances() ([]*types.Instance, error) {
 	return nil, nil
 }
 
-func (p *mockProvider) TerminateInstances([]*types.Instance) []error {
+func (p *mockProvider) TerminateInstances(*types.InstanceContainer) []error {
 	p.calls++
 	return nil
 }
 
-func (p *mockProvider) StopInstances([]*types.Instance) []error {
+func (p *mockProvider) StopInstances(*types.InstanceContainer) []error {
 	p.calls++
 	return nil
 }
@@ -42,12 +42,16 @@ func (p *mockProvider) GetDisks() ([]*types.Disk, error) {
 	return nil, nil
 }
 
-func (p *mockProvider) DeleteDisks([]*types.Disk) []error {
+func (p *mockProvider) DeleteDisks(*types.DiskContainer) []error {
 	return nil
 }
 
 func (p *mockProvider) GetImages() ([]*types.Image, error) {
 	return nil, nil
+}
+
+func (p *mockProvider) DeleteImages(*types.ImageContainer) []error {
+	return nil
 }
 
 type terminationSuite struct {

@@ -15,6 +15,9 @@ const (
 
 	// Images operation to return all the images
 	Images = OpType("getImages")
+
+	// ReadImages operation to return all the images from sdin
+	ReadImages = OpType("readImages")
 )
 
 // OpType type of the operation

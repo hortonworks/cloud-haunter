@@ -73,3 +73,11 @@ func convertInstancesToCloudItems(instances []*types.Instance) []types.CloudItem
 	}
 	return items
 }
+
+func convertToCloudItems(images []*types.Image) []types.CloudItem {
+	var items []types.CloudItem
+	for _, img := range images {
+		items = append(items, img)
+	}
+	return items
+}

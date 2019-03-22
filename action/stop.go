@@ -35,7 +35,7 @@ func (s stopAction) Execute(op types.OpType, filters []types.FilterType, items [
 			defer wg.Done()
 
 			log.Infof("[STOP] Stop %d instances on %s: %s", len(instances), cloud, strings.Join(getInstanceNames(instances), ","))
-			if errors := ctx.CloudProviders[cloud]().StopInstances(instances); len(errors) != 0 {
+			if errors := ctx.CloudProviders[cloud]().StopInstances(types.NewInstanceContainer(instances)); len(errors) != 0 {
 				for _, err := range errors {
 					log.Errorf("[STOP] Failed to stop instances on cloud: %s, err: %s", cloud, err.Error())
 				}

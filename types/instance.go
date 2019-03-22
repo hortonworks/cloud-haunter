@@ -2,6 +2,24 @@ package types
 
 import "time"
 
+type InstanceContainer struct {
+	instances []*Instance
+}
+
+func (c *InstanceContainer) Get(cloudType CloudType) []*Instance {
+	items := []*Instance{}
+	for _, item := range c.instances {
+		if item.CloudType == cloudType {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func NewInstanceContainer(imstances []*Instance) *InstanceContainer {
+	return &InstanceContainer{imstances}
+}
+
 // Instance is a general cloud instance struct processed by filters and actions
 type Instance struct {
 	ID           string            `json:"Id"`

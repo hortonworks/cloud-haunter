@@ -145,14 +145,14 @@ func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[str
 	return ec2Clients, ctClients
 }
 
-func (p awsProvider) TerminateInstances([]*types.Instance) []error {
+func (p awsProvider) TerminateInstances(*types.InstanceContainer) []error {
 	return []error{errors.New("[AWS] Termination is not supported")}
 }
 
-func (p awsProvider) DeleteDisks(volumes []*types.Disk) []error {
+func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
 	log.Debug("[AWS] Delete volumes")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return deleteVolumes(ec2Clients, volumes)
+	return deleteVolumes(ec2Clients, volumes.Get(types.AWS))
 }
 
 func (p awsProvider) GetImages() ([]*types.Image, error) {
@@ -161,10 +161,16 @@ func (p awsProvider) GetImages() ([]*types.Image, error) {
 	return getImages(ec2Clients)
 }
 
-func (p awsProvider) StopInstances(instances []*types.Instance) []error {
+func (p awsProvider) DeleteImages(images *types.ImageContainer) []error {
+	log.Debug("[AWS] Delete images")
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	return deleteImages(ec2Clients, images.Get(types.AWS))
+}
+
+func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 	log.Debug("[AWS] Stopping instances")
 	regionInstances := map[string][]*types.Instance{}
-	for _, instance := range instances {
+	for _, instance := range instances.Get(types.AWS) {
 		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance)
 	}
 	log.Debugf("[AWS] Stopping instances: %v", regionInstances)
@@ -235,7 +241,9 @@ func (p awsProvider) StopInstances(instances []*types.Instance) []error {
 func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []error {
 	regionVolumes := map[string][]*types.Disk{}
 	for _, vol := range volumes {
-		regionVolumes[vol.Region] = append(regionVolumes[vol.Region], vol)
+		if vol.CloudType == types.AWS {
+			regionVolumes[vol.Region] = append(regionVolumes[vol.Region], vol)
+		}
 	}
 	log.Debugf("[AWS] Delete volumes: %v", regionVolumes)
 
@@ -272,6 +280,54 @@ func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []err
 	return errs
 }
 
+func deleteImages(ec2Clients map[string]ec2Client, images []*types.Image) []error {
+	regionImages := map[string][]*types.Image{}
+	for _, image := range images {
+		if image.CloudType == types.AWS {
+			regionImages[image.Region] = append(regionImages[image.Region], image)
+		}
+	}
+	log.Debugf("[AWS] Delete images: %v", regionImages)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(regionImages))
+	errChan := make(chan error)
+	sem := make(chan bool, 10)
+
+	for r, v := range regionImages {
+		go func(ec2Client ec2Client, region string, images []*types.Image) {
+			sem <- true
+			defer func() {
+				wg.Done()
+				<-sem
+			}()
+
+			for _, image := range images {
+				if ctx.DryRun {
+					log.Infof("[AWS] Dry-run set, image is not deleted: %s:%s, region: %s", image.Name, image.ID, region)
+				} else {
+					log.Infof("[AWS] Delete image: %s:%s", image.Name, image.ID)
+					if _, err := ec2Client.DeregisterImage(&ec2.DeregisterImageInput{ImageId: &image.ID}); err != nil {
+						log.Errorf("[AWS] Unable to delete image: %s because: %s", image.ID, err.Error())
+						errChan <- errors.New(image.ID)
+					}
+				}
+			}
+		}(ec2Clients[r], r, v)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
 func (p awsProvider) GetAccesses() ([]*types.Access, error) {
 	log.Debug("[AWS] Fetching users")
 	return getAccesses(p.iamClient)
@@ -283,6 +339,7 @@ type ec2Client interface {
 	DescribeVolumes(input *ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error)
 	DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error)
 	DescribeImages(input *ec2.DescribeImagesInput) (*ec2.DescribeImagesOutput, error)
+	DeregisterImage(input *ec2.DeregisterImageInput) (*ec2.DeregisterImageOutput, error)
 }
 
 type cloudTrailClient interface {

@@ -20,6 +20,7 @@ func (f running) Execute(items []types.CloudItem) []types.CloudItem {
 			log.Debugf("[RUNNING] Filter instance, because it's not in RUNNING state: %s", item.GetName())
 			return false
 		}
+		log.Fatalf("[RUNNING] Filter does not apply for cloud item: %s", item.GetName())
 		return true
 	})
 }

@@ -25,11 +25,12 @@ const (
 type CloudProvider interface {
 	GetAccountName() string
 	GetInstances() ([]*Instance, error)
-	StopInstances([]*Instance) []error
-	TerminateInstances([]*Instance) []error
+	StopInstances(*InstanceContainer) []error
+	TerminateInstances(*InstanceContainer) []error
 	GetAccesses() ([]*Access, error)
 	GetDatabases() ([]*Database, error)
 	GetDisks() ([]*Disk, error)
-	DeleteDisks([]*Disk) []error
+	DeleteDisks(*DiskContainer) []error
 	GetImages() ([]*Image, error)
+	DeleteImages(*ImageContainer) []error
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
@@ -38,6 +39,25 @@ func TestGetAccesses(t *testing.T) {
 	assert.Equal(t, "valid", accesses[0].Name)
 }
 
+func TestDeleteImages(t *testing.T) {
+	imageChan := make(chan string)
+	getMockAggregator := func(ID string) imageDeleteAggregator {
+		imageChan <- ID
+		return mockImageDeleteAggregator{}
+	}
+	images := []*types.Image{
+		{CloudType: types.GCP, ID: "sequenceiqimage/hdc-hdp--1711170803.tar.gz"},
+	}
+
+	go func() {
+		defer close(imageChan)
+
+		deleteImages(getMockAggregator, images)
+	}()
+
+	assert.Equal(t, "hdc-hdp--1711170803", <-imageChan)
+}
+
 func TestNewInstance(t *testing.T) {
 	instance := newInstance(newTestInstance())
 
@@ -60,6 +80,17 @@ func (m mockInstancesListAggregator) Do(opts ...googleapi.CallOption) (*compute.
 			},
 		},
 	}, nil
+}
+
+type mockImageDeleteAggregator struct {
+	optsChan chan (googleapi.CallOption)
+}
+
+func (m mockImageDeleteAggregator) Do(opts ...googleapi.CallOption) (*compute.Operation, error) {
+	for _, opt := range opts {
+		m.optsChan <- opt
+	}
+	return nil, nil
 }
 
 type mockServiceAccountsListAggregator struct {

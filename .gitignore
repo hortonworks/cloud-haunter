@@ -5,4 +5,5 @@ coverage
 release
 .vscode
 .idea
+.env
 cloud-haunter
