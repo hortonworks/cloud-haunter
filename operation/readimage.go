@@ -24,8 +24,8 @@ func (o readImages) Execute(clouds []types.CloudType) []types.CloudItem {
 	info, err := os.Stdin.Stat()
 	if err != nil {
 		panic(err)
-	} else if info.Mode()&os.ModeCharDevice != 0 || info.Size() <= 0 {
-		panic(errors.New("[READ_IMAGES] Unable to read JSON from the file"))
+	} else if info.Mode()&os.ModeCharDevice != 0 {
+		panic(errors.New("[READ_IMAGES] standard input is not char device"))
 	}
 
 	reader := bufio.NewReader(os.Stdin)
@@ -38,7 +38,7 @@ func (o readImages) Execute(clouds []types.CloudType) []types.CloudItem {
 		output = append(output, input)
 	}
 	if len(output) == 0 {
-		panic("[READ_IMAGES] File name is empty")
+		panic("[READ_IMAGES] standard input is empty")
 	}
 
 	cloudImages, err := parseCloudImagesJSON([]byte(string(output)))
