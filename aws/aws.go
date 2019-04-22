@@ -212,16 +212,17 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 						&(&types.S{S: "RemoveFromLoadBalancerLowPriority"}).S,
 					},
 				}); err != nil {
-					log.Errorf("[AWS] Failed to suspend ASG %v for instance %s", instance.AutoScalingGroupName, compactInstanceName)
-
+					log.Errorf("[AWS] Failed to suspend ASG %v for instance %s, err: %s", instance.AutoScalingGroupName, compactInstanceName, err.Error())
 					// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
 					instanceIDs = removeInstance(instanceIDs, instance.InstanceId)
 				}
 			}
 
-			log.Debugf("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), instIDNames)
-			if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
-				errChan <- err
+			if len(instanceIDs) > 0 {
+				log.Debugf("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), instIDNames)
+				if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
+					errChan <- err
+				}
 			}
 		}(r, i)
 	}
