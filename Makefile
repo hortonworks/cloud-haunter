@@ -4,7 +4,7 @@ BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 VERSION?=$(shell git describe --tags --abbrev=0)-snapshot
 PKG_BASE=github.com/hortonworks/cloud-haunter
 BUILD_TIME=$(shell date +%FT%T)
-LDFLAGS=-X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.BuildTime=${BUILD_TIME}
+LDFLAGS=-w -s -X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.BuildTime=${BUILD_TIME}
 
 AWS_IGNORE_LABEL?=cloud-cost-reducer-ignore
 LDFLAGS+= -X $(PKG_BASE)/context.AwsIgnoreLabel=$(AWS_IGNORE_LABEL)
@@ -37,10 +37,10 @@ format:
 	gofmt -s -w $(GOFILES_NOVENDOR)
 
 vet:
-	go vet ./...
+	GO111MODULE=on go vet -mod=vendor ./...
 
 test:
-	go test -timeout 30s -coverprofile coverage -race $$(go list ./... | grep -v /vendor/)
+	GO111MODULE=on go test -mod=vendor -timeout 30s -coverprofile coverage -race
 
 _build: build-darwin build-linux
 
@@ -49,15 +49,23 @@ build: _check test _build
 cleanup:
 	rm -rf release && mkdir release
 
+build-darwin:
+	GO111MODULE=on GOOS=darwin CGO_ENABLED=0 go build -mod=vendor -ldflags "$(LDFLAGS)" -o build/Darwin/${BINARY} main.go
+
+build-linux:
+	GO111MODULE=on GOOS=linux CGO_ENABLED=0 go build -mod=vendor -ldflags "$(LDFLAGS)" -o build/Linux/${BINARY} main.go
+
 build-docker:
 	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
 	docker run --rm ${USER_NS} -v "${PWD}":/go/src/$(PKG_BASE) -w /go/src/$(PKG_BASE) golang:1.12 make build
 
-build-darwin:
-	GOOS=darwin CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Darwin/${BINARY} main.go
+mod-tidy:
+	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
+	@docker run --rm ${USER_NS} -v "${PWD}":/go/src/$(PKG_BASE) -w /go/src/$(PKG_BASE) -e GO111MODULE=on golang:1.12 make _mod-tidy
 
-build-linux:
-	GOOS=linux CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Linux/${BINARY} main.go
+_mod-tidy:
+	go mod tidy -v
+	go mod vendor
 
 release: cleanup build
 	glu release

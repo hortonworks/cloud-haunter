@@ -6,7 +6,6 @@ import (
 
 	"github.com/hortonworks/cloud-haunter/utils"
 
-	log "github.com/Sirupsen/logrus"
 	_ "github.com/hortonworks/cloud-haunter/action"
 	_ "github.com/hortonworks/cloud-haunter/aws"
 	_ "github.com/hortonworks/cloud-haunter/azure"
@@ -17,6 +16,7 @@ import (
 	_ "github.com/hortonworks/cloud-haunter/operation"
 	_ "github.com/hortonworks/cloud-haunter/slack"
 	"github.com/hortonworks/cloud-haunter/types"
+	log "github.com/sirupsen/logrus"
 )
 
 func main() {
