@@ -7,10 +7,10 @@ import (
 	"net/url"
 	"os"
 
-	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
+	log "github.com/sirupsen/logrus"
 	"github.com/tbruyelle/hipchat-go/hipchat"
 )
 

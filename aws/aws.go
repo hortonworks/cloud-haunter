@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
@@ -21,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/rds"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
+	log "github.com/sirupsen/logrus"
 )
 
 var provider = awsProvider{}

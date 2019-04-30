@@ -3,10 +3,10 @@ package slack
 import (
 	"bytes"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
+	log "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 )
