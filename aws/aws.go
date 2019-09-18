@@ -183,45 +183,54 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 		go func(region string, instances []*types.Instance) {
 			defer wg.Done()
 
-			instIDNames, instanceIDs := getNameIDPairs(instances)
-			log.Debugf("[AWS] Detecting auto scaling group for instances at %s (%d): %v", region, len(instanceIDs), instanceIDs)
-
-			// We need to suspend the ASGs as it will terminate the stopped instances
-			// Instances that are not part of an ASG are not returned
-			asgInstances, err := p.autoScalingClients[region].DescribeAutoScalingInstances(&autoscaling.DescribeAutoScalingInstancesInput{
-				InstanceIds: instanceIDs,
-			})
-			if err != nil {
-				log.Errorf("[AWS] Failed to fetch the ASG instances in region: %s, err: %s", region, err)
-				return
-			}
-			for _, instance := range asgInstances.AutoScalingInstances {
-				compactInstanceName := fmt.Sprintf("%s:%s", *instance.InstanceId, instIDNames[*instance.InstanceId])
-				log.Debugf("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
-
-				if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{
-					AutoScalingGroupName: instance.AutoScalingGroupName,
-					ScalingProcesses: []*string{
-						&(&types.S{S: "Launch"}).S,
-						&(&types.S{S: "HealthCheck"}).S,
-						&(&types.S{S: "ReplaceUnhealthy"}).S,
-						&(&types.S{S: "AZRebalance"}).S,
-						&(&types.S{S: "AlarmNotification"}).S,
-						&(&types.S{S: "ScheduledActions"}).S,
-						&(&types.S{S: "AddToLoadBalancer"}).S,
-						&(&types.S{S: "RemoveFromLoadBalancerLowPriority"}).S,
-					},
-				}); err != nil {
-					log.Errorf("[AWS] Failed to suspend ASG %v for instance %s, err: %s", instance.AutoScalingGroupName, compactInstanceName, err.Error())
-					// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
-					instanceIDs = removeInstance(instanceIDs, instance.InstanceId)
+			for i := 0; i < len(instances); i += ctx.AwsBulkOperationSize {
+				log.Infof("[AWS] Round %d for stop operation", (i/ctx.AwsBulkOperationSize)+1)
+				arrayEnd := i + ctx.AwsBulkOperationSize
+				if ctx.AwsBulkOperationSize > len(instances[i:]) {
+					arrayEnd = i + len(instances[i:])
 				}
-			}
 
-			if len(instanceIDs) > 0 {
-				log.Debugf("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), instIDNames)
-				if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
-					errChan <- err
+				instanceChunk := instances[i:arrayEnd]
+				instIDNames, instanceIDs := getNameIDPairs(instanceChunk)
+				log.Debugf("[AWS] Detecting auto scaling group for instances at %s (%d): %v", region, len(instanceIDs), instanceIDs)
+
+				// We need to suspend the ASGs as it will terminate the stopped instances
+				// Instances that are not part of an ASG are not returned
+				asgInstances, err := p.autoScalingClients[region].DescribeAutoScalingInstances(&autoscaling.DescribeAutoScalingInstancesInput{
+					InstanceIds: instanceIDs,
+				})
+				if err != nil {
+					log.Errorf("[AWS] Failed to fetch the ASG instances in region: %s, err: %s", region, err)
+					return
+				}
+				for _, instance := range asgInstances.AutoScalingInstances {
+					compactInstanceName := fmt.Sprintf("%s:%s", *instance.InstanceId, instIDNames[*instance.InstanceId])
+					log.Debugf("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
+
+					if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{
+						AutoScalingGroupName: instance.AutoScalingGroupName,
+						ScalingProcesses: []*string{
+							&(&types.S{S: "Launch"}).S,
+							&(&types.S{S: "HealthCheck"}).S,
+							&(&types.S{S: "ReplaceUnhealthy"}).S,
+							&(&types.S{S: "AZRebalance"}).S,
+							&(&types.S{S: "AlarmNotification"}).S,
+							&(&types.S{S: "ScheduledActions"}).S,
+							&(&types.S{S: "AddToLoadBalancer"}).S,
+							&(&types.S{S: "RemoveFromLoadBalancerLowPriority"}).S,
+						},
+					}); err != nil {
+						log.Errorf("[AWS] Failed to suspend ASG %v for instance %s, err: %s", instance.AutoScalingGroupName, compactInstanceName, err.Error())
+						// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
+						instanceIDs = removeInstance(instanceIDs, instance.InstanceId)
+					}
+				}
+
+				if len(instanceIDs) > 0 {
+					log.Debugf("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), instIDNames)
+					if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
+						errChan <- err
+					}
 				}
 			}
 		}(r, i)
