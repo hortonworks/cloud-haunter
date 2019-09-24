@@ -43,6 +43,11 @@ func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 				log.Debugf("[LONGRUNNING] Filter instance, because it's not in RUNNING state: %s", item.GetName())
 				return false
 			}
+		case types.Stack:
+			if item.GetItem().(types.Stack).State != types.Running {
+				log.Debugf("[LONGRUNNING] Filter stack, because it's not in RUNNING state: %s", item.GetName())
+				return false
+			}
 		case types.Database:
 			if item.GetItem().(types.Database).State != types.Running {
 				log.Debugf("[LONGRUNNING] Filter database, because it's not in RUNNING state: %s", item.GetName())

@@ -18,6 +18,9 @@ const (
 
 	// ReadImages operation to return all the images from sdin
 	ReadImages = OpType("readImages")
+
+	// Stacks operation to return all stack (CF, ARM..)
+	Stacks = OpType("getStacks")
 )
 
 // OpType type of the operation

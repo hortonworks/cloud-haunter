@@ -50,6 +50,10 @@ func (p *mockProvider) GetImages() ([]*types.Image, error) {
 	return nil, nil
 }
 
+func (p *mockProvider) GetStacks() ([]*types.Stack, error) {
+	return nil, nil
+}
+
 func (p *mockProvider) DeleteImages(*types.ImageContainer) []error {
 	return nil
 }

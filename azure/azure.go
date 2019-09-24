@@ -161,6 +161,10 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 	return instances, nil
 }
 
+func (p azureProvider) GetStacks() ([]*types.Stack, error) {
+	return nil, nil
+}
+
 type azureInstance struct {
 	instance          compute.VirtualMachine
 	instanceView      compute.VirtualMachineInstanceView

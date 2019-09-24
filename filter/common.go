@@ -52,21 +52,26 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 			log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
 			return true
 		}
-		_, instanceFilter := getFilterConfigs(filterConfig, filterType)
-		if instanceFilter != nil {
-			switch item.GetCloudType() {
-			case types.AWS:
-				return isMatchWithIgnores(filterName, item, inst.Tags,
-					instanceFilter.Aws.Names, instanceFilter.Aws.Owners, instanceFilter.Aws.Labels)
-			case types.AZURE:
-				return isMatchWithIgnores(filterName, item, inst.Tags,
-					instanceFilter.Azure.Names, instanceFilter.Azure.Owners, instanceFilter.Azure.Labels)
-			case types.GCP:
-				return isMatchWithIgnores(filterName, item, inst.Tags,
-					instanceFilter.Gcp.Names, instanceFilter.Gcp.Owners, instanceFilter.Gcp.Labels)
-			default:
-				log.Warnf("[%s] Cloud type not supported: %s", filterName, item.GetCloudType())
+		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, inst.Tags)
+		if applied {
+			return filtered
+		}
+	case types.Stack:
+		stack := item.GetItem().(types.Stack)
+		name := item.GetName()
+		ignoreLabelFound := utils.IsAnyMatch(stack.Tags, ctx.IgnoreLabel)
+		if ignoreLabelFound {
+			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
+			if filterType.IsInclusive() {
+				log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
+				return false
 			}
+			log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
+			return true
+		}
+		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, stack.Tags)
+		if applied {
+			return filtered
 		}
 	case types.Access:
 		accessFilter, _ := getFilterConfigs(filterConfig, filterType)
@@ -84,6 +89,26 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 		}
 	}
 	return false
+}
+
+func applyFilterConfig(filterConfig *types.FilterConfig, filterType types.FilterConfigType, item types.CloudItem, filterName string, tags types.Tags) (applied, filtered bool) {
+	_, instanceFilter := getFilterConfigs(filterConfig, filterType)
+	if instanceFilter != nil {
+		switch item.GetCloudType() {
+		case types.AWS:
+			return isMatchWithIgnores(filterName, item, tags,
+				instanceFilter.Aws.Names, instanceFilter.Aws.Owners, instanceFilter.Aws.Labels), true
+		case types.AZURE:
+			return isMatchWithIgnores(filterName, item, tags,
+				instanceFilter.Azure.Names, instanceFilter.Azure.Owners, instanceFilter.Azure.Labels), true
+		case types.GCP:
+			return isMatchWithIgnores(filterName, item, tags,
+				instanceFilter.Gcp.Names, instanceFilter.Gcp.Owners, instanceFilter.Gcp.Labels), true
+		default:
+			log.Warnf("[%s] Cloud type not supported: %s", filterName, item.GetCloudType())
+		}
+	}
+	return false, false
 }
 
 func getFilterConfigs(filterConfig *types.FilterConfig, filterType types.FilterConfigType) (accessConfig *types.FilterAccessConfig, instanceConfig *types.FilterInstanceConfig) {

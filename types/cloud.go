@@ -33,4 +33,5 @@ type CloudProvider interface {
 	DeleteDisks(*DiskContainer) []error
 	GetImages() ([]*Image, error)
 	DeleteImages(*ImageContainer) []error
+	GetStacks() ([]*Stack, error)
 }

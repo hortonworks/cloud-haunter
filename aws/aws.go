@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/hortonworks/cloud-haunter/utils"
 	"net/http"
 	"strings"
@@ -26,11 +27,12 @@ import (
 var provider = awsProvider{}
 
 type awsProvider struct {
-	ec2Clients         map[string]*ec2.EC2
-	autoScalingClients map[string]*autoscaling.AutoScaling
-	cloudTrailClient   map[string]*cloudtrail.CloudTrail
-	rdsClients         map[string]*rds.RDS
-	iamClient          *iam.IAM
+	ec2Clients           map[string]*ec2.EC2
+	autoScalingClients   map[string]*autoscaling.AutoScaling
+	cloudTrailClient     map[string]*cloudtrail.CloudTrail
+	cloudFormationClient map[string]*cloudformation.CloudFormation
+	rdsClients           map[string]*rds.RDS
+	iamClient            *iam.IAM
 }
 
 func init() {
@@ -59,10 +61,13 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 	if err != nil {
 		return err
 	}
+
 	p.ec2Clients = map[string]*ec2.EC2{}
 	p.autoScalingClients = map[string]*autoscaling.AutoScaling{}
 	p.rdsClients = map[string]*rds.RDS{}
 	p.cloudTrailClient = map[string]*cloudtrail.CloudTrail{}
+	p.cloudFormationClient = map[string]*cloudformation.CloudFormation{}
+
 	for _, region := range regions {
 		if client, err := newEc2Client(region); err != nil {
 			panic(fmt.Sprintf("[AWS] Failed to create EC2 client in region %s, err: %s", region, err.Error()))
@@ -86,6 +91,12 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 			panic(fmt.Sprintf("[AWS] Failed to create CloudTrail client, err: %s", err.Error()))
 		} else {
 			p.cloudTrailClient[region] = ctClient
+		}
+
+		if cfClient, err := newCloudFormationClient(region); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create CloudFormation client, err: %s", err.Error()))
+		} else {
+			p.cloudFormationClient[region] = cfClient
 		}
 	}
 	if iamClient, err := newIamClient(); err != nil {
@@ -118,6 +129,12 @@ func (p awsProvider) GetInstances() ([]*types.Instance, error) {
 	return getInstances(ec2Clients, ctClients)
 }
 
+func (p awsProvider) GetStacks() ([]*types.Stack, error) {
+	log.Debug("[AWS] Fetching CloudFormation stacks")
+	cfClients := p.getCFClientsByRegion()
+	return getCFStacks(cfClients)
+}
+
 func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 	log.Debug("[AWS] Fetch databases")
 	rdsClients := map[string]rdsClient{}
@@ -143,6 +160,14 @@ func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[str
 		ctClients[k] = p.cloudTrailClient[k]
 	}
 	return ec2Clients, ctClients
+}
+
+func (p awsProvider) getCFClientsByRegion() map[string]cfClient {
+	cfClients := map[string]cfClient{}
+	for k := range p.cloudFormationClient {
+		cfClients[k] = p.cloudFormationClient[k]
+	}
+	return cfClients
 }
 
 func (p awsProvider) TerminateInstances(*types.InstanceContainer) []error {
@@ -352,6 +377,10 @@ type ec2Client interface {
 	DeregisterImage(input *ec2.DeregisterImageInput) (*ec2.DeregisterImageOutput, error)
 }
 
+type cfClient interface {
+	DescribeStacks(*cloudformation.DescribeStacksInput) (*cloudformation.DescribeStacksOutput, error)
+}
+
 type cloudTrailClient interface {
 	LookupEvents(input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
 }
@@ -406,6 +435,41 @@ func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]
 		instances = append(instances, inst)
 	}
 	return instances, nil
+}
+
+func getCFStacks(cfClients map[string]cfClient) ([]*types.Stack, error) {
+	cfChan := make(chan *types.Stack, 5)
+	wg := sync.WaitGroup{}
+	wg.Add(len(cfClients))
+
+	for r, c := range cfClients {
+		log.Debugf("[AWS] Fetching CloudFormation from: %s", r)
+		go func(region string, cfClient cfClient) {
+			defer wg.Done()
+
+			stackResult, e := cfClient.DescribeStacks(&cloudformation.DescribeStacksInput{})
+			if e != nil {
+				log.Errorf("[AWS] Failed to fetch the CloudFormation stacks in region: %s, err: %s", region, e)
+				return
+			}
+			log.Debugf("[AWS] Processing stacks (%d): [%s] in region: %s", len(stackResult.Stacks), stackResult.Stacks, region)
+			for _, s := range stackResult.Stacks {
+				stack := newStack(s, region)
+				cfChan <- stack
+			}
+		}(r, c)
+	}
+
+	go func() {
+		wg.Wait()
+		close(cfChan)
+	}()
+
+	var stacks []*types.Stack
+	for stack := range cfChan {
+		stacks = append(stacks, stack)
+	}
+	return stacks, nil
 }
 
 func getImages(ec2Clients map[string]ec2Client) ([]*types.Image, error) {
@@ -669,6 +733,16 @@ func newCloudTrailClient(region string) (*cloudtrail.CloudTrail, error) {
 	return cloudtrail.New(awsSession), nil
 }
 
+func newCloudFormationClient(region string) (*cloudformation.CloudFormation, error) {
+	awsSession, err := newSession(func(config *aws.Config) {
+		config.Region = &region
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cloudformation.New(awsSession), nil
+}
+
 func newSession(configure func(*aws.Config)) (*session.Session, error) {
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -682,7 +756,7 @@ func newSession(configure func(*aws.Config)) (*session.Session, error) {
 }
 
 func newInstance(inst *ec2.Instance) *types.Instance {
-	tags := getTags(inst.Tags)
+	tags := getEc2Tags(inst.Tags)
 	var name string
 	if n, ok := tags["name"]; ok {
 		name = n
@@ -699,6 +773,20 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		Region:       getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
 		InstanceType: *inst.InstanceType,
 		State:        getInstanceState(inst),
+	}
+}
+
+func newStack(stack *cloudformation.Stack, region string) *types.Stack {
+	tags := getCFTags(stack.Tags)
+	return &types.Stack{
+		ID:        *stack.StackId,
+		Name:      *stack.StackName,
+		Created:   *stack.CreationTime,
+		CloudType: types.AWS,
+		Tags:      tags,
+		Owner:     tags[ctx.OwnerLabel],
+		Region:    region,
+		State:     getCFState(stack),
 	}
 }
 
@@ -731,8 +819,16 @@ func getInstanceState(instance *ec2.Instance) types.State {
 	}
 }
 
+func getCFState(stack *cloudformation.Stack) types.State {
+	if stack.StackStatus == nil {
+		return types.Unknown
+	}
+	// TODO
+	return types.Running
+}
+
 func newDisk(volume *ec2.Volume) *types.Disk {
-	tags := getTags(volume.Tags)
+	tags := getEc2Tags(volume.Tags)
 	var name string
 	if n, ok := tags["Name"]; ok {
 		name = n
@@ -799,9 +895,17 @@ func getDatabaseState(rds rds.DBInstance) types.State {
 	}
 }
 
-func getTags(ec2Tags []*ec2.Tag) types.Tags {
+func getEc2Tags(ec2Tags []*ec2.Tag) types.Tags {
 	tags := make(types.Tags, 0)
 	for _, t := range ec2Tags {
+		tags[strings.ToLower(*t.Key)] = *t.Value
+	}
+	return tags
+}
+
+func getCFTags(cfTags []*cloudformation.Tag) types.Tags {
+	tags := make(types.Tags, 0)
+	for _, t := range cfTags {
 		tags[strings.ToLower(*t.Key)] = *t.Value
 	}
 	return tags

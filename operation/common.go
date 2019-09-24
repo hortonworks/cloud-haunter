@@ -66,6 +66,16 @@ func collectInstances(clouds []types.CloudType) (chan []types.CloudItem, chan er
 	})
 }
 
+func collectStacks(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
+	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
+		stacks, err := provider.GetStacks()
+		if err != nil {
+			return nil, err
+		}
+		return convertStacksToCloudItems(stacks), nil
+	})
+}
+
 func convertInstancesToCloudItems(instances []*types.Instance) []types.CloudItem {
 	var items []types.CloudItem
 	for _, inst := range instances {
@@ -78,6 +88,14 @@ func convertToCloudItems(images []*types.Image) []types.CloudItem {
 	var items []types.CloudItem
 	for _, img := range images {
 		items = append(items, img)
+	}
+	return items
+}
+
+func convertStacksToCloudItems(stacks []*types.Stack) []types.CloudItem {
+	var items []types.CloudItem
+	for _, stack := range stacks {
+		items = append(items, stack)
 	}
 	return items
 }

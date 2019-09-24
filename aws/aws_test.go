@@ -103,7 +103,7 @@ func TestNewInstanceMissingName(t *testing.T) {
 	assert.Equal(t, "ID", instance.Name)
 }
 func TestGetTags(t *testing.T) {
-	assert.Equal(t, types.Tags{"k": "v"}, getTags([]*ec2.Tag{{Key: &(&types.S{S: "k"}).S, Value: &(&types.S{S: "v"}).S}}))
+	assert.Equal(t, types.Tags{"k": "v"}, getEc2Tags([]*ec2.Tag{{Key: &(&types.S{S: "k"}).S, Value: &(&types.S{S: "v"}).S}}))
 }
 
 func TestGetRegionFromAvailabilityZoneOk(t *testing.T) {
