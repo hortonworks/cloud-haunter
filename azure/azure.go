@@ -263,6 +263,10 @@ func (p azureProvider) TerminateInstances(*types.InstanceContainer) []error {
 	// return instances, nil
 }
 
+func (p azureProvider) TerminateStacks(*types.StackContainer) []error {
+	return []error{errors.New("[AZURE] Termination is not supported")}
+}
+
 func (p azureProvider) StopInstances(instances *types.InstanceContainer) []error {
 	azureInstances := instances.Get(types.AZURE)
 	log.Debugf("[AZURE] Stopping instances (%d): %v", len(azureInstances), azureInstances)

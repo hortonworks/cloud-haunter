@@ -2,6 +2,24 @@ package types
 
 import "time"
 
+type StackContainer struct {
+	stacks []*Stack
+}
+
+func (c *StackContainer) Get(cloudType CloudType) []*Stack {
+	var items []*Stack
+	for _, item := range c.stacks {
+		if item.CloudType == cloudType {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func NewStackContainer(stacks []*Stack) *StackContainer {
+	return &StackContainer{stacks}
+}
+
 // Stack represents a collection of resources (CF, ARM)
 type Stack struct {
 	ID        string    `json:"Id"`

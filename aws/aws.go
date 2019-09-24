@@ -174,6 +174,12 @@ func (p awsProvider) TerminateInstances(*types.InstanceContainer) []error {
 	return []error{errors.New("[AWS] Termination is not supported")}
 }
 
+func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
+	log.Debug("[AWS] Delete CloudFormation stacks")
+	cfClients := p.getCFClientsByRegion()
+	return deleteCFStacks(cfClients, stacks.Get(types.AWS))
+}
+
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
 	log.Debug("[AWS] Delete volumes")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
@@ -259,6 +265,45 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 				}
 			}
 		}(r, i)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
+func deleteCFStacks(cfClients map[string]cfClient, stacks []*types.Stack) []error {
+	regionCFStacks := map[string][]*types.Stack{}
+	for _, stack := range stacks {
+		regionCFStacks[stack.Region] = append(regionCFStacks[stack.Region], stack)
+	}
+	log.Debugf("[AWS] Delete CloudFormation stacks: %v", regionCFStacks)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(regionCFStacks))
+	errChan := make(chan error)
+
+	for r, s := range regionCFStacks {
+		go func(cfClient cfClient, region string, stacks []*types.Stack) {
+			defer wg.Done()
+			for _, stack := range stacks {
+				if ctx.DryRun {
+					log.Infof("[AWS] Dry-run set, CloudFormation stack is not deleted: %s, region: %s", stack.Name, region)
+				} else {
+					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s", stack.Name, region)
+					if _, err := cfClient.DeleteStack(&cloudformation.DeleteStackInput{StackName: &stack.Name}); err != nil {
+						errChan <- err
+					}
+				}
+			}
+		}(cfClients[r], r, s)
 	}
 
 	go func() {
@@ -379,6 +424,7 @@ type ec2Client interface {
 
 type cfClient interface {
 	DescribeStacks(*cloudformation.DescribeStacksInput) (*cloudformation.DescribeStacksOutput, error)
+	DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error)
 }
 
 type cloudTrailClient interface {

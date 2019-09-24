@@ -181,6 +181,10 @@ func (p gcpProvider) TerminateInstances(instances *types.InstanceContainer) []er
 	// return nil
 }
 
+func (p gcpProvider) TerminateStacks(*types.StackContainer) []error {
+	return []error{errors.New("[GCP] Termination is not supported")}
+}
+
 func (p gcpProvider) StopInstances(*types.InstanceContainer) []error {
 	return []error{errors.New("[GCP] Stop not supported")}
 }

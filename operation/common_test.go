@@ -104,3 +104,7 @@ func (p dummyProvider) GetStacks() ([]*types.Stack, error) {
 func (p dummyProvider) DeleteImages(*types.ImageContainer) []error {
 	return nil
 }
+
+func (p dummyProvider) TerminateStacks(*types.StackContainer) []error {
+	return nil
+}

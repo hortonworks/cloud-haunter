@@ -39,6 +39,8 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 				switch t := item.GetItem().(type) {
 				case types.Instance:
 					errors = terminateInstances(provider, cloudItems)
+				case types.Stack:
+					errors = terminateStacks(provider, cloudItems)
 				case types.Disk:
 					errors = deleteDisks(provider, cloudItems)
 				case types.Image:
@@ -63,6 +65,15 @@ func terminateInstances(provider types.CloudProvider, items []*types.CloudItem) 
 		instances = append(instances, &inst)
 	}
 	return provider.TerminateInstances(types.NewInstanceContainer(instances))
+}
+
+func terminateStacks(provider types.CloudProvider, items []*types.CloudItem) []error {
+	var stacks []*types.Stack
+	for _, item := range items {
+		stack := (*item).GetItem().(types.Stack)
+		stacks = append(stacks, &stack)
+	}
+	return provider.TerminateStacks(types.NewStackContainer(stacks))
 }
 
 func deleteDisks(provider types.CloudProvider, items []*types.CloudItem) []error {

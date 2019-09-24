@@ -25,6 +25,11 @@ func (p *mockProvider) TerminateInstances(*types.InstanceContainer) []error {
 	return nil
 }
 
+func (p *mockProvider) TerminateStacks(*types.StackContainer) []error {
+	p.calls++
+	return nil
+}
+
 func (p *mockProvider) StopInstances(*types.InstanceContainer) []error {
 	p.calls++
 	return nil
