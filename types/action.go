@@ -11,6 +11,9 @@ const (
 	// LogAction will log the cloud items to the console
 	LogAction = ActionType("log")
 
+	// Json will print the output in processable json format
+	Json = ActionType("json")
+
 	// StopAction will stop the cloud item if the item itself supports such operation
 	StopAction = ActionType("stop")
 

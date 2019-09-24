@@ -4,15 +4,14 @@ import "time"
 
 // Stack represents a collection of resources (CF, ARM)
 type Stack struct {
-	ID        string            `json:"Id"`
-	Name      string            `json:"Name"`
-	Created   time.Time         `json:"Created"`
-	Tags      Tags              `json:"Tags"`
-	Owner     string            `json:"Owner"`
-	CloudType CloudType         `json:"CloudType"`
-	State     State             `json:"State"`
-	Metadata  map[string]string `json:"Metadata"`
-	Region    string            `json:"Region"`
+	ID        string    `json:"Id"`
+	Name      string    `json:"Name"`
+	Created   time.Time `json:"Created"`
+	Tags      Tags      `json:"Tags"`
+	Owner     string    `json:"Owner"`
+	CloudType CloudType `json:"CloudType"`
+	State     State     `json:"State"`
+	Region    string    `json:"Region"`
 }
 
 func (s Stack) GetName() string {

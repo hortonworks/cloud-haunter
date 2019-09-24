@@ -28,6 +28,7 @@ Can filter by:
 And can do action:
  * send notification
  * log result
+ * print result in json format
  * stop instances [AWS, AZURE]
  * terminate disks [AWS]
  * terminate images [AWS, AZURE, GCP]
@@ -73,32 +74,36 @@ NAME:
 USAGE:
    ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud1,cloud2]
 VERSION:
-   0.5.0
+   v0.5.7-snapshot
 
 AUTHOR(S):
    Hortonworks
 OPERATIONS:
+	-o getImages
+	-o getInstances
+	-o readImages
+	-o getStacks
 	-o getAccess
 	-o getDatabases
 	-o getDisks
-	-o getInstances
 FILTERS:
-	-f longrunning
-	-f oldaccess
-	-f ownerless
 	-f running
 	-f stopped
 	-f unused
+	-f longrunning
 	-f match
+	-f oldaccess
+	-f ownerless
 ACTIONS:
+	-a json
 	-a log
 	-a notification
 	-a stop
 	-a termination
 CLOUDS:
-	-c azure
-	-c aws
-	-c gcp
+	-c AWS
+	-c AZURE
+	-c GCP
 FILTER_CONFIG:
 	-fc=/location/of/filter/config.yml
 DRY RUN:

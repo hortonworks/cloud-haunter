@@ -823,7 +823,6 @@ func getCFState(stack *cloudformation.Stack) types.State {
 	if stack.StackStatus == nil {
 		return types.Unknown
 	}
-	// TODO
 	return types.Running
 }
 
