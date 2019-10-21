@@ -22,6 +22,9 @@ const (
 	// MatchFilter filters the items that match the include criteria of the filter config
 	MatchFilter = FilterType("match")
 
+	// NoMatchFilter filters the items that do not match the include criteria of the filter config
+	NoMatchFilter = FilterType("nomatch")
+
 	// InclusiveFilter filter type that will return only the matching entries from the filter's inclusive configuration
 	InclusiveFilter = FilterConfigType("inclusive")
 
