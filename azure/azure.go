@@ -285,8 +285,26 @@ func (p azureProvider) TerminateInstances(*types.InstanceContainer) []error {
 	// return instances, nil
 }
 
-func (p azureProvider) TerminateStacks(*types.StackContainer) []error {
-	return []error{errors.New("[AZURE] Termination is not supported")}
+func (p azureProvider) TerminateStacks(stacks *types.StackContainer) []error {
+	log.Debug("[AZURE] Delete resource groups")
+
+	azureStacks := stacks.Get(types.AZURE)
+	var errs []error
+
+	for _, rg := range azureStacks {
+		rgName := rg.Name
+		log.Infof("[AZURE] Delete resource group: %s", rgName)
+		if ctx.DryRun {
+			log.Infof("[AZURE] Dry-run set, resource group is not deleted: %s", rgName)
+		} else {
+			_, err := p.rgClient.Delete(context.Background(), rgName)
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+
+	return errs
 }
 
 func (p azureProvider) StopInstances(instances *types.InstanceContainer) []error {
