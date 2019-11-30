@@ -2,6 +2,7 @@
 cloud.google.com/go/compute/metadata
 # github.com/Azure/azure-sdk-for-go v18.1.0+incompatible
 github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute
+github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2015-11-01/resources
 github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2015-11-01/subscriptions
 github.com/Azure/azure-sdk-for-go/version
 # github.com/Azure/go-autorest v10.13.0+incompatible

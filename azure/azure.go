@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2015-11-01/resources"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2015-11-01/subscriptions"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
@@ -29,7 +30,7 @@ type azureProvider struct {
 	vmScaleSetClient   compute.VirtualMachineScaleSetsClient
 	vmScaleSetVMClient compute.VirtualMachineScaleSetVMsClient
 	imageClient        compute.ImagesClient
-	// rgClient       resources.GroupsClient
+	rgClient           resources.GroupsClient
 	// resClient      resources.Client
 }
 
@@ -67,6 +68,8 @@ func (p *azureProvider) init(subscriptionID string, authorizer func() (autorest.
 	p.vmScaleSetVMClient.Authorizer = authorization
 	p.imageClient = compute.NewImagesClient(subscriptionID)
 	p.imageClient.Authorizer = authorization
+	p.rgClient = resources.NewGroupsClient(subscriptionID)
+	p.rgClient.Authorizer = authorization
 	return nil
 }
 
@@ -80,6 +83,29 @@ func (p azureProvider) GetAccountName() string {
 		}
 	}
 	return p.subscriptionID
+}
+
+func (p azureProvider) GetStacks() ([]*types.Stack, error) {
+	log.Debug("[AZURE] Fetching resource groups")
+
+	resourceGroups, err := p.rgClient.List(context.Background(), "", nil)
+	if err != nil {
+		log.Errorf("[AZURE] Failed to fetch the resource groups, err: %s", err.Error())
+		return nil, err
+	}
+
+	var stacks []*types.Stack
+	for i := 0; resourceGroups.NotDone(); i++ {
+		log.Infof("[AZURE] Fetching resource groups, round: %d", i+1)
+		for _, rg := range resourceGroups.Values() {
+			stacks = append(stacks, newStack(rg))
+		}
+		if err := resourceGroups.Next(); err != nil {
+			log.Errorf("[AZURE] All resource groups are fetched, err: %s", err.Error())
+		}
+	}
+
+	return stacks, nil
 }
 
 func (p azureProvider) GetInstances() ([]*types.Instance, error) {
@@ -161,10 +187,6 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 	return instances, nil
 }
 
-func (p azureProvider) GetStacks() ([]*types.Stack, error) {
-	return nil, nil
-}
-
 type azureInstance struct {
 	instance          compute.VirtualMachine
 	instanceView      compute.VirtualMachineInstanceView
@@ -205,7 +227,7 @@ func (p azureProvider) GetImages() ([]*types.Image, error) {
 
 func (p azureProvider) DeleteImages(images *types.ImageContainer) []error {
 	log.Debug("[AZURE] Delete images")
-	imagesToDelete := []azureImage{}
+	var imagesToDelete []azureImage
 	for _, image := range images.Get(types.AZURE) {
 		resourceGroup, name := getImageResourceGroupAndName(image.ID)
 		imagesToDelete = append(imagesToDelete, azureImage{image, resourceGroup, name})
@@ -350,12 +372,12 @@ func deleteImages(imagesClient imagesClient, imagesToDelete []azureImage, existi
 		close(errorChan)
 	}()
 
-	errors := []error{}
+	var errs []error
 	for err := range errorChan {
-		errors = append(errors, err)
+		errs = append(errs, err)
 	}
 
-	return errors
+	return errs
 }
 
 func getImageResourceGroupAndName(url string) (string, string) {
@@ -465,4 +487,18 @@ func getCreationTimeFromTags(tags types.Tags, convertTimeUnix func(unixTimestamp
 		return convertTimeUnix(creationTimestamp)
 	}
 	return convertTimeUnix("0")
+}
+
+func newStack(rg resources.Group) *types.Stack {
+	tags := utils.ConvertTags(rg.Tags)
+	return &types.Stack{
+		ID:        *rg.ID,
+		Name:      *rg.Name,
+		Created:   time.Now(),
+		Tags:      tags,
+		Owner:     tags[ctx.OwnerLabel],
+		CloudType: types.AZURE,
+		State:     types.Running,
+		Region:    *rg.Location,
+	}
 }
