@@ -512,7 +512,7 @@ func newStack(rg resources.Group) *types.Stack {
 	return &types.Stack{
 		ID:        *rg.ID,
 		Name:      *rg.Name,
-		Created:   time.Now(),
+		Created:   getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 		Tags:      tags,
 		Owner:     tags[ctx.OwnerLabel],
 		CloudType: types.AZURE,
