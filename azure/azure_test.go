@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Azure/go-autorest/autorest"
-	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
@@ -39,7 +38,24 @@ func Test_givenTimestampIsInTags_whenGetCreationTimeFromTags_thenReturnsConverte
 		timeAsUnixTimeStamp: "1527240203",
 		timeAsTime:          time.Date(2018, 5, 25, 11, 23, 23, 0, time.Local),
 	}
-	tags := types.Tags{ctx.AzureCreationTimeLabel: testValues.timeAsUnixTimeStamp}
+	tags := types.Tags{"creation-timestamp": testValues.timeAsUnixTimeStamp}
+	callInfo, stubConverterFunc := getStubConvertTimeUnixByTime(testValues.timeAsTime)
+
+	getCreationTimeFromTags(tags, stubConverterFunc)
+
+	assert.Equal(t, len(callInfo.invocations), 1)
+	assert.Equal(t, callInfo.invocations[0].(string), testValues.timeAsUnixTimeStamp)
+}
+
+func Test_givenTimestampIsInLegacyTags_whenGetCreationTimeFromTags_thenReturnsConvertedTimestamp(t *testing.T) {
+	testValues := struct {
+		timeAsUnixTimeStamp string
+		timeAsTime          time.Time
+	}{
+		timeAsUnixTimeStamp: "1527240203",
+		timeAsTime:          time.Date(2018, 5, 25, 11, 23, 23, 0, time.Local),
+	}
+	tags := types.Tags{"cb-creation-timestamp": testValues.timeAsUnixTimeStamp}
 	callInfo, stubConverterFunc := getStubConvertTimeUnixByTime(testValues.timeAsTime)
 
 	getCreationTimeFromTags(tags, stubConverterFunc)

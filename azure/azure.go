@@ -501,8 +501,10 @@ func convertViewStatusToState(actualStatus compute.InstanceViewStatus) types.Sta
 }
 
 func getCreationTimeFromTags(tags types.Tags, convertTimeUnix func(unixTimestamp string) time.Time) time.Time {
-	if creationTimestamp, ok := tags[ctx.AzureCreationTimeLabel]; ok {
-		return convertTimeUnix(creationTimestamp)
+	for _, label := range strings.Split(ctx.AzureCreationTimeLabel, ",") {
+		if creationTimestamp, ok := tags[label]; ok {
+			return convertTimeUnix(creationTimestamp)
+		}
 	}
 	return convertTimeUnix("0")
 }

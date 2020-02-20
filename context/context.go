@@ -14,8 +14,8 @@ var (
 	// OwnerLabel across all cloud providers
 	OwnerLabel = "owner"
 
-	// AzureCreationTimeLabel is the instance creation tim on Azure, because Azure is stupid and doesn't tell
-	AzureCreationTimeLabel = "cb-creation-timestamp"
+	// AzureCreationTimeLabel is the instance creation time on Azure, because Azure is stupid and doesn't tell
+	AzureCreationTimeLabel = "creation-timestamp,cb-creation-timestamp,cdp-creation-timestamp"
 
 	AwsBulkOperationSize = 50
 )
