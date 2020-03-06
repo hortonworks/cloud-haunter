@@ -64,7 +64,11 @@ func ConvertTimeUnix(unixTimestamp string) time.Time {
 		log.Warnf("[util.ConvertTimeUnix] cannot convert time: %s, err: %s", unixTimestamp, err)
 		timestamp = 0
 	}
-	return time.Unix(timestamp, 0)
+	t := time.Unix(timestamp, 0)
+	if t.Year() >= 3000 || t.Year() <= 1970 {
+		t = time.Unix(0, timestamp*int64(1000000))
+	}
+	return t
 }
 
 // ConvertTags converts a map of tags to types.Tag
