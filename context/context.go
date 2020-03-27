@@ -17,7 +17,7 @@ var (
 	// AzureCreationTimeLabel is the instance creation time on Azure, because Azure is stupid and doesn't tell
 	AzureCreationTimeLabel = "creation-timestamp,cb-creation-timestamp,cdp-creation-timestamp"
 
-	AwsBulkOperationSize = 50
+	AwsBulkOperationSize = 2
 )
 
 // DryRun is a global flag to skip concrete action
