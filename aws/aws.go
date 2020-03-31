@@ -234,8 +234,18 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 					log.Errorf("[AWS] Failed to fetch the ASG instances in region: %s, err: %s", region, err)
 					return
 				}
+
+				instanceIDs = filterSpotInstances(asgInstances, p.autoScalingClients[region], instanceIDs)
+
 				for _, instance := range asgInstances.AutoScalingInstances {
-					compactInstanceName := fmt.Sprintf("%s:%s", *instance.InstanceId, instIDNames[*instance.InstanceId])
+					instanceId := instance.InstanceId
+
+					if !containsInstanceID(instanceIDs, instanceId) {
+						log.Infof("[AWS] spot instance: %s, ASG group: %s", *instanceId, *instance.AutoScalingGroupName)
+						continue
+					}
+
+					compactInstanceName := fmt.Sprintf("%s:%s", *instanceId, instIDNames[*instanceId])
 					log.Debugf("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
 
 					if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{
@@ -253,12 +263,17 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 					}); err != nil {
 						log.Errorf("[AWS] Failed to suspend ASG %v for instance %s, err: %s", instance.AutoScalingGroupName, compactInstanceName, err.Error())
 						// Do not stop the instance if the ASG cannot be suspended otherwise the ASG will terminate the instance
-						instanceIDs = removeInstance(instanceIDs, instance.InstanceId)
+						instanceIDs = removeInstance(instanceIDs, instanceId)
 					}
 				}
 
 				if len(instanceIDs) > 0 {
-					log.Debugf("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), instIDNames)
+					stopInstances := ""
+					for _, inst := range instanceIDs {
+						name := instIDNames[*inst]
+						stopInstances += fmt.Sprintf("\n%s:%s", *inst, name)
+					}
+					log.Infof("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), stopInstances)
 					if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
 						errChan <- err
 					}
@@ -699,6 +714,35 @@ func getDatabases(rdsClients map[string]rdsClient, cloudTrailClients map[string]
 	return databases, nil
 }
 
+func filterSpotInstances(asgInstances *autoscaling.DescribeAutoScalingInstancesOutput, autoScalingClient *autoscaling.AutoScaling, instanceIDs []*string) []*string {
+	var asgNames []*string
+	for _, instance := range asgInstances.AutoScalingInstances {
+		asg := instance.AutoScalingGroupName
+		if instance.AutoScalingGroupName != nil {
+			asgNames = append(asgNames, asg)
+		}
+	}
+	groups, err := autoScalingClient.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: asgNames,
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to fetch the AS Groups, err: %s", err)
+	}
+	for _, group := range groups.AutoScalingGroups {
+		policy := group.MixedInstancesPolicy
+		if policy != nil && policy.InstancesDistribution != nil && policy.InstancesDistribution.OnDemandPercentageAboveBaseCapacity != nil {
+			onDemandCapacity := *policy.InstancesDistribution.OnDemandPercentageAboveBaseCapacity
+			if onDemandCapacity == 0 {
+				log.Infof("[AWS] ASG with 0 On-Demand Percentage: %s", *group.AutoScalingGroupName)
+				for _, instance := range group.Instances {
+					instanceIDs = removeInstance(instanceIDs, instance.InstanceId)
+				}
+			}
+		}
+	}
+	return instanceIDs
+}
+
 func getRegions(ec2Client ec2Client) ([]string, error) {
 	regionResult, e := ec2Client.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if e != nil {
@@ -729,6 +773,17 @@ func removeInstance(originalIDs []*string, instanceID *string) (instanceIDs []*s
 		}
 	}
 	return
+}
+
+func containsInstanceID(instanceIDs []*string, instanceID *string) bool {
+	found := false
+	for _, ID := range instanceIDs {
+		if *ID == *instanceID {
+			found = true
+			break
+		}
+	}
+	return found
 }
 
 func newIamClient() (*iam.IAM, error) {
