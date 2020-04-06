@@ -37,6 +37,15 @@ func isInstance(item types.CloudItem) bool {
 	}
 }
 
+func isStack(item types.CloudItem) bool {
+	switch item.GetItem().(type) {
+	case types.Stack:
+		return true
+	default:
+		return false
+	}
+}
+
 func isFilterMatch(filterName string, item types.CloudItem, filterType types.FilterConfigType, filterConfig *types.FilterConfig) bool {
 	switch item.GetItem().(type) {
 	case types.Instance:
