@@ -235,13 +235,18 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 					return
 				}
 
-				instanceIDs = filterSpotInstances(asgInstances, p.autoScalingClients[region], instanceIDs)
+				for _, inst := range instanceChunk {
+					if inst.Ephemeral {
+						log.Infof("[AWS] Spot instance will not be stopped: %s:%s", inst.ID, instIDNames[inst.ID])
+						instanceIDs = removeInstance(instanceIDs, &inst.ID)
+					}
+				}
 
 				for _, instance := range asgInstances.AutoScalingInstances {
 					instanceId := instance.InstanceId
 
 					if !containsInstanceID(instanceIDs, instanceId) {
-						log.Infof("[AWS] spot instance: %s, ASG group: %s", *instanceId, *instance.AutoScalingGroupName)
+						log.Infof("[AWS] Spot instance: %s, ASG group: %s", *instanceId, *instance.AutoScalingGroupName)
 						continue
 					}
 
@@ -714,35 +719,6 @@ func getDatabases(rdsClients map[string]rdsClient, cloudTrailClients map[string]
 	return databases, nil
 }
 
-func filterSpotInstances(asgInstances *autoscaling.DescribeAutoScalingInstancesOutput, autoScalingClient *autoscaling.AutoScaling, instanceIDs []*string) []*string {
-	var asgNames []*string
-	for _, instance := range asgInstances.AutoScalingInstances {
-		asg := instance.AutoScalingGroupName
-		if instance.AutoScalingGroupName != nil {
-			asgNames = append(asgNames, asg)
-		}
-	}
-	groups, err := autoScalingClient.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{
-		AutoScalingGroupNames: asgNames,
-	})
-	if err != nil {
-		log.Errorf("[AWS] Failed to fetch the AS Groups, err: %s", err)
-	}
-	for _, group := range groups.AutoScalingGroups {
-		policy := group.MixedInstancesPolicy
-		if policy != nil && policy.InstancesDistribution != nil && policy.InstancesDistribution.OnDemandPercentageAboveBaseCapacity != nil {
-			onDemandCapacity := *policy.InstancesDistribution.OnDemandPercentageAboveBaseCapacity
-			if onDemandCapacity == 0 {
-				log.Infof("[AWS] ASG with 0 On-Demand Percentage: %s", *group.AutoScalingGroupName)
-				for _, instance := range group.Instances {
-					instanceIDs = removeInstance(instanceIDs, instance.InstanceId)
-				}
-			}
-		}
-	}
-	return instanceIDs
-}
-
 func getRegions(ec2Client ec2Client) ([]string, error) {
 	regionResult, e := ec2Client.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if e != nil {
@@ -864,6 +840,10 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 	} else {
 		name = *inst.InstanceId
 	}
+	ephemeral := false
+	if inst.InstanceLifecycle != nil && strings.ToLower(*inst.InstanceLifecycle) == "spot" {
+		ephemeral = true
+	}
 	return &types.Instance{
 		ID:           *inst.InstanceId,
 		Name:         name,
@@ -874,6 +854,7 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		Region:       getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
 		InstanceType: *inst.InstanceType,
 		State:        getInstanceState(inst),
+		Ephemeral:    ephemeral,
 	}
 }
 

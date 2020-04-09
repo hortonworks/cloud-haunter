@@ -32,6 +32,7 @@ type Instance struct {
 	State        State             `json:"State"`
 	Metadata     map[string]string `json:"Metadata"`
 	Region       string            `json:"Region"`
+	Ephemeral    bool              `json:"Ephemeral"`
 }
 
 // Tags Key-value pairs of the tags on the instances
