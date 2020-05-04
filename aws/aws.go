@@ -235,21 +235,8 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 					return
 				}
 
-				for _, inst := range instanceChunk {
-					if inst.Ephemeral {
-						log.Infof("[AWS] Spot instance will not be stopped: %s:%s", inst.ID, instIDNames[inst.ID])
-						instanceIDs = removeInstance(instanceIDs, &inst.ID)
-					}
-				}
-
 				for _, instance := range asgInstances.AutoScalingInstances {
 					instanceId := instance.InstanceId
-
-					if !containsInstanceID(instanceIDs, instanceId) {
-						log.Infof("[AWS] Spot instance: %s, ASG group: %s", *instanceId, *instance.AutoScalingGroupName)
-						continue
-					}
-
 					compactInstanceName := fmt.Sprintf("%s:%s", *instanceId, instIDNames[*instanceId])
 					log.Debugf("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
 
@@ -273,13 +260,35 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 				}
 
 				if len(instanceIDs) > 0 {
-					stopInstances := ""
+					var spotInstanceIDs []*string
+					for _, inst := range instanceChunk {
+						if inst.Ephemeral {
+							// could be that the instance is already removed due to failed suspend API call
+							if containsInstanceID(instanceIDs, &inst.ID) {
+								log.Infof("[AWS] Spot instance will be terminated: %s:%s", inst.ID, instIDNames[inst.ID])
+								spotInstanceIDs = append(spotInstanceIDs, &inst.ID)
+								instanceIDs = removeInstance(instanceIDs, &inst.ID)
+							}
+						}
+					}
+
+					stopInstancesNames := ""
 					for _, inst := range instanceIDs {
 						name := instIDNames[*inst]
-						stopInstances += fmt.Sprintf("\n%s:%s", *inst, name)
+						stopInstancesNames += fmt.Sprintf("\n%s:%s", *inst, name)
 					}
-					log.Infof("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), stopInstances)
+					log.Infof("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), stopInstancesNames)
 					if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
+						errChan <- err
+					}
+
+					spotInstanceNames := ""
+					for _, inst := range spotInstanceIDs {
+						name := instIDNames[*inst]
+						spotInstanceNames += fmt.Sprintf("\n%s:%s", *inst, name)
+					}
+					log.Infof("[AWS] Sending request to terminate spot instances in region %s (%d): %v", region, len(spotInstanceIDs), spotInstanceNames)
+					if _, err := p.ec2Clients[region].TerminateInstances(&ec2.TerminateInstancesInput{InstanceIds: spotInstanceIDs}); err != nil {
 						errChan <- err
 					}
 				}
