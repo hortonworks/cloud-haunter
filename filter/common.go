@@ -96,6 +96,23 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 				log.Warnf("[%s] Cloud type not supported: %s", filterName, item.GetCloudType())
 			}
 		}
+	case types.Database:
+		database := item.GetItem().(types.Database)
+		name := item.GetName()
+		ignoreLabelFound := utils.IsAnyMatch(database.Tags, ctx.IgnoreLabel)
+		if ignoreLabelFound {
+			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
+			if filterType.IsInclusive() {
+				log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
+				return false
+			}
+			log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
+			return true
+		}
+		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, database.Tags)
+		if applied {
+			return filtered
+		}
 	}
 	return false
 }

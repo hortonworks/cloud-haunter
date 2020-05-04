@@ -8,6 +8,7 @@ type Database struct {
 	Name         string            `json:"Name"`
 	Created      time.Time         `json:"Created"`
 	Owner        string            `json:"Owner"`
+	Tags         Tags              `json:"Tags"`
 	InstanceType string            `json:"InstanceType"`
 	State        State             `json:"State"`
 	CloudType    CloudType         `json:"CloudType"`

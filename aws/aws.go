@@ -458,6 +458,7 @@ type iamClient interface {
 
 type rdsClient interface {
 	DescribeDBInstances(input *rds.DescribeDBInstancesInput) (*rds.DescribeDBInstancesOutput, error)
+	ListTagsForResource(input *rds.ListTagsForResourceInput) (*rds.ListTagsForResourceOutput, error)
 }
 
 func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
@@ -694,8 +695,14 @@ func getDatabases(rdsClients map[string]rdsClient, cloudTrailClients map[string]
 			databases := result.DBInstances
 			log.Debugf("[AWS] Processing databases (%d): %s", len(databases), databases)
 			for _, db := range databases {
-				d := newDatabase(*db)
-				if d.State == types.Running {
+				tags, err := rdsClient.ListTagsForResource(&rds.ListTagsForResourceInput{
+					ResourceName: db.DBInstanceArn,
+				})
+				if err != nil {
+					log.Debugf("[AWS] Cannot list tags for DB: %s", *db.DBName)
+				}
+				d := newDatabase(*db, tags)
+				if d.State == types.Running && len(d.Owner) == 0 {
 					log.Debugf("[AWS] Check CloudTrail for database: %s", d.Name)
 					if iamUser := getIAMUserFromCloudTrail(d.Name, cloudTrailClient); iamUser != nil {
 						d.Metadata = map[string]string{"IAMUser": *iamUser}
@@ -944,7 +951,8 @@ func newImage(image *ec2.Image, region string) *types.Image {
 	}
 }
 
-func newDatabase(rds rds.DBInstance) *types.Database {
+func newDatabase(rds rds.DBInstance, tagList *rds.ListTagsForResourceOutput) *types.Database {
+	tags := getRdsTags(tagList)
 	return &types.Database{
 		ID:           *rds.DbiResourceId,
 		Name:         *rds.DBInstanceIdentifier,
@@ -952,6 +960,8 @@ func newDatabase(rds rds.DBInstance) *types.Database {
 		Region:       getRegionFromAvailabilityZone(rds.AvailabilityZone),
 		InstanceType: *rds.DBInstanceClass,
 		State:        getDatabaseState(rds),
+		Owner:        tags[ctx.OwnerLabel],
+		Tags:         tags,
 		CloudType:    types.AWS,
 	}
 }
@@ -971,6 +981,8 @@ func getDatabaseState(rds rds.DBInstance) types.State {
 	switch *rds.DBInstanceStatus {
 	case "available":
 		return types.Running
+	case "stopped":
+		return types.Stopped
 	default:
 		return types.Unknown
 	}
@@ -988,6 +1000,16 @@ func getCFTags(cfTags []*cloudformation.Tag) types.Tags {
 	tags := make(types.Tags, 0)
 	for _, t := range cfTags {
 		tags[strings.ToLower(*t.Key)] = *t.Value
+	}
+	return tags
+}
+
+func getRdsTags(tagList *rds.ListTagsForResourceOutput) types.Tags {
+	tags := make(types.Tags, 0)
+	if tagList != nil && len(tagList.TagList) > 0 {
+		for _, t := range tagList.TagList {
+			tags[strings.ToLower(*t.Key)] = *t.Value
+		}
 	}
 	return tags
 }
