@@ -189,6 +189,10 @@ func (p gcpProvider) StopInstances(*types.InstanceContainer) []error {
 	return []error{errors.New("[GCP] Stop not supported")}
 }
 
+func (p gcpProvider) StopDatabases(*types.DatabaseContainer) []error {
+	return []error{errors.New("[GCP] Not implemented")}
+}
+
 func (p gcpProvider) GetAccesses() ([]*types.Access, error) {
 	log.Debug("[GCP] Fetching service accounts")
 	return getAccesses(p.iamClient.Projects.ServiceAccounts.List("projects/"+p.projectID), func(name string) keysListAggregator {

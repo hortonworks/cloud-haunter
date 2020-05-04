@@ -2,12 +2,31 @@ package types
 
 import "time"
 
+type DatabaseContainer struct {
+	databases []*Database
+}
+
+func (c *DatabaseContainer) Get(cloudType CloudType) []*Database {
+	var items []*Database
+	for _, item := range c.databases {
+		if item.CloudType == cloudType {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func NewDatabaseContainer(databases []*Database) *DatabaseContainer {
+	return &DatabaseContainer{databases}
+}
+
 // Database is a general database struct processed by filters and actions
 type Database struct {
 	ID           string            `json:"Id"`
 	Name         string            `json:"Name"`
 	Created      time.Time         `json:"Created"`
 	Owner        string            `json:"Owner"`
+	Tags         Tags              `json:"Tags"`
 	InstanceType string            `json:"InstanceType"`
 	State        State             `json:"State"`
 	CloudType    CloudType         `json:"CloudType"`

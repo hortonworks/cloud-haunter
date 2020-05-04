@@ -350,6 +350,10 @@ func (p azureProvider) StopInstances(instances *types.InstanceContainer) []error
 	return ers
 }
 
+func (p azureProvider) StopDatabases(*types.DatabaseContainer) []error {
+	return []error{errors.New("[AZURE] Not implemented")}
+}
+
 func (p azureProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, errors.New("[AZURE] Access not supported")
 }

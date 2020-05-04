@@ -69,11 +69,15 @@ func (p dummyProvider) GetInstances() (i []*types.Instance, e error) {
 	return
 }
 
-func (p dummyProvider) TerminateInstances(i *types.InstanceContainer) (e []error) {
+func (p dummyProvider) TerminateInstances(_ *types.InstanceContainer) (e []error) {
 	return
 }
 
-func (p dummyProvider) StopInstances(i *types.InstanceContainer) (e []error) {
+func (p dummyProvider) StopInstances(_ *types.InstanceContainer) (e []error) {
+	return
+}
+
+func (p dummyProvider) StopDatabases(_ *types.DatabaseContainer) (e []error) {
 	return
 }
 
