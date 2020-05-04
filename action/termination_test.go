@@ -35,6 +35,10 @@ func (p *mockProvider) StopInstances(*types.InstanceContainer) []error {
 	return nil
 }
 
+func (p mockProvider) StopDatabases(_ *types.DatabaseContainer) (e []error) {
+	return
+}
+
 func (p *mockProvider) GetAccesses() ([]*types.Access, error) {
 	return nil, nil
 }

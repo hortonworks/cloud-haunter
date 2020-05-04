@@ -299,6 +299,44 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 	return errs
 }
 
+func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
+	log.Debug("[AWS] Stopping databases")
+	regionDatabases := map[string][]*types.Database{}
+	for _, database := range databases.Get(types.AWS) {
+		regionDatabases[database.Region] = append(regionDatabases[database.Region], database)
+	}
+	log.Debugf("[AWS] Stopping databases: %v", regionDatabases)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(regionDatabases))
+	errChan := make(chan error)
+
+	for r, db := range regionDatabases {
+		go func(region string, databases []*types.Database) {
+			defer wg.Done()
+			for _, db := range databases {
+				log.Infof("[AWS] Stop database: %s", db.Name)
+				if _, err := p.rdsClients[region].StopDBInstance(&rds.StopDBInstanceInput{
+					DBInstanceIdentifier: &db.Name,
+				}); err != nil {
+					errChan <- err
+				}
+			}
+		}(r, db)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
 func deleteCFStacks(cfClients map[string]cfClient, stacks []*types.Stack) []error {
 	regionCFStacks := map[string][]*types.Stack{}
 	for _, stack := range stacks {
