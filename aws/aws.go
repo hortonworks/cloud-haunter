@@ -282,14 +282,19 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 						errChan <- err
 					}
 
-					spotInstanceNames := ""
-					for _, inst := range spotInstanceIDs {
-						name := instIDNames[*inst]
-						spotInstanceNames += fmt.Sprintf("\n%s:%s", *inst, name)
-					}
-					log.Infof("[AWS] Sending request to terminate spot instances in region %s (%d): %v", region, len(spotInstanceIDs), spotInstanceNames)
-					if _, err := p.ec2Clients[region].TerminateInstances(&ec2.TerminateInstancesInput{InstanceIds: spotInstanceIDs}); err != nil {
-						errChan <- err
+					if len(spotInstanceIDs) > 0 {
+						spotInstanceNames := ""
+						for _, inst := range spotInstanceIDs {
+							name := instIDNames[*inst]
+							spotInstanceNames += fmt.Sprintf("\n%s:%s", *inst, name)
+						}
+
+						log.Infof("[AWS] Sending request to terminate spot instances in region %s (%d): %v", region, len(spotInstanceIDs), spotInstanceNames)
+						if _, err := p.ec2Clients[region].TerminateInstances(&ec2.TerminateInstancesInput{InstanceIds: spotInstanceIDs}); err != nil {
+							errChan <- err
+						}
+					} else {
+						log.Info("[AWS] There are not spot instances to terminate")
 					}
 				}
 			}
