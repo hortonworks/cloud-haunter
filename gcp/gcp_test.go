@@ -16,7 +16,7 @@ import (
 func TestProviderInit(t *testing.T) {
 	provider := gcpProvider{}
 
-	provider.init("project-id", &http.Client{}, &http.Client{})
+	provider.init("project-id", &http.Client{}, &http.Client{}, &http.Client{})
 
 	assert.Equal(t, "project-id", provider.projectID)
 	assert.NotNil(t, provider.computeClient)
