@@ -170,6 +170,14 @@ func (p awsProvider) getCFClientsByRegion() map[string]cfClient {
 	return cfClients
 }
 
+func (p awsProvider) getRdsClientsByRegion() map[string]rdsClient {
+	rdsClients := map[string]rdsClient{}
+	for k := range p.rdsClients {
+		rdsClients[k] = p.rdsClients[k]
+	}
+	return rdsClients
+}
+
 func (p awsProvider) TerminateInstances(*types.InstanceContainer) []error {
 	return []error{errors.New("[AWS] Termination is not supported")}
 }
@@ -177,7 +185,8 @@ func (p awsProvider) TerminateInstances(*types.InstanceContainer) []error {
 func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	log.Debug("[AWS] Delete CloudFormation stacks")
 	cfClients := p.getCFClientsByRegion()
-	return deleteCFStacks(cfClients, stacks.Get(types.AWS))
+	rdsClients := p.getRdsClientsByRegion()
+	return deleteCFStacks(cfClients, rdsClients, stacks.Get(types.AWS))
 }
 
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
@@ -351,7 +360,7 @@ func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
 	return errs
 }
 
-func deleteCFStacks(cfClients map[string]cfClient, stacks []*types.Stack) []error {
+func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, stacks []*types.Stack) []error {
 	regionCFStacks := map[string][]*types.Stack{}
 	for _, stack := range stacks {
 		regionCFStacks[stack.Region] = append(regionCFStacks[stack.Region], stack)
@@ -363,19 +372,42 @@ func deleteCFStacks(cfClients map[string]cfClient, stacks []*types.Stack) []erro
 	errChan := make(chan error)
 
 	for r, s := range regionCFStacks {
-		go func(cfClient cfClient, region string, stacks []*types.Stack) {
+		go func(cfClient cfClient, rdsClient rdsClient, region string, stacks []*types.Stack) {
 			defer wg.Done()
 			for _, stack := range stacks {
 				if ctx.DryRun {
 					log.Infof("[AWS] Dry-run set, CloudFormation stack is not deleted: %s, region: %s", stack.Name, region)
 				} else {
+					dbStackResource, err := cfClient.DescribeStackResource(&cloudformation.DescribeStackResourceInput{
+						StackName:         &stack.Name,
+						LogicalResourceId: aws.String("DBInstance"),
+					})
+					if err == nil {
+						dbInstanceId := dbStackResource.StackResourceDetail.PhysicalResourceId
+						log.Infof("[AWS] Disabling DeletionProtection for DB instance: %s, region: %s", *dbInstanceId, region)
+
+						_, err := rdsClient.ModifyDBInstance(&rds.ModifyDBInstanceInput{
+							DBInstanceIdentifier: dbInstanceId,
+							DeletionProtection:   aws.Bool(false),
+						})
+						if err != nil {
+							log.Errorf("[AWS] Skipping stack %s delete because failed to disable DeletionProtection on db instance: %s, err: %s", stack.Name, *dbInstanceId, err)
+							errChan <- err
+							continue
+						}
+					} else if !strings.Contains(err.Error(), "Resource DBInstance does not exist for stack") {
+						log.Errorf("[AWS] Failed to fetch the CloudFormation stack resources for stack: %s, err: %s", stack.Name, err)
+						errChan <- err
+						continue
+					}
+
 					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s", stack.Name, region)
 					if _, err := cfClient.DeleteStack(&cloudformation.DeleteStackInput{StackName: &stack.Name}); err != nil {
 						errChan <- err
 					}
 				}
 			}
-		}(cfClients[r], r, s)
+		}(cfClients[r], rdsClients[r], r, s)
 	}
 
 	go func() {
@@ -497,6 +529,7 @@ type ec2Client interface {
 type cfClient interface {
 	DescribeStacks(*cloudformation.DescribeStacksInput) (*cloudformation.DescribeStacksOutput, error)
 	DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error)
+	DescribeStackResource(input *cloudformation.DescribeStackResourceInput) (*cloudformation.DescribeStackResourceOutput, error)
 }
 
 type cloudTrailClient interface {
@@ -511,6 +544,7 @@ type iamClient interface {
 type rdsClient interface {
 	DescribeDBInstances(input *rds.DescribeDBInstancesInput) (*rds.DescribeDBInstancesOutput, error)
 	ListTagsForResource(input *rds.ListTagsForResourceInput) (*rds.ListTagsForResourceOutput, error)
+	ModifyDBInstance(input *rds.ModifyDBInstanceInput) (*rds.ModifyDBInstanceOutput, error)
 }
 
 func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
