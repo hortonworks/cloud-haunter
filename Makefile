@@ -21,7 +21,7 @@ LDFLAGS+= -X $(PKG_BASE)/context.GcpIgnoreLabel=$(GCP_IGNORE_LABEL)
 GCP_OWNER_LABEL?=owner
 LDFLAGS+= -X $(PKG_BASE)/contextgcp.GcpOwnerLabel=$(GCP_OWNER_LABEL)
 
-GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.git/*")
+GOFILES = $(shell find . -type f -name '*.go' -not -path "./.git/*")
 
 all: deps build
 
@@ -31,16 +31,16 @@ deps:
 _check: formatcheck vet
 
 formatcheck:
-	([ -z "$(shell gofmt -d $(GOFILES_NOVENDOR))" ]) || (echo "Source is unformatted"; exit 1)
+	([ -z "$(shell gofmt -d $(GOFILES))" ]) || (echo "Source is unformatted"; exit 1)
 
 format:
-	gofmt -s -w $(GOFILES_NOVENDOR)
+	gofmt -s -w $(GOFILES)
 
 vet:
-	GO111MODULE=on go vet -mod=vendor ./...
+	GO111MODULE=on go vet ./...
 
 test:
-	GO111MODULE=on go test -mod=vendor -timeout 30s -coverprofile coverage -race
+	GO111MODULE=on go test -timeout 30s -coverprofile coverage -race
 
 _build: build-darwin build-linux
 
@@ -50,10 +50,10 @@ cleanup:
 	rm -rf release && mkdir release
 
 build-darwin:
-	GO111MODULE=on GOOS=darwin CGO_ENABLED=0 go build -mod=vendor -ldflags "$(LDFLAGS)" -o build/Darwin/${BINARY} main.go
+	GO111MODULE=on GOOS=darwin CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Darwin/${BINARY} main.go
 
 build-linux:
-	GO111MODULE=on GOOS=linux CGO_ENABLED=0 go build -mod=vendor -ldflags "$(LDFLAGS)" -o build/Linux/${BINARY} main.go
+	GO111MODULE=on GOOS=linux CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o build/Linux/${BINARY} main.go
 
 build-docker:
 	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
@@ -65,7 +65,6 @@ mod-tidy:
 
 _mod-tidy:
 	go mod tidy -v
-	go mod vendor
 
 release: cleanup build
 	glu release
