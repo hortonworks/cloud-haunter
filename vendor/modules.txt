@@ -85,6 +85,15 @@ github.com/pmezard/go-difflib/difflib
 # github.com/sirupsen/logrus v1.0.5
 ## explicit
 github.com/sirupsen/logrus
+# github.com/softlayer/softlayer-go v1.0.1
+## explicit
+github.com/softlayer/softlayer-go/config
+github.com/softlayer/softlayer-go/datatypes
+github.com/softlayer/softlayer-go/services
+github.com/softlayer/softlayer-go/session
+github.com/softlayer/softlayer-go/sl
+# github.com/softlayer/xmlrpc v0.0.0-20200409220501-5f089df7cb7e
+github.com/softlayer/xmlrpc
 # github.com/stretchr/testify v1.4.0
 ## explicit
 github.com/stretchr/testify/assert
@@ -93,11 +102,11 @@ github.com/stretchr/testify/suite
 # github.com/tbruyelle/hipchat-go v0.0.0-20160921153256-749fb9e14beb
 ## explicit
 github.com/tbruyelle/hipchat-go/hipchat
-# golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
+# golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550
 golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/net v0.0.0-20200202094626-16171245cfb2
+# golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
 # golang.org/x/oauth2 v0.0.0-20180620175406-ef147856a6dd
@@ -107,13 +116,16 @@ golang.org/x/oauth2/google
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
-## explicit
-# golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a
+# golang.org/x/sys v0.0.0-20190412213103-97732733099d
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/text v0.3.2
 ## explicit
+golang.org/x/text/encoding
+golang.org/x/text/encoding/charmap
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/transform
 # google.golang.org/api v0.0.0-20180717000714-0025a57598c0
 ## explicit
 google.golang.org/api/compute/v1

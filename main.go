@@ -13,6 +13,7 @@ import (
 	_ "github.com/hortonworks/cloud-haunter/filter"
 	_ "github.com/hortonworks/cloud-haunter/gcp"
 	_ "github.com/hortonworks/cloud-haunter/hipchat"
+	_ "github.com/hortonworks/cloud-haunter/ibm"
 	_ "github.com/hortonworks/cloud-haunter/operation"
 	_ "github.com/hortonworks/cloud-haunter/slack"
 	"github.com/hortonworks/cloud-haunter/types"

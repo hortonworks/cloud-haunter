@@ -17,6 +17,9 @@ const (
 	// AZURE cloud type
 	AZURE = CloudType("AZURE")
 
+	// IBM cloud type
+	IBM = CloudType("IBM")
+
 	// DUMMY cloud type
 	DUMMY = CloudType("DUMMY")
 )

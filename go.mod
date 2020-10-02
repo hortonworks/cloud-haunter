@@ -13,10 +13,10 @@ require (
 	github.com/onsi/ginkgo v1.10.1 // indirect
 	github.com/onsi/gomega v1.7.0 // indirect
 	github.com/sirupsen/logrus v1.0.5
+	github.com/softlayer/softlayer-go v1.0.1
 	github.com/stretchr/testify v1.4.0
 	github.com/tbruyelle/hipchat-go v0.0.0-20160921153256-749fb9e14beb
 	golang.org/x/oauth2 v0.0.0-20180620175406-ef147856a6dd
-	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
 	golang.org/x/text v0.3.2 // indirect
 	google.golang.org/api v0.0.0-20180717000714-0025a57598c0
 	google.golang.org/appengine v1.1.0 // indirect
