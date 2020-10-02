@@ -35,12 +35,14 @@ func init() {
 func (f oldAccess) Execute(items []types.CloudItem) []types.CloudItem {
 	log.Debugf("[OLDACCESS] Filtering accesses (%d): [%s]", len(items), items)
 	return filter("OLDACCESS", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
-		if isInstance(item) {
+		switch item.GetItem().(type) {
+		case types.Access:
+			match := item.GetCreated().Add(f.availablePeriod).Before(time.Now())
+			log.Debugf("[OLDACCESS] Access: %s match: %v", item.GetName(), match)
+			return match
+		default:
 			log.Fatalf("[OLDACCESS] Filter does not apply for cloud item: %s", item.GetName())
-			return true
 		}
-		match := item.GetCreated().Add(f.availablePeriod).Before(time.Now())
-		log.Debugf("[OLDACCESS] Access: %s match: %v", item.GetName(), match)
-		return match
+		return true
 	})
 }

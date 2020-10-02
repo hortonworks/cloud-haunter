@@ -321,11 +321,3 @@ func TestExclusiveFilter(t *testing.T) {
 
 	assert.Equal(t, 3, len(filtered))
 }
-
-func TestIsInstance(t *testing.T) {
-	assert.True(t, isInstance(types.Instance{}))
-}
-
-func TestIsNotInstance(t *testing.T) {
-	assert.False(t, isInstance(types.Access{}))
-}
