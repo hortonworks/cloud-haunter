@@ -1,6 +1,6 @@
 module github.com/hortonworks/cloud-haunter
 
-go 1.14
+go 1.15
 
 require (
 	cloud.google.com/go v0.25.0 // indirect
