@@ -1,5 +1,7 @@
 BINARY=ch
 
+GO_VERSION?=$(shell cat go.mod | grep '^go' | awk '{print $$2}')
+
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 VERSION?=$(shell git describe --tags --abbrev=0)-snapshot
 PKG_BASE=github.com/hortonworks/cloud-haunter
@@ -57,11 +59,11 @@ build-linux:
 
 build-docker:
 	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
-	docker run --rm ${USER_NS} -v "${PWD}":/go/src/$(PKG_BASE) -w /go/src/$(PKG_BASE) golang:1.14 make build
+	docker run --rm ${USER_NS} -v "${PWD}":/go/src/$(PKG_BASE) -w /go/src/$(PKG_BASE) golang:$(GO_VERSION) make build
 
 mod-tidy:
 	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
-	@docker run --rm ${USER_NS} -v "${PWD}":/go/src/$(PKG_BASE) -w /go/src/$(PKG_BASE) -e GO111MODULE=on golang:1.14 make _mod-tidy
+	@docker run --rm ${USER_NS} -v "${PWD}":/go/src/$(PKG_BASE) -w /go/src/$(PKG_BASE) -e GO111MODULE=on golang:$(GO_VERSION) make _mod-tidy
 
 _mod-tidy:
 	go mod tidy -v
