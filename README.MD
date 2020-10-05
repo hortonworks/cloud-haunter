@@ -5,7 +5,7 @@
 `Haunter is a pokémon ghost which will poison and kill your unidentified and orphan cloud resources`
  
 The main goal of this project is to save costs in the cloud by monitoring and terminating resources.
-Cloud Haunter (ch) is supports the three major cloud providers.
+Cloud Haunter (ch) is supports the four major cloud providers.
 
 `The project is under construction, use on your own risk!`
 
