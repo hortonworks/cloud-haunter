@@ -95,6 +95,11 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 		if applied {
 			return filtered
 		}
+	case types.Disk:
+		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, types.Tags{})
+		if applied {
+			return filtered
+		}
 	}
 	return false
 }

@@ -115,8 +115,41 @@ func (p gcpProvider) GetDisks() ([]*types.Disk, error) {
 	return p.getDisks()
 }
 
-func (p gcpProvider) DeleteDisks(*types.DiskContainer) []error {
-	return []error{errors.New("[GCP] Disk deletion is not supported")}
+func (p gcpProvider) DeleteDisks(disks *types.DiskContainer) []error {
+	gcpDisks := disks.Get(types.GCP)
+	log.Debugf("[GCP] Deleting disks: %v", gcpDisks)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(gcpDisks))
+	errChan := make(chan error)
+
+	for _, d := range gcpDisks {
+		go func(disk *types.Disk) {
+			defer wg.Done()
+
+			if ctx.DryRun {
+				log.Infof("[GCP] Dry-run set, disk is not deleted: %s", disk.Name)
+			} else {
+				zone := disk.Metadata["zone"]
+				log.Infof("[GCP] Sending request to delete disk in zone %s : %s", zone, disk.Name)
+
+				if _, err := p.computeClient.Disks.Delete(p.projectID, zone, disk.Name).Do(); err != nil {
+					errChan <- err
+				}
+			}
+		}(d)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 func (p gcpProvider) GetImages() ([]*types.Image, error) {
@@ -504,6 +537,7 @@ func (p gcpProvider) getDisks() ([]*types.Disk, error) {
 				Type:      gDisk.Type,
 				State:     getDiskStatus(gDisk),
 				Owner:     tags[ctx.OwnerLabel],
+				Metadata:  map[string]string{"zone": getZone(gDisk.Zone)},
 			}
 			disks = append(disks, aDisk)
 		}
