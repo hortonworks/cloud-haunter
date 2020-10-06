@@ -22,15 +22,16 @@ func NewDiskContainer(disks []*Disk) *DiskContainer {
 
 // Disk represents the root and attached disks for the instances
 type Disk struct {
-	ID        string    `json:"Id"`
-	Name      string    `json:"Name"`
-	Created   time.Time `json:"Created"`
-	State     State     `json:"State"`
-	Owner     string    `json:"Owner"`
-	CloudType CloudType `json:"CloudType"`
-	Region    string    `json:"Region"`
-	Size      int64     `json:"Size"`
-	Type      string    `json:"Type"`
+	ID        string            `json:"Id"`
+	Name      string            `json:"Name"`
+	Created   time.Time         `json:"Created"`
+	State     State             `json:"State"`
+	Owner     string            `json:"Owner"`
+	CloudType CloudType         `json:"CloudType"`
+	Region    string            `json:"Region"`
+	Size      int64             `json:"Size"`
+	Type      string            `json:"Type"`
+	Metadata  map[string]string `json:"Metadata"`
 }
 
 // GetName returns the name of the disk
