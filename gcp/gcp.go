@@ -107,7 +107,7 @@ func (p gcpProvider) GetInstances() ([]*types.Instance, error) {
 }
 
 func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
-	return nil, nil
+	return nil, errors.New("[GCP] Get stacks is not supported")
 }
 
 func (p gcpProvider) GetDisks() ([]*types.Disk, error) {
@@ -204,8 +204,41 @@ func (p gcpProvider) TerminateStacks(*types.StackContainer) []error {
 	return []error{errors.New("[GCP] Termination is not supported")}
 }
 
-func (p gcpProvider) StopInstances(*types.InstanceContainer) []error {
-	return []error{errors.New("[GCP] Stop not supported")}
+func (p gcpProvider) StopInstances(instances *types.InstanceContainer) []error {
+	gcpInstances := instances.Get(types.GCP)
+	log.Debugf("[GCP] Stopping instances: %v", gcpInstances)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(gcpInstances))
+	errChan := make(chan error)
+
+	for _, i := range gcpInstances {
+		go func(instance *types.Instance) {
+			defer wg.Done()
+
+			if ctx.DryRun {
+				log.Infof("[GCP] Dry-run set, instance is not stopped: %s", instance.Name)
+			} else {
+				zone := instance.Metadata["zone"]
+				log.Infof("[GCP] Sending request to stop instance in zone %s : %s", zone, instance.Name)
+
+				if _, err := p.computeClient.Instances.Stop(p.projectID, zone, instance.Name).Do(); err != nil {
+					errChan <- err
+				}
+			}
+		}(i)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 func (p gcpProvider) StopDatabases(*types.DatabaseContainer) []error {
