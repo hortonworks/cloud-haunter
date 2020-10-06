@@ -133,71 +133,73 @@ func (p gcpProvider) DeleteImages(images *types.ImageContainer) []error {
 }
 
 func (p gcpProvider) TerminateInstances(instances *types.InstanceContainer) []error {
-	return []error{errors.New("[GCP] Termination is not supported")}
-	// 	log.Debug("[GCP] Terminating instanes")
-	// instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectId).Do()
-	// if err != nil {
-	// 	log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
-	// 	return err
-	// }
+	log.Debug("[GCP] Terminating instances")
 
-	// instancesToDelete := []*types.Instance{}
-	// instanceGroupsToDelete := map[*compute.InstanceGroupManager]bool{}
+	gcpInstances := instances.Get(types.GCP)
+	instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectID).Do()
+	if err != nil {
+		log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
+		return []error{err}
+	}
 
-	// for _, inst := range instances {
-	// 		log.Debugf("[GCP] Terminating instane: %s", inst.GetName())
-	// 	groupFound := false
-	// 	for _, i := range instanceGroups.Items {
-	// 		for _, group := range i.InstanceGroupManagers {
-	// 			if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.BaseInstanceName+"-") == 0 {
-	// 				instanceGroupsToDelete[group], groupFound = true, true
-	// 			}
-	// 		}
-	// 	}
-	// 	if !groupFound {
-	// 		instancesToDelete = append(instancesToDelete, inst)
-	// 	}
-	// }
+	instancesToDelete := []*types.Instance{}
+	instanceGroupsToDelete := map[*compute.InstanceGroupManager]bool{}
 
-	// 	log.Debugf("[GCP] Instance groups to terminate (%d) : [%s]", len(instanceGroupsToDelete), instanceGroupsToDelete)
-	// wg := sync.WaitGroup{}
-	// wg.Add(len(instanceGroupsToDelete))
-	// for g := range instanceGroupsToDelete {
-	// 	go func(group *compute.InstanceGroupManager) {
-	// 		defer wg.Done()
+	for _, inst := range gcpInstances {
+		groupFound := false
+		for _, i := range instanceGroups.Items {
+			for _, group := range i.InstanceGroupManagers {
+				if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.BaseInstanceName+"-") == 0 {
+					log.Debugf("[GCP] Found instance group for instance %s : %s", inst.GetName(), group.Name)
+					instanceGroupsToDelete[group], groupFound = true, true
+				}
+			}
+		}
+		if !groupFound {
+			log.Debugf("[GCP] Not found instance group for instance: %s", inst.GetName())
+			instancesToDelete = append(instancesToDelete, inst)
+		}
+	}
 
-	// 		zone := getZone(group.Zone)
-	// 		log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
-	// 		if context.DryRun {
-	// 			log.Info("[GCP] Skipping group termination on dry run session")
-	// 		} else {
-	// 			_, err := p.computeClient.InstanceGroupManagers.Delete(p.projectId, zone, group.Name).Do()
-	// 			if err != nil {
-	// 				log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
-	// 			}
-	// 		}
-	// 	}(g)
-	// }
-	// 	log.Debugf("[GCP] Instances to terminate (%d): [%s]", len(instancesToDelete), instancesToDelete)
-	// wg.Add(len(instancesToDelete))
-	// for _, i := range instancesToDelete {
-	// 	go func(inst *types.Instance) {
-	// 		defer wg.Done()
+	log.Debugf("[GCP] Instance groups to terminate (%d) : [%v]", len(instanceGroupsToDelete), instanceGroupsToDelete)
+	wg := sync.WaitGroup{}
+	wg.Add(len(instanceGroupsToDelete))
+	for g := range instanceGroupsToDelete {
+		go func(group *compute.InstanceGroupManager) {
+			defer wg.Done()
 
-	// 		zone := inst.Metadata["zone"].(string)
-	// 		log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
-	// 		if context.DryRun {
-	// 			log.Info("[GCP] Skipping instance termination on dry run session")
-	// 		} else {
-	// 			_, err := p.computeClient.Instances.Delete(p.projectId, zone, inst.Name).Do()
-	// 			if err != nil {
-	// 				log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
-	// 			}
-	// 		}
-	// 	}(i)
-	// }
-	// wg.Wait()
-	// return nil
+			zone := getZone(group.Zone)
+			log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
+			if ctx.DryRun {
+				log.Info("[GCP] Skipping group termination on dry run session")
+			} else {
+				_, err := p.computeClient.InstanceGroupManagers.Delete(p.projectID, zone, group.Name).Do()
+				if err != nil {
+					log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
+				}
+			}
+		}(g)
+	}
+	log.Debugf("[GCP] Instances to terminate (%d): [%v]", len(instancesToDelete), instancesToDelete)
+	wg.Add(len(instancesToDelete))
+	for _, i := range instancesToDelete {
+		go func(inst *types.Instance) {
+			defer wg.Done()
+
+			zone := inst.Metadata["zone"]
+			log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
+			if ctx.DryRun {
+				log.Info("[GCP] Skipping instance termination on dry run session")
+			} else {
+				_, err := p.computeClient.Instances.Delete(p.projectID, zone, inst.Name).Do()
+				if err != nil {
+					log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	return nil
 }
 
 func (p gcpProvider) TerminateStacks(*types.StackContainer) []error {
