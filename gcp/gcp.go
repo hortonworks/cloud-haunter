@@ -274,8 +274,46 @@ func (p gcpProvider) StopInstances(instances *types.InstanceContainer) []error {
 	return errs
 }
 
-func (p gcpProvider) StopDatabases(*types.DatabaseContainer) []error {
-	return []error{errors.New("[GCP] Not implemented")}
+func (p gcpProvider) StopDatabases(databases *types.DatabaseContainer) []error {
+	gcpDatabases := databases.Get(types.GCP)
+	log.Debugf("[GCP] Stopping databases: %v", gcpDatabases)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(gcpDatabases))
+	errChan := make(chan error)
+
+	stopRequest := &sqladmin.DatabaseInstance{
+		Settings: &sqladmin.Settings{
+			ActivationPolicy: "NEVER",
+		},
+	}
+
+	for _, db := range gcpDatabases {
+		go func(database *types.Database) {
+			defer wg.Done()
+
+			if ctx.DryRun {
+				log.Infof("[GCP] Dry-run set, instance is not stopped: %s", database.Name)
+			} else {
+				log.Infof("[GCP] Sending request to stop instance %s", database.Name)
+
+				if _, err := p.sqlClient.Instances.Patch(p.projectID, database.Name, stopRequest).Do(); err != nil {
+					errChan <- err
+				}
+			}
+		}(db)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 func (p gcpProvider) GetAccesses() ([]*types.Access, error) {
