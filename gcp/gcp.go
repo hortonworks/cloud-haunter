@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -106,8 +107,171 @@ func (p gcpProvider) GetInstances() ([]*types.Instance, error) {
 	return getInstances(p.computeClient.Instances.AggregatedList(p.projectID))
 }
 
+/**
+ * In GCP currently we create resources one-by-one (without using a template), so stacks have to be assembled from resources.
+ * We define a stack for each {ResourceGroupingLabel} label value of found instances:
+ * - Add instances with the same tag to stack
+ * - Add database with the same tag to stack
+ * - Filter networks by their description (if provided in {ResourceDescription} config), and add them to stack by the instance's network interface in stack
+ * - Add external IPs as referenced by instances in stack
+ * Then add references to these resources in the MetaData property of the stack, so later we can reference them.
+ */
 func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
-	return nil, errors.New("[GCP] Get stacks is not supported")
+	databases, err := p.GetDatabases()
+	if err != nil {
+		log.Error("[GCP] Failed to fetch databases")
+		return nil, err
+	}
+
+	instanceResponse, err := p.computeClient.Instances.AggregatedList(p.projectID).Do()
+	if err != nil {
+		log.Error("[GCP] Failed to fetch instances")
+		return nil, err
+	}
+
+	instancesByName := map[string]types.Instance{}
+	gcpInstancesByName := map[string]compute.Instance{}
+	for _, items := range instanceResponse.Items {
+		for _, gcpInstance := range items.Instances {
+			instance := newInstance(gcpInstance)
+			instancesByName[instance.Name] = *instance
+			gcpInstancesByName[instance.Name] = *gcpInstance
+		}
+	}
+
+	networkListCall := p.computeClient.Networks.List(p.projectID)
+	if ctx.ResourceDescription != "" {
+		descriptionFilter := fmt.Sprintf("description = \"%s\"", ctx.ResourceDescription)
+		networkListCall = networkListCall.Filter(descriptionFilter)
+	}
+	networkResponse, err := networkListCall.Do()
+	if err != nil {
+		log.Error("[GCP] Failed to fetch networks")
+		return nil, err
+	}
+
+	networksBySelfLink := map[string]*compute.Network{}
+	for _, network := range networkResponse.Items {
+		networksBySelfLink[network.SelfLink] = network
+	}
+
+	regions := map[string]bool{}
+	for _, instance := range instancesByName {
+		regions[instance.Region] = true
+	}
+
+	externalIpsByRegion := map[string][]*compute.Address{}
+	for region := range regions {
+		externalIps, err := p.computeClient.Addresses.List(p.projectID, region).Do()
+		if err != nil {
+			log.Errorf("[GCP] Failed to fetch external IPs in region %s", region)
+			return nil, err
+		}
+		externalIpsByRegion[region] = externalIps.Items
+	}
+
+	gcpStacks := map[string]*GcpStack{}
+	for instanceName, instance := range instancesByName {
+		stackId, ok := instance.Tags[ctx.ResourceGroupingLabel]
+		if !ok {
+			log.Warnf("[GCP] Skipping instance %s as it does not have %s tag", instance.Name, ctx.ResourceGroupingLabel)
+			continue
+		}
+
+		gcpInstance := gcpInstancesByName[instanceName]
+
+		if _, ok := gcpStacks[stackId]; !ok {
+			log.Debugf("[GCP] Creating stack for instance %s", instanceName)
+			var stackDatabaseName string
+			for _, database := range databases {
+				if stackId == database.Tags[ctx.ResourceGroupingLabel] {
+					log.Debugf("[GCP] Using db %s for stack %s", database.Name, stackId)
+					stackDatabaseName = database.Name
+					break
+				}
+			}
+			var networkName string
+			for _, networkInterface := range gcpInstance.NetworkInterfaces {
+				if network, ok := networksBySelfLink[networkInterface.Network]; ok {
+					networkName = network.Name
+				} else {
+					log.Debugf("[GCP] No generated network found for instance %s", instanceName)
+				}
+			}
+			newGcpStack := GcpStack{
+				ID:              stackId,
+				Region:          instance.Region,
+				Zone:            instance.Metadata["zone"],
+				InstanceNames:   []string{},
+				ExternalIpNames: []string{},
+				NetworkName:     networkName,
+				Owner:           instance.Owner,
+				DatabaseName:    stackDatabaseName,
+				Created:         instance.Created,
+				State:           instance.State,
+			}
+			gcpStacks[stackId] = &newGcpStack
+		}
+		currentGcpStack := gcpStacks[stackId]
+
+		log.Debugf("[GCP] Adding instance %s to stack %s", instance.Name, stackId)
+		currentGcpStack.InstanceNames = append(currentGcpStack.InstanceNames, instance.Name)
+
+		if instance.State != currentGcpStack.State {
+			currentGcpStack.State = types.Unknown
+		}
+
+		for _, address := range externalIpsByRegion[instance.Region] {
+			for _, url := range address.Users {
+				if url == gcpInstance.SelfLink {
+					log.Debugf("[GCP] Adding external ip %s to stack %s", address.Name, stackId)
+					currentGcpStack.ExternalIpNames = append(currentGcpStack.ExternalIpNames, address.Name)
+				}
+			}
+		}
+	}
+
+	var stacks []*types.Stack
+	for _, gcpStack := range gcpStacks {
+		log.Debugf("[GCP] Converting gcpStack %+v", gcpStack)
+		aStack := &types.Stack{
+			ID:        gcpStack.ID,
+			Name:      gcpStack.ID,
+			Created:   gcpStack.Created,
+			Owner:     gcpStack.Owner,
+			CloudType: types.GCP,
+			State:     types.Running,
+			Region:    gcpStack.Region,
+			Metadata: map[string]string{
+				"instances":   strings.Join(gcpStack.InstanceNames, ","),
+				"externalIps": strings.Join(gcpStack.ExternalIpNames, ","),
+				"network":     gcpStack.NetworkName,
+				"database":    gcpStack.DatabaseName,
+				"zone":        gcpStack.Zone,
+			},
+		}
+		stacks = append(stacks, aStack)
+	}
+	log.Debugf("[GCP] Collected stacks %+v", stacks)
+
+	return stacks, nil
+}
+
+type GcpStack struct {
+	ID              string
+	Region          string
+	Zone            string
+	InstanceNames   []string
+	ExternalIpNames []string
+	NetworkName     string
+	DatabaseName    string
+	Created         time.Time
+	Owner           string
+	State           types.State
+}
+
+func getPrefix(str string) string {
+	return strings.Split(str, "-")[0]
 }
 
 func (p gcpProvider) GetDisks() ([]*types.Disk, error) {
@@ -612,6 +776,7 @@ func (p gcpProvider) getDatabases(aggregator *sqladmin.InstancesListCall) ([]*ty
 			State:        getDatabaseInstanceStatus(databaseInstance),
 			Owner:        tags[ctx.OwnerLabel],
 			InstanceType: databaseInstance.InstanceType,
+			Tags:         tags,
 		}
 		databases = append(databases, aDisk)
 	}
