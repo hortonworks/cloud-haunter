@@ -22,14 +22,15 @@ func NewStackContainer(stacks []*Stack) *StackContainer {
 
 // Stack represents a collection of resources (CF, ARM)
 type Stack struct {
-	ID        string    `json:"Id"`
-	Name      string    `json:"Name"`
-	Created   time.Time `json:"Created"`
-	Tags      Tags      `json:"Tags"`
-	Owner     string    `json:"Owner"`
-	CloudType CloudType `json:"CloudType"`
-	State     State     `json:"State"`
-	Region    string    `json:"Region"`
+	ID        string            `json:"Id"`
+	Name      string            `json:"Name"`
+	Created   time.Time         `json:"Created"`
+	Tags      Tags              `json:"Tags"`
+	Owner     string            `json:"Owner"`
+	CloudType CloudType         `json:"CloudType"`
+	State     State             `json:"State"`
+	Region    string            `json:"Region"`
+	Metadata  map[string]string `json:"Metadata"`
 }
 
 func (s Stack) GetName() string {
