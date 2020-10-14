@@ -113,6 +113,7 @@ func (p gcpProvider) GetInstances() ([]*types.Instance, error) {
  * - Add instances with the same tag to stack
  * - Add database with the same tag to stack
  * - Filter networks by their description (if provided in {ResourceDescription} config), and add them to stack by the instance's network interface in stack
+ * - Add the network's firewall and subnets to stack
  * - Add external IPs as referenced by instances in stack
  * Then add references to these resources in the MetaData property of the stack, so later we can reference them.
  */
@@ -139,20 +140,14 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 		}
 	}
 
-	networkListCall := p.computeClient.Networks.List(p.projectID)
-	if ctx.ResourceDescription != "" {
-		descriptionFilter := fmt.Sprintf("description = \"%s\"", ctx.ResourceDescription)
-		networkListCall = networkListCall.Filter(descriptionFilter)
-	}
-	networkResponse, err := networkListCall.Do()
+	networksBySelfLink, err := p.getNetworksBySelfLink()
 	if err != nil {
-		log.Error("[GCP] Failed to fetch networks")
 		return nil, err
 	}
 
-	networksBySelfLink := map[string]*compute.Network{}
-	for _, network := range networkResponse.Items {
-		networksBySelfLink[network.SelfLink] = network
+	firewallsByNetwork, err := p.getFirewallsByNetwork()
+	if err != nil {
+		return nil, err
 	}
 
 	regions := map[string]bool{}
@@ -191,9 +186,16 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 				}
 			}
 			var networkName string
+			var firewallName string
+			var subnetNames []string
 			for _, networkInterface := range gcpInstance.NetworkInterfaces {
 				if network, ok := networksBySelfLink[networkInterface.Network]; ok {
 					networkName = network.Name
+					firewallName = firewallsByNetwork[network.SelfLink].Name
+					for _, subnet := range network.Subnetworks {
+						subnetParts := strings.Split(subnet, "/")
+						subnetNames = append(subnetNames, subnetParts[len(subnetParts)-1])
+					}
 				} else {
 					log.Debugf("[GCP] No generated network found for instance %s", instanceName)
 				}
@@ -205,6 +207,8 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 				InstanceNames:   []string{},
 				ExternalIpNames: []string{},
 				NetworkName:     networkName,
+				SubnetNames:     subnetNames,
+				FirewallName:    firewallName,
 				Owner:           instance.Owner,
 				DatabaseName:    stackDatabaseName,
 				Created:         instance.Created,
@@ -246,6 +250,8 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 				"instances":   strings.Join(gcpStack.InstanceNames, ","),
 				"externalIps": strings.Join(gcpStack.ExternalIpNames, ","),
 				"network":     gcpStack.NetworkName,
+				"subnets":     strings.Join(gcpStack.SubnetNames, ","),
+				"firewall":    gcpStack.FirewallName,
 				"database":    gcpStack.DatabaseName,
 				"zone":        gcpStack.Zone,
 			},
@@ -264,14 +270,50 @@ type GcpStack struct {
 	InstanceNames   []string
 	ExternalIpNames []string
 	NetworkName     string
+	SubnetNames     []string
+	FirewallName    string
 	DatabaseName    string
 	Created         time.Time
 	Owner           string
 	State           types.State
 }
 
-func getPrefix(str string) string {
-	return strings.Split(str, "-")[0]
+func (p gcpProvider) getNetworksBySelfLink() (map[string]*compute.Network, error) {
+	networkListCall := p.computeClient.Networks.List(p.projectID)
+	if ctx.ResourceDescription != "" {
+		descriptionFilter := fmt.Sprintf("description = \"%s\"", ctx.ResourceDescription)
+		networkListCall = networkListCall.Filter(descriptionFilter)
+	}
+	networkResponse, err := networkListCall.Do()
+	if err != nil {
+		log.Error("[GCP] Failed to fetch networks")
+		return nil, err
+	}
+
+	networksBySelfLink := map[string]*compute.Network{}
+	for _, network := range networkResponse.Items {
+		networksBySelfLink[network.SelfLink] = network
+	}
+	return networksBySelfLink, nil
+}
+
+func (p gcpProvider) getFirewallsByNetwork() (map[string]*compute.Firewall, error) {
+	firewallListCall := p.computeClient.Firewalls.List(p.projectID)
+	if ctx.ResourceDescription != "" {
+		descriptionFilter := fmt.Sprintf("description = \"%s\"", ctx.ResourceDescription)
+		firewallListCall = firewallListCall.Filter(descriptionFilter)
+	}
+	firewallResponse, err := firewallListCall.Do()
+	if err != nil {
+		log.Error("[GCP] Failed to fetch firewalls")
+		return nil, err
+	}
+
+	firewallsByNetwork := map[string]*compute.Firewall{}
+	for _, firewall := range firewallResponse.Items {
+		firewallsByNetwork[firewall.Network] = firewall
+	}
+	return firewallsByNetwork, nil
 }
 
 func (p gcpProvider) GetDisks() ([]*types.Disk, error) {
@@ -399,8 +441,237 @@ func (p gcpProvider) TerminateInstances(instances *types.InstanceContainer) []er
 	return nil
 }
 
-func (p gcpProvider) TerminateStacks(*types.StackContainer) []error {
-	return []error{errors.New("[GCP] Termination is not supported")}
+func (p gcpProvider) TerminateStacks(stacks *types.StackContainer) []error {
+	gcpStacks := stacks.Get(types.GCP)
+	log.Debugf("[GCP] Terminating stacks: %v", gcpStacks)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(gcpStacks))
+	errChan := make(chan error)
+
+	for _, s := range gcpStacks {
+		go func(stack *types.Stack) {
+			defer wg.Done()
+
+			if ctx.DryRun {
+				log.Infof("[GCP] Dry-run set, stack is not terminated: %s", stack.Name)
+			} else {
+				log.Infof("[GCP] Terminating stack %s", stack.Name)
+
+				if success := p.terminateInstancesAndDbInStack(stack, errChan); success {
+					p.terminateNetworkRelatedResourcesInStack(stack, errChan)
+				} else {
+					log.Infof("[GCP] There were error(s) while terminating instances and db, skipping network termination for stack %s", stack.Name)
+				}
+			}
+		}(s)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
+func (p gcpProvider) terminateInstancesAndDbInStack(stack *types.Stack, errChan chan error) bool {
+	zone := stack.Metadata["zone"]
+	instances := strings.Split(stack.Metadata["instances"], ",")
+	database := stack.Metadata["database"]
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(instances))
+	resultChan := make(chan bool)
+
+	for _, i := range instances {
+		go func(instanceName string, zone string) {
+			defer wg.Done()
+
+			log.Debugf("[GCP] Terminating instance %s", instanceName)
+
+			err := p.doAndPollComputeCall(p.computeClient.Instances.Delete(p.projectID, zone, instanceName))
+			if err != nil {
+				errChan <- err
+			}
+			resultChan <- err == nil
+		}(i, zone)
+	}
+
+	if database != "" {
+		wg.Add(1)
+
+		go func(dbName string) {
+			defer wg.Done()
+
+			log.Debugf("[GCP] Terminating db %s", dbName)
+
+			err := p.doAndPollSqlCall(p.sqlClient.Instances.Delete(p.projectID, dbName))
+			if err != nil {
+				errChan <- err
+			}
+			resultChan <- err == nil
+		}(database)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	for success := range resultChan {
+		if !success {
+			return false
+		}
+	}
+	return true
+}
+
+func (p gcpProvider) terminateNetworkRelatedResourcesInStack(stack *types.Stack, errChan chan error) {
+	ips := strings.Split(stack.Metadata["externalIps"], ",")
+	firewall := stack.Metadata["firewall"]
+	subnets := strings.Split(stack.Metadata["subnets"], ",")
+	network := stack.Metadata["network"]
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(ips))
+
+	for _, i := range ips {
+		go func(ip string, region string) {
+			defer wg.Done()
+
+			log.Debugf("[GCP] Terminating ip %s", ip)
+
+			if _, err := p.computeClient.Addresses.Delete(p.projectID, region, ip).Do(); err != nil {
+				errChan <- err
+			}
+		}(i, stack.Region)
+	}
+
+	if network != "" {
+		wg.Add(1)
+
+		go func(networkName string, firewallName string, subnetNames []string) {
+			defer wg.Done()
+
+			preNetworkWg := sync.WaitGroup{}
+			preNetworkWg.Add(1 + len(subnetNames))
+
+			go func(firewallName string) {
+				defer preNetworkWg.Done()
+
+				log.Debugf("[GCP] Terminating firewall %s", firewallName)
+
+				err := p.doAndPollComputeCall(p.computeClient.Firewalls.Delete(p.projectID, firewallName))
+				if err != nil {
+					errChan <- err
+					log.Infof("[GCP] Failed to delete firewall %s, skipping network delete", firewallName)
+					return
+				}
+			}(firewallName)
+
+			for _, s := range subnetNames {
+				go func(subnetName string, region string) {
+					defer preNetworkWg.Done()
+
+					log.Debugf("[GCP] Terminating subnet %s", subnetName)
+
+					err := p.doAndPollComputeCall(p.computeClient.Subnetworks.Delete(p.projectID, region, subnetName))
+					if err != nil {
+						errChan <- err
+					}
+				}(s, stack.Region)
+			}
+
+			preNetworkWg.Wait()
+
+			log.Debugf("[GCP] Terminating network %s", networkName)
+
+			err := p.doAndPollComputeCall(p.computeClient.Networks.Delete(p.projectID, networkName))
+			if err != nil {
+				errChan <- err
+			}
+		}(network, firewall, subnets)
+	}
+
+	wg.Wait()
+}
+
+type SqlCall interface {
+	Do(opts ...googleapi.CallOption) (*sqladmin.Operation, error)
+}
+
+func (p gcpProvider) doAndPollSqlCall(call SqlCall) error {
+	operation, err := call.Do()
+	if err != nil {
+		return err
+	}
+
+	for {
+		time.Sleep(3 * time.Second)
+		log.Debugf("[GCP] Polling sql operation %s", operation.Name)
+		operation, err := p.sqlClient.Operations.Get(p.projectID, operation.Name).Do()
+
+		if err != nil {
+			return err
+		} else if operation.Status == "DONE" {
+			if operation.Error == nil {
+				log.Debugf("[GCP] Polling of sql operation %s successfully finished", operation.Name)
+				return nil
+			}
+			var errorMessages []string
+			for _, operationError := range operation.Error.Errors {
+				errorMessages = append(errorMessages, operationError.Code+": "+operationError.Message)
+			}
+			return fmt.Errorf("[GCP] Polling of sql operation %s failed: %s", operation.Name, strings.Join(errorMessages, ", "))
+		}
+	}
+}
+
+type ComputeCall interface {
+	Do(opts ...googleapi.CallOption) (*compute.Operation, error)
+}
+
+func (p gcpProvider) doAndPollComputeCall(call ComputeCall) error {
+	operation, err := call.Do()
+	if err != nil {
+		return err
+	}
+
+	for {
+		time.Sleep(3 * time.Second)
+		log.Debugf("[GCP] Polling compute %s (region='%s', zone='%s')", operation.Name, operation.Region, operation.Zone)
+
+		if operation.Zone != "" {
+			zoneURLParts := strings.Split(operation.Zone, "/")
+			zone := zoneURLParts[len(zoneURLParts)-1]
+			operation, err = p.computeClient.ZoneOperations.Get(p.projectID, zone, operation.Name).Do()
+		} else if operation.Region != "" {
+			regionURLParts := strings.Split(operation.Region, "/")
+			region := regionURLParts[len(regionURLParts)-1]
+			operation, err = p.computeClient.RegionOperations.Get(p.projectID, region, operation.Name).Do()
+		} else {
+			operation, err = p.computeClient.GlobalOperations.Get(p.projectID, operation.Name).Do()
+		}
+
+		if err != nil {
+			return err
+		} else if operation.Status == "DONE" {
+			if operation.Error == nil {
+				log.Debugf("[GCP] Polling of compute %s successfully finished", operation.Name)
+				return nil
+			}
+			var errorMessages []string
+			for _, operationError := range operation.Error.Errors {
+				errorMessages = append(errorMessages, operationError.Code+": "+operationError.Message)
+			}
+			return fmt.Errorf("[GCP] Polling of compute %s failed: %s", operation.Name, strings.Join(errorMessages, ", "))
+		}
+	}
 }
 
 func (p gcpProvider) StopInstances(instances *types.InstanceContainer) []error {
