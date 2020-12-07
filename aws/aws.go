@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/hortonworks/cloud-haunter/utils"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,16 @@ type awsProvider struct {
 }
 
 func init() {
+	accessKeyId := os.Getenv("AWS_ACCESS_KEY_ID")
+	if len(accessKeyId) == 0 {
+		log.Warn("[AWS] AWS_ACCESS_KEY_ID environment variable is missing")
+		return
+	}
+	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	if len(secretAccessKey) == 0 {
+		log.Warn("[AWS] AWS_SECRET_ACCESS_KEY environment variable is missing")
+		return
+	}
 	ctx.CloudProviders[types.AWS] = func() types.CloudProvider {
 		if len(provider.ec2Clients) == 0 {
 			log.Debug("[AWS] Trying to prepare")
