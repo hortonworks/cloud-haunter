@@ -1,4 +1,4 @@
-BINARY=ch
+export BINARY=ch
 
 GO_VERSION?=$(shell cat go.mod | grep '^go' | awk '{print $$2}')
 
@@ -28,7 +28,20 @@ GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -
 all: deps build
 
 deps:
-	go get -u github.com/keyki/glu
+ifeq (, $(shell which gh))
+ifeq ($(shell uname),Linux)
+	apt-get update
+	apt-get -y install software-properties-common
+	apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0
+	apt-add-repository https://cli.github.com/packages
+	apt update
+	apt -y install gh
+endif
+ifeq ($(shell uname),Darwin)
+	brew install gh
+endif
+	gh auth login
+endif
 
 _check: formatcheck vet
 
@@ -70,7 +83,7 @@ _mod-tidy:
 	go mod vendor
 
 release: cleanup build
-	glu release
+	./release.sh
 
 download:
 	curl -LOs https://github.com/hortonworks/cloud-haunter/releases/download/v$(VERSION)/cloud-haunter_$(VERSION)_$(shell uname)_x86_64.tgz
