@@ -767,7 +767,7 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 				CloudType: types.AWS,
 				Name:      name,
 				Owner:     *akm.UserName,
-				Created:   *akm.CreateDate,
+				Created:   getCreated(akm.CreateDate),
 			})
 		}
 	}
@@ -951,7 +951,7 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 	return &types.Instance{
 		ID:           *inst.InstanceId,
 		Name:         name,
-		Created:      *inst.LaunchTime,
+		Created:      getCreated(inst.LaunchTime),
 		CloudType:    types.AWS,
 		Tags:         tags,
 		Owner:        tags[ctx.OwnerLabel],
@@ -967,7 +967,7 @@ func newStack(stack *cloudformation.Stack, region string) *types.Stack {
 	return &types.Stack{
 		ID:        *stack.StackId,
 		Name:      *stack.StackName,
-		Created:   *stack.CreationTime,
+		Created:   getCreated(stack.CreationTime),
 		CloudType: types.AWS,
 		Tags:      tags,
 		Owner:     tags[ctx.OwnerLabel],
@@ -1026,7 +1026,7 @@ func newDisk(volume *ec2.Volume) *types.Disk {
 		State:     getVolumeState(volume),
 		CloudType: types.AWS,
 		Region:    getRegionFromAvailabilityZone(volume.AvailabilityZone),
-		Created:   *volume.CreateTime,
+		Created:   getCreated(volume.CreateTime),
 		Size:      *volume.Size,
 		Type:      *volume.VolumeType,
 	}
@@ -1053,13 +1053,22 @@ func newDatabase(rds rds.DBInstance, tagList *rds.ListTagsForResourceOutput) *ty
 	return &types.Database{
 		ID:           *rds.DbiResourceId,
 		Name:         *rds.DBInstanceIdentifier,
-		Created:      *rds.InstanceCreateTime,
+		Created:      getCreated(rds.InstanceCreateTime),
 		Region:       getRegionFromAvailabilityZone(rds.AvailabilityZone),
 		InstanceType: *rds.DBInstanceClass,
 		State:        getDatabaseState(rds),
 		Owner:        tags[ctx.OwnerLabel],
 		Tags:         tags,
 		CloudType:    types.AWS,
+	}
+}
+
+func getCreated(created *time.Time) time.Time {
+	if created != nil {
+		return *created
+	} else {
+		// creation is in progress
+		return time.Now()
 	}
 }
 
