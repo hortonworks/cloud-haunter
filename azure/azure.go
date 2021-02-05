@@ -115,18 +115,40 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 		log.Errorf("[AZURE] Failed to fetch the instances, err: %s", err.Error())
 		return nil, err
 	}
+	vmList := vms.Values()
+	for vms.NotDone() {
+		log.Infof("[AZURE] fetching next page of instances, num of instances: %d", len(vmList))
+		err := vms.Next()
+		if err != nil {
+			log.Errorf("[AZURE] Failed to fetch the next instance list, err: %s", err.Error())
+			break
+		}
+		vmList = append(vmList, vms.Values()...)
+	}
+	log.Infof("Total number of instances: %d", len(vmList))
 
 	scaleSets, err := p.vmScaleSetClient.ListAll(context.Background())
 	if err != nil {
 		log.Errorf("[AZURE] Failed to fetch the VM scale sets, err: %s", err.Error())
 		return nil, err
 	}
+	scaleSetList := scaleSets.Values()
+	for scaleSets.NotDone() {
+		log.Infof("[AZURE] fetching next page of scale sets, num of scale sets: %d", len(scaleSetList))
+		err := scaleSets.Next()
+		if err != nil {
+			log.Errorf("[AZURE] Failed to fetch the next scale set list, err: %s", err.Error())
+			break
+		}
+		scaleSetList = append(scaleSetList, scaleSets.Values()...)
+	}
+	log.Infof("Total number of scale sets: %d", len(scaleSetList))
 
 	wg := sync.WaitGroup{}
-	wg.Add(len(vms.Values()) + len(scaleSets.Values()))
+	wg.Add(len(vmList) + len(scaleSetList))
 	instanceChan := make(chan interface{})
 
-	for _, vm := range vms.Values() {
+	for _, vm := range vmList {
 		go func(vm compute.VirtualMachine) {
 			defer wg.Done()
 
@@ -145,7 +167,7 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 		}(vm)
 	}
 
-	for _, ss := range scaleSets.Values() {
+	for _, ss := range scaleSetList {
 		go func(scaleSet compute.VirtualMachineScaleSet) {
 			defer wg.Done()
 
