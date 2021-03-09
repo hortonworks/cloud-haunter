@@ -50,7 +50,7 @@ func wait(itemsChan chan []types.CloudItem, errChan chan error, errorMsg string)
 				exit = true
 				break
 			}
-			log.Errorf(errorMsg+", err: %s", err.Error())
+			log.Fatalf(errorMsg+", err: %s", err.Error())
 		}
 	}
 	return allItems
