@@ -998,7 +998,7 @@ func (p gcpProvider) getDisks() ([]*types.Disk, error) {
 		for _, gDisk := range items.Disks {
 			creationTimeStamp, err := utils.ConvertTimeRFC3339(gDisk.CreationTimestamp)
 			if err != nil {
-				log.Errorf("[GCP] Failed to creation timestamp of disk, err: %s", err.Error())
+				log.Errorf("[GCP] Failed to get the creation timestamp of disk, err: %s", err.Error())
 				return nil, err
 			}
 			tags := convertTags(gDisk.Labels)
@@ -1034,7 +1034,7 @@ func (p gcpProvider) getDatabases(aggregator *sqladmin.InstancesListCall) ([]*ty
 		listOperationCall := p.sqlClient.Operations.List(p.projectID, instanceName)
 		creationTimeStamp, err := getDatabaseInstanceCreationTimeStamp(listOperationCall, instanceName)
 		if err != nil {
-			log.Errorf("[GCP] Failed to get creation timestamp of disk, err: %s", err.Error())
+			log.Errorf("[GCP] Failed to get the creation timestamp of the DB: %s, err: %s", instanceName, err.Error())
 			return nil, err
 		}
 		tags := convertTags(databaseInstance.Settings.UserLabels)
@@ -1054,18 +1054,23 @@ func (p gcpProvider) getDatabases(aggregator *sqladmin.InstancesListCall) ([]*ty
 	return databases, nil
 }
 
-func getDatabaseInstanceCreationTimeStamp(opService *sqladmin.OperationsListCall, instanceName string) (time.Time, error) {
+func getDatabaseInstanceCreationTimeStamp(opService *sqladmin.OperationsListCall, dbName string) (time.Time, error) {
 	operationsList, err := opService.Do()
 	if err != nil {
-		log.Errorf("[GCP] Failed to get operations of database(%s) instance, err: %s", instanceName, err.Error())
+		log.Errorf("[GCP] Failed to get the operations of the DB instance: %s, err: %s", dbName, err.Error())
 		return time.Time{}, err
 	}
 	for _, operation := range operationsList.Items {
 		if operation.OperationType == "CREATE" {
-			return utils.ConvertTimeRFC3339(operation.EndTime)
+			if len(operation.EndTime) > 0 {
+				return utils.ConvertTimeRFC3339(operation.EndTime)
+			} else {
+				log.Infof("[GCP] the creation timestamp is empty of the DB instance: %s, use the current time", dbName)
+				return time.Now(), nil
+			}
 		}
 	}
-	return time.Time{}, errors.New("[GCP] Failed to get CREATE operation for database instance")
+	return time.Time{}, errors.New(fmt.Sprintf("[GCP] Failed to get the CREATE operation of the DB instance: %s", dbName))
 }
 
 //Possible values:
