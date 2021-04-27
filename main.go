@@ -35,6 +35,7 @@ func main() {
 	filterConfigLoc := flag.String("fc", "", "filterConfig YAML")
 	dryRun := flag.Bool("d", false, "dry run")
 	verbose := flag.Bool("v", false, "verbose")
+	ignoreLabelDisabled := flag.Bool("i", false, "disable ignore label")
 
 	flag.Parse()
 
@@ -48,6 +49,7 @@ func main() {
 	if ctx.Verbose {
 		log.SetLevel(log.DebugLevel)
 	}
+	ctx.IgnoreLabelDisabled = *ignoreLabelDisabled
 
 	if filterConfigLoc != nil && len(*filterConfigLoc) != 0 {
 		var err error
@@ -141,5 +143,6 @@ OPERATIONS:`)
 	println("FILTER_CONFIG:\n\t-fc=/location/of/filter/config.yml")
 	println("DRY RUN:\n\t-d")
 	println("VERBOSE:\n\t-v")
+	println("DISABLE_IGNORE_LABEL:\n\t-i")
 	println("HELP:\n\t-h")
 }
