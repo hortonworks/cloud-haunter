@@ -32,6 +32,9 @@ var DryRun = false
 // Verbose is a global flag for verbose logging
 var Verbose = false
 
+// IgnoreLabelDisabled is a global flag for enabling/disabling ignore label usage
+var IgnoreLabelDisabled = true
+
 // Operations contains all the available operations
 var Operations = make(map[types.OpType]types.Operation)
 

@@ -36,12 +36,16 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 		ignoreLabelFound := utils.IsAnyMatch(inst.Tags, ctx.IgnoreLabel)
 		if ignoreLabelFound {
 			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
-			if filterType.IsInclusive() {
-				log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
-				return false
+			if ctx.IgnoreLabelDisabled {
+				log.Debugf("[%s] Ignore label usage is disabled, continuing to apply filter on item: %s", filterName, name)
+			} else {
+				if filterType.IsInclusive() {
+					log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
+					return false
+				}
+				log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
+				return true
 			}
-			log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
-			return true
 		}
 		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, inst.Tags)
 		if applied {
@@ -53,12 +57,16 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 		ignoreLabelFound := utils.IsAnyMatch(stack.Tags, ctx.IgnoreLabel)
 		if ignoreLabelFound {
 			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
-			if filterType.IsInclusive() {
-				log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
-				return false
+			if ctx.IgnoreLabelDisabled {
+				log.Debugf("[%s] Ignore label usage is disabled, continuing to apply filter on item: %s", filterName, name)
+			} else {
+				if filterType.IsInclusive() {
+					log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
+					return false
+				}
+				log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
+				return true
 			}
-			log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
-			return true
 		}
 		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, stack.Tags)
 		if applied {
@@ -84,12 +92,16 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 		ignoreLabelFound := utils.IsAnyMatch(database.Tags, ctx.IgnoreLabel)
 		if ignoreLabelFound {
 			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
-			if filterType.IsInclusive() {
-				log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
-				return false
+			if ctx.IgnoreLabelDisabled {
+				log.Debugf("[%s] Ignore label usage is disabled, continuing to apply filter on item: %s", filterName, name)
+			} else {
+				if filterType.IsInclusive() {
+					log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
+					return false
+				}
+				log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
+				return true
 			}
-			log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
-			return true
 		}
 		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, database.Tags)
 		if applied {

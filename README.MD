@@ -115,6 +115,8 @@ DRY RUN:
 	-d
 VERBOSE:
 	-v
+DISABLE_IGNORE_LABEL:
+	-i
 HELP:
 	-h
 ```
