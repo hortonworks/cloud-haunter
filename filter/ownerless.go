@@ -15,7 +15,7 @@ type ownerless struct {
 }
 
 func (o ownerless) Execute(items []types.CloudItem) []types.CloudItem {
-	log.Debugf("[OWNERLESS] Filtering instances (%d): [%s]", len(items), items)
+	log.Debugf("[OWNERLESS] Filtering instances without tag %s (%d): [%s]", ctx.OwnerLabel, len(items), items)
 	return filter("OWNERLESS", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
 		switch item.GetItem().(type) {
 		case types.Instance:
