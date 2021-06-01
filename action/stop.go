@@ -53,6 +53,7 @@ func stopInstances(instancesPerCloud map[types.CloudType][]*types.Instance, wg *
 				for _, err := range errors {
 					log.Errorf("[STOP] Failed to stop instances on cloud: %s, err: %s", cloud, err.Error())
 				}
+				panic(fmt.Sprintf("[STOP] Failed to stop instances on cloud: %s", cloud))
 			}
 		}(cloud, instances)
 	}
@@ -65,8 +66,9 @@ func stopDatabases(databasesPerCloud map[types.CloudType][]*types.Database, wg *
 			log.Infof("[STOP] Stop %d databases on %s: %s", len(databases), cloud, strings.Join(getDatabaseNames(databases), ","))
 			if errors := ctx.CloudProviders[cloud]().StopDatabases(types.NewDatabaseContainer(databases)); len(errors) != 0 {
 				for _, err := range errors {
-					log.Infof("[STOP] Failed to stop databases on cloud: %s, err: %s", cloud, err.Error())
+					log.Errorf("[STOP] Failed to stop databases on cloud: %s, err: %s", cloud, err.Error())
 				}
+				panic(fmt.Sprintf("[STOP] Failed to stop databases on cloud: %s", cloud))
 			}
 		}(cloud, databases)
 	}

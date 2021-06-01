@@ -1099,12 +1099,13 @@ func getDiskStatus(gDisk *compute.Disk) types.State {
 //FAILED	The instance failed to be created.
 func getDatabaseInstanceStatus(instance *sqladmin.DatabaseInstance) types.State {
 	switch instance.State {
-	case "RUNNABLE", "SUSPENDED", "PENDING_CREATE", "MAINTENANCE", "FAILED":
+	case "RUNNABLE", "PENDING_CREATE", "MAINTENANCE", "FAILED":
 		return types.Running
+	case "SUSPENDED":
+		return types.Stopped
 	case "PENDING_DELETE":
 		return types.Terminated
 	default:
 		return types.Unknown
-
 	}
 }

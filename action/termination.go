@@ -49,8 +49,11 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 					panic(fmt.Sprintf("[TERMINATION] Operation on type %T is not allowed", t))
 				}
 
-				for _, err := range errors {
-					log.Errorf("[TERMINATION] Failed to terminate %ss on %s, err: %s", item.GetType(), cType, err.Error())
+				if len(errors) != 0 {
+					for _, err := range errors {
+						log.Errorf("[TERMINATION] Failed to terminate %ss on %s, err: %s", item.GetType(), cType, err.Error())
+					}
+					panic(fmt.Sprintf("[TERMINATION] Failed to terminate %ss on %s", item.GetType(), cType))
 				}
 			}
 		}(t, p())
