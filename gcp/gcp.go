@@ -1099,7 +1099,13 @@ func getDiskStatus(gDisk *compute.Disk) types.State {
 //FAILED	The instance failed to be created.
 func getDatabaseInstanceStatus(instance *sqladmin.DatabaseInstance) types.State {
 	switch instance.State {
-	case "RUNNABLE", "PENDING_CREATE", "MAINTENANCE", "FAILED":
+	case "RUNNABLE":
+		// The sdk returns both running and stopped instances as RUNNABLE, so the most accurate way to tell if the instance is stopped is to check if the ActivationPolicy is NEVER
+		if instance.Settings.ActivationPolicy == "NEVER" {
+			return types.Stopped
+		}
+		return types.Running
+	case "PENDING_CREATE", "MAINTENANCE", "FAILED":
 		return types.Running
 	case "SUSPENDED":
 		return types.Stopped
