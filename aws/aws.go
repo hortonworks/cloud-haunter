@@ -401,7 +401,7 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 							DBInstanceIdentifier: dbInstanceId,
 							DeletionProtection:   aws.Bool(false),
 						})
-						if err != nil {
+						if err != nil && !strings.Contains(err.Error(), "DB instance not found") {
 							log.Errorf("[AWS] Skipping stack %s delete because failed to disable DeletionProtection on db instance: %s, err: %s", stack.Name, *dbInstanceId, err)
 							errChan <- err
 							continue
