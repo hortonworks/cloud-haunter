@@ -496,6 +496,7 @@ func (p gcpProvider) terminateInstancesAndDbInStack(stack *types.Stack, errChan 
 
 			err := p.doAndPollComputeCall(p.computeClient.Instances.Delete(p.projectID, zone, instanceName))
 			if err != nil {
+				log.Errorf("[GCP] Failed to terminate instance %s of stack %s, err: %s", instanceName, stack.Name, err)
 				errChan <- err
 			}
 			resultChan <- err == nil
@@ -512,6 +513,7 @@ func (p gcpProvider) terminateInstancesAndDbInStack(stack *types.Stack, errChan 
 
 			err := p.doAndPollSqlCall(p.sqlClient.Instances.Delete(p.projectID, dbName))
 			if err != nil {
+				log.Errorf("[GCP] Failed to terminate db %s of stack %s, err: %s", dbName, stack.Name, err)
 				errChan <- err
 			}
 			resultChan <- err == nil
@@ -547,6 +549,7 @@ func (p gcpProvider) terminateNetworkRelatedResourcesInStack(stack *types.Stack,
 			log.Debugf("[GCP] Terminating ip %s", ip)
 
 			if _, err := p.computeClient.Addresses.Delete(p.projectID, region, ip).Do(); err != nil {
+				log.Errorf("[GCP] Failed to terminate ip %s of stack %s, err: %s", ip, stack.Name, err)
 				errChan <- err
 			}
 		}(i, stack.Region)
@@ -568,8 +571,8 @@ func (p gcpProvider) terminateNetworkRelatedResourcesInStack(stack *types.Stack,
 
 				err := p.doAndPollComputeCall(p.computeClient.Firewalls.Delete(p.projectID, firewallName))
 				if err != nil {
+					log.Errorf("[GCP] Failed to delete firewall %s, skipping network delete", firewallName)
 					errChan <- err
-					log.Infof("[GCP] Failed to delete firewall %s, skipping network delete", firewallName)
 					return
 				}
 			}(firewallName)
@@ -582,6 +585,7 @@ func (p gcpProvider) terminateNetworkRelatedResourcesInStack(stack *types.Stack,
 
 					err := p.doAndPollComputeCall(p.computeClient.Subnetworks.Delete(p.projectID, region, subnetName))
 					if err != nil {
+						log.Errorf("[GCP] Failed to terminate subnet %s of stack %s, err: %s", subnetName, stack.Name, err)
 						errChan <- err
 					}
 				}(s, stack.Region)
@@ -593,6 +597,7 @@ func (p gcpProvider) terminateNetworkRelatedResourcesInStack(stack *types.Stack,
 
 			err := p.doAndPollComputeCall(p.computeClient.Networks.Delete(p.projectID, networkName))
 			if err != nil {
+				log.Errorf("[GCP] Failed to terminate network %s of stack %s, err: %s", networkName, stack.Name, err)
 				errChan <- err
 			}
 		}(network, firewall, subnets)
