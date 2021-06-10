@@ -3,9 +3,9 @@ package operation
 import (
 	"testing"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
-	"github.com/hortonworks/cloud-haunter/types"
-	"github.com/hortonworks/cloud-haunter/utils"
+	ctx "github.com/blentz/cloud-haunter/context"
+	"github.com/blentz/cloud-haunter/types"
+	"github.com/blentz/cloud-haunter/utils"
 	"github.com/stretchr/testify/assert"
 )
 

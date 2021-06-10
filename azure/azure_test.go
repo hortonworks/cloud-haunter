@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Azure/go-autorest/autorest"
-	"github.com/hortonworks/cloud-haunter/types"
+	"github.com/blentz/cloud-haunter/types"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/stretchr/testify/assert"

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hortonworks/cloud-haunter/types"
+	"github.com/blentz/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
 )
 

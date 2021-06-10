@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
-	"github.com/hortonworks/cloud-haunter/types"
-	"github.com/hortonworks/cloud-haunter/utils"
+	ctx "github.com/blentz/cloud-haunter/context"
+	"github.com/blentz/cloud-haunter/types"
+	"github.com/blentz/cloud-haunter/utils"
 	log "github.com/sirupsen/logrus"
 
 	"context"
@@ -42,7 +42,7 @@ func init() {
 	applicationCredentials := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
 	if len(applicationCredentials) == 0 {
 		log.Warn("[GCP] GOOGLE_APPLICATION_CREDENTIALS environment variable is missing")
-		return
+		log.Warn("[GCP] Assuming Application Default Credentials are configured")
 	}
 	ctx.CloudProviders[types.GCP] = func() types.CloudProvider {
 		if len(provider.projectID) == 0 {
@@ -1036,7 +1036,7 @@ func (p gcpProvider) getDatabases(aggregator *sqladmin.InstancesListCall) ([]*ty
 	for _, databaseInstance := range gDatabaseList.Items {
 		instanceName := databaseInstance.Name
 
-		listOperationCall := p.sqlClient.Operations.List(p.projectID, instanceName)
+		listOperationCall := p.sqlClient.Operations.List(instanceName)
 		creationTimeStamp, err := getDatabaseInstanceCreationTimeStamp(listOperationCall, instanceName)
 		if err != nil {
 			log.Errorf("[GCP] Failed to get the creation timestamp of the DB: %s, err: %s", instanceName, err.Error())

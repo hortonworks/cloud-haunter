@@ -1,4 +1,4 @@
-[![CircleCI](https://circleci.com/gh/hortonworks/cloud-haunter.svg?style=shield)](https://circleci.com/gh/hortonworks/cloud-haunter) [![Go Report Card](https://goreportcard.com/badge/github.com/hortonworks/cloud-haunter)](https://goreportcard.com/report/github.com/hortonworks/cloud-haunter)
+[![CircleCI](https://circleci.com/gh/blentz/cloud-haunter.svg?style=shield)](https://circleci.com/gh/hortonworks/cloud-haunter) [![Go Report Card](https://goreportcard.com/badge/github.com/hortonworks/cloud-haunter)](https://goreportcard.com/report/github.com/hortonworks/cloud-haunter)
 
 # Cloud Haunter
 
@@ -69,7 +69,7 @@ CH will skip all the resources where the name, owner, or any of the tags are sta
 
 ## Installation
 
-`# curl -Ls https://github.com/hortonworks/cloud-haunter/releases/download/v0.5.0/cloud-haunter_0.5.0_$(uname)_x86_64.tgz | tar x`
+`# curl -Ls https://github.com/blentz/cloud-haunter/releases/download/v0.5.0/cloud-haunter_0.5.0_$(uname)_x86_64.tgz | tar x`
 
 ## Usage
 

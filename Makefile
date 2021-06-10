@@ -4,7 +4,7 @@ GO_VERSION?=$(shell cat go.mod | grep '^go' | awk '{print $$2}')
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 VERSION?=$(shell git describe --tags --abbrev=0)-snapshot
-PKG_BASE=github.com/hortonworks/cloud-haunter
+PKG_BASE=github.com/blentz/cloud-haunter
 BUILD_TIME=$(shell date +%FT%T)
 LDFLAGS=-w -s -X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.BuildTime=${BUILD_TIME}
 
@@ -86,5 +86,5 @@ release: cleanup build
 	./release.sh
 
 download:
-	curl -LOs https://github.com/hortonworks/cloud-haunter/releases/download/v$(VERSION)/cloud-haunter_$(VERSION)_$(shell uname)_x86_64.tgz
+	curl -LOs https://github.com/blentz/cloud-haunter/releases/download/v$(VERSION)/cloud-haunter_$(VERSION)_$(shell uname)_x86_64.tgz
 	tar -xvf cloud-haunter_$(VERSION)_$(shell uname)_x86_64.tgz

@@ -8,3 +8,5 @@ release
 .env
 cloud-haunter
 release
+**/*.swp
+**/*.swo

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
-	"github.com/hortonworks/cloud-haunter/types"
+	ctx "github.com/blentz/cloud-haunter/context"
+	"github.com/blentz/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"

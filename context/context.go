@@ -1,6 +1,6 @@
 package context
 
-import "github.com/hortonworks/cloud-haunter/types"
+import "github.com/blentz/cloud-haunter/types"
 
 var (
 	// Version is global variable to store application version generated during release
