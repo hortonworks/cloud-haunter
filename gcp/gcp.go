@@ -481,7 +481,7 @@ func (p gcpProvider) TerminateStacks(stacks *types.StackContainer) []error {
 
 func (p gcpProvider) terminateInstancesAndDbInStack(stack *types.Stack, errChan chan error) bool {
 	zone := stack.Metadata["zone"]
-	instances := strings.Split(stack.Metadata["instances"], ",")
+	instances := getResourceList(stack.Metadata["instances"])
 	database := stack.Metadata["database"]
 
 	wg := sync.WaitGroup{}
@@ -534,9 +534,9 @@ func (p gcpProvider) terminateInstancesAndDbInStack(stack *types.Stack, errChan 
 }
 
 func (p gcpProvider) terminateNetworkRelatedResourcesInStack(stack *types.Stack, errChan chan error) {
-	ips := strings.Split(stack.Metadata["externalIps"], ",")
+	ips := getResourceList(stack.Metadata["externalIps"])
 	firewall := stack.Metadata["firewall"]
-	subnets := strings.Split(stack.Metadata["subnets"], ",")
+	subnets := getResourceList(stack.Metadata["subnets"])
 	network := stack.Metadata["network"]
 
 	wg := sync.WaitGroup{}
@@ -604,6 +604,13 @@ func (p gcpProvider) terminateNetworkRelatedResourcesInStack(stack *types.Stack,
 	}
 
 	wg.Wait()
+}
+
+func getResourceList(resources string) []string {
+	if resources != "" {
+		return strings.Split(resources, ",")
+	}
+	return []string{}
 }
 
 type SqlCall interface {
