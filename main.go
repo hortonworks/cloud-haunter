@@ -131,7 +131,7 @@ VERSION:`)
 	println("   " + ctx.Version)
 	println(`
 AUTHOR(S):
-   Hortonworks
+   Hortonworks, Tamr
 OPERATIONS:`)
 	for _, o := range getSortedOperations() {
 		println("\t-o " + o)

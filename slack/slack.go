@@ -146,6 +146,11 @@ func (d slackDispatcher) generateMessage(op types.OpType, filters []types.Filter
 				}
 				msg += "\n"
 				buffer.WriteString(msg)
+			case types.Cluster:
+				clust := item.GetItem().(types.Cluster)
+				msg := fmt.Sprintf("*[%s]* *%s*: %s *state*: %s *created*: %s *region*: %s", item.GetCloudType(), item.GetType(), item.GetName(), clust.State, displayTime, clust.Region)
+				msg += "\n"
+				buffer.WriteString(msg)
 			default:
 				buffer.WriteString(fmt.Sprintf("*[%s]* *%s*: %s\n", item.GetCloudType(), item.GetType(), item.GetName()))
 			}

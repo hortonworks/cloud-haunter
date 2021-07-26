@@ -17,20 +17,25 @@ import (
 	"strconv"
 	"sync"
 
+	dataproc "cloud.google.com/go/dataproc/apiv1"
 	"golang.org/x/oauth2/google"
-	"google.golang.org/api/compute/v1"
+	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
-	sqladmin "google.golang.org/api/sqladmin/v1beta4"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
+	"google.golang.org/api/sqladmin/v1beta4"
+	dataprocpb "google.golang.org/genproto/googleapis/cloud/dataproc/v1"
 )
 
 var provider = gcpProvider{}
 
 type gcpProvider struct {
-	projectID     string
-	computeClient *compute.Service
-	iamClient     *iam.Service
-	sqlClient     *sqladmin.Service
+	projectID      string
+	computeClient  *compute.Service
+	dataprocClient *dataproc.ClusterControllerClient
+	iamClient      *iam.Service
+	sqlClient      *sqladmin.Service
 }
 
 func init() {
@@ -47,11 +52,11 @@ func init() {
 	ctx.CloudProviders[types.GCP] = func() types.CloudProvider {
 		if len(provider.projectID) == 0 {
 			log.Debug("[GCP] Trying to prepare")
-			computeClient, iamClient, sqlClient, err := initClients()
+			computeClient, iamClient, sqlClient, dataprocClient, err := initClients()
 			if err != nil {
 				panic("[GCP] Failed to authenticate, err: " + err.Error())
 			}
-			if err := provider.init(projectID, computeClient, iamClient, sqlClient); err != nil {
+			if err := provider.init(projectID, computeClient, iamClient, sqlClient, dataprocClient); err != nil {
 				panic("[GCP] Failed to initialize provider, err: " + err.Error())
 			}
 			log.Info("[GCP] Successfully prepared")
@@ -60,7 +65,7 @@ func init() {
 	}
 }
 
-func initClients() (computeClient *http.Client, iamClient *http.Client, sqlClient *http.Client, err error) {
+func initClients() (computeClient *http.Client, iamClient *http.Client, sqlClient *http.Client, dataprocClient *http.Client, err error) {
 	computeClient, err = google.DefaultClient(context.Background(), compute.CloudPlatformScope)
 	if err != nil {
 		return
@@ -73,11 +78,15 @@ func initClients() (computeClient *http.Client, iamClient *http.Client, sqlClien
 	if err != nil {
 		return
 	}
+	dataprocClient, err = google.DefaultClient(context.Background(), compute.CloudPlatformScope)
+	if err != nil {
+		return
+	}
 	return
 }
 
 func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iamHTTPClient *http.Client,
-	sqlHTTPClient *http.Client) error {
+	sqlHTTPClient *http.Client, dataprocHTTPClient *http.Client) error {
 
 	p.projectID = projectID
 	computeClient, err := compute.New(computeHTTPClient)
@@ -95,6 +104,14 @@ func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iam
 		return errors.New("Failed to initialize Sql admin client, err: " + err.Error())
 	}
 	p.sqlClient = sqlClient
+
+	ctx := context.Background()
+	dataprocClient, err := dataproc.NewClusterControllerClient(ctx)
+	if err != nil {
+		return errors.New("Failed to initialize dataproc client, err: " + err.Error())
+	}
+	p.dataprocClient = dataprocClient
+
 	return nil
 }
 
@@ -953,20 +970,20 @@ func newInstance(inst *compute.Instance) *types.Instance {
 	}
 }
 
-// func getRegions(p gcpProvider) ([]string, error) {
-// 		log.Debug("[GCP] Fetching regions")
-// 	regionList, err := p.computeClient.Regions.List(p.projectId).Do()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 		log.Debugf("[GCP] Processing regions (%d): [%s]", len(regionList.Items), regionList.Items)
-// 	regions := make([]string, 0)
-// 	for _, region := range regionList.Items {
-// 		regions = append(regions, region.Name)
-// 	}
-// 	log.Infof("[GCP] Available regions: %v", regions)
-// 	return regions, nil
-// }
+func getRegions(p gcpProvider) ([]string, error) {
+	log.Debug("[GCP] Fetching regions")
+	regionList, err := p.computeClient.Regions.List(p.projectID).Do()
+	if err != nil {
+		return nil, err
+	}
+	log.Debugf("[GCP] Processing regions (%d): %+v", len(regionList.Items), regionList.Items)
+	regions := make([]string, 0)
+	for _, region := range regionList.Items {
+		regions = append(regions, region.Name)
+	}
+	log.Infof("[GCP] Available regions: %v", regions)
+	return regions, nil
+}
 
 // Possible values:
 //   "PROVISIONING"
@@ -1169,4 +1186,110 @@ func getDatabaseInstanceStatus(instance *sqladmin.DatabaseInstance) types.State 
 	default:
 		return types.Unknown
 	}
+}
+
+type clusterListAggregator interface {
+	Do(opts ...googleapi.CallOption) (*dataprocpb.ListClustersResponse, error)
+}
+
+func getClusters(listClusters *dataproc.ClusterIterator, region string) ([]*types.Cluster, error) {
+	clusters := make([]*types.Cluster, 0)
+	for {
+		cluster, err := listClusters.Next()
+		if err != nil && err == iterator.Done {
+			break
+		} else if err != nil {
+			log.Debugf("[GET_CLUSTERS] Error fetching cluster list: %+v", err)
+			return nil, err
+		}
+		clusters = append(clusters, newCluster(cluster, region))
+	}
+	return clusters, nil
+}
+
+func newCluster(cluster *dataprocpb.Cluster, region string) *types.Cluster {
+	log.Debugf("[GET_CLUSTERS] %+s in %s has status: %+s", cluster.ClusterName, region, cluster.Status.State)
+	return &types.Cluster{
+		Name:      cluster.ClusterName,
+		Uuid:      cluster.ClusterUuid,
+		Created:   cluster.Status.StateStartTime.AsTime(),
+		CloudType: types.GCP,
+		Region:    region,
+		Tags:      convertTags(cluster.Labels),
+		Config:    cluster.GetConfig(),
+		State:     getClusterState(cluster.Status.GetState()),
+	}
+}
+
+func getClusterState(s dataprocpb.ClusterStatus_State) types.State {
+	// convert ClusterSTatus_State to types.State
+
+	// This array must match the const ordering from here:
+	// https://pkg.go.dev/google.golang.org/genproto/googleapis/cloud/dataproc/v1#ClusterStatus_State
+	statuses := []types.State{
+		types.Unknown,
+		types.Creating,
+		types.Running,
+		types.Error,
+		types.Deleting,
+		types.Updating,
+		types.Stopping,
+		types.Stopped,
+		types.Starting,
+	}
+
+	for i, status := range statuses {
+		if i == int(s) {
+			return status
+		}
+	}
+	return types.Unknown
+}
+
+func (p gcpProvider) GetClusters() ([]*types.Cluster, error) {
+	log.Info("[GET_CLUSTERS] Fetching clusters across all regions. (slow)")
+	var clusters []*types.Cluster
+
+	ctx := context.Background()
+	req := &dataprocpb.ListClustersRequest{
+		ProjectId: p.projectID,
+		Region:    "global",
+	}
+
+	// scan global region for clusters
+	clist, err := getClusters(p.dataprocClient.ListClusters(ctx, req), "global")
+	if err != nil {
+		log.Errorf("[GET_CLUSTERS] Error listing clusters: %+v", err)
+		return nil, err
+	}
+	clusters = clist
+
+	// scan each geographic region for clusters
+	regionsList, err := getRegions(p)
+	if err != nil {
+		log.Errorf("[GET_CLUSTERS] Error fetching regions: %s", err)
+		return nil, err
+	}
+	for _, r := range regionsList {
+		regionalClient, err := dataproc.NewClusterControllerClient(ctx, option.WithEndpoint(r+"-dataproc.googleapis.com:443"))
+		if err != nil {
+			log.Errorf("[GET_CLUSTERS] Error creating dataproc client for region %s: %+v", r, err)
+			return nil, err
+		}
+		defer regionalClient.Close()
+
+		req.Region = r
+		clist, err := getClusters(regionalClient.ListClusters(ctx, req), r)
+		if err != nil {
+			log.Errorf("[GET_CLUSTERS] Error listing clusters: %+v", err)
+			return nil, err
+		}
+		if len(clist) > 0 {
+			log.Debugf("[GET_CLUSTERS] Found %d clusters in %s", len(clist), r)
+			for _, c := range clist {
+				clusters = append(clusters, c)
+			}
+		}
+	}
+	return clusters, nil
 }
