@@ -1223,27 +1223,23 @@ func newCluster(cluster *dataprocpb.Cluster, region string) *types.Cluster {
 
 func getClusterState(s dataprocpb.ClusterStatus_State) types.State {
 	// convert ClusterSTatus_State to types.State
-
-	// This array must match the const ordering from here:
-	// https://pkg.go.dev/google.golang.org/genproto/googleapis/cloud/dataproc/v1#ClusterStatus_State
-	statuses := []types.State{
-		types.Unknown,
-		types.Creating,
-		types.Running,
-		types.Error,
-		types.Deleting,
-		types.Updating,
-		types.Stopping,
-		types.Stopped,
-		types.Starting,
+	statuses := map[int32]types.State{
+		0: types.Unknown,
+		1: types.Creating,
+		2: types.Running,
+		3: types.Error,
+		4: types.Deleting,
+		5: types.Updating,
+		6: types.Stopping,
+		7: types.Stopped,
+		8: types.Starting,
 	}
 
-	for i, status := range statuses {
-		if i == int(s) {
-			return status
-		}
+	status, ok := statuses[s]
+	if !ok {
+		return types.Unknown
 	}
-	return types.Unknown
+	return status
 }
 
 func (p gcpProvider) GetClusters() ([]*types.Cluster, error) {
@@ -1286,9 +1282,7 @@ func (p gcpProvider) GetClusters() ([]*types.Cluster, error) {
 		}
 		if len(clist) > 0 {
 			log.Debugf("[GET_CLUSTERS] Found %d clusters in %s", len(clist), r)
-			for _, c := range clist {
-				clusters = append(clusters, c)
-			}
+			clusters = append(clusters, clist...)
 		}
 	}
 	return clusters, nil
