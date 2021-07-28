@@ -41,7 +41,7 @@ func (f httpUrl) Execute(items []types.CloudItem) []types.CloudItem {
 			return true
 		}
 		response := item.GetItem().(types.Instance).GetUrl(f.path, f.port)
-		if response.Code >= 400 {
+		if response.Code == 0 || response.Code >= 400 {
 			return false
 		}
 		log.Debugf("[HTTPURL] %s: %s match, response body: %v", item.GetType(), item.GetName(), response.Body)

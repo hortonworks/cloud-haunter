@@ -90,10 +90,9 @@ type JsonResponseBody struct {
 }
 
 type RemoteResponse struct {
-	Code  int
-	Body  string
-	Json  JsonResponseBody
-	Error bool
+	Code int
+	Body string
+	Json *[]byte
 }
 
 // GetUrl returns the result of an HTTP request to the instance
@@ -108,46 +107,49 @@ func (i Instance) GetUrl(path string, port string) RemoteResponse {
 		checkPort = port
 	}
 
-	if tcp_port_test(i.IpAddress, checkPort) == false {
-		return RemoteResponse{999, "", JsonResponseBody{}, true}
+	if tcpPortTest(i.IpAddress, checkPort) == false {
+		return RemoteResponse{0, "", nil}
 	}
 
-	log.Debugf("Making HTTP request to %s", uri)
-	resp, err := http.Get(uri)
+	log.Debugf("[GET_URL] Making HTTP request to %s", uri)
+        client := http.Client{
+            Timeout: 3 * time.Second,
+        }
+        resp, err := client.Get(uri)
 	if err != nil {
-		log.Errorf("Error fetching %s - %s", uri, err)
-		return RemoteResponse{999, "", JsonResponseBody{}, true}
+		log.Errorf("[GET_URL] Error fetching %s - %s", uri, err)
+		return RemoteResponse{0, "", nil}
 	}
-	log.Debug("HTTP response: ", resp.Status)
+	log.Debug("[GET_URL] HTTP response: ", resp.Status)
 
 	if resp.ContentLength < 1 {
-		log.Debug("HTTP request returned empty response.")
-		return RemoteResponse{resp.StatusCode, "", JsonResponseBody{}, true}
+		log.Debug("[GET_URL] HTTP request returned empty response.")
+		return RemoteResponse{0, "", nil}
 	}
 
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Error("Error reading response body", err)
+		log.Error("[GET_URL] Error reading response body", err)
 	}
 
 	if resp.Header.Get("Content-Type") == "application/json" {
-		jsonbody := JsonResponseBody{}
-		json.Unmarshal(body, &jsonbody)
-		log.Debug("HTTP Body: ", jsonbody)
-		return RemoteResponse{resp.StatusCode, "", jsonbody, false}
+		jsonbody := new([]byte)
+		json.Unmarshal(body, jsonbody)
+		log.Debug("[GET_URL] JSON Body: ", string(*jsonbody))
+		return RemoteResponse{resp.StatusCode, "", jsonbody}
 	}
 
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(resp.Body)
-	return RemoteResponse{resp.StatusCode, buf.String(), JsonResponseBody{}, false}
+	return RemoteResponse{resp.StatusCode, buf.String(), nil}
 }
 
-func tcp_port_test(host string, port string) bool {
+func tcpPortTest(host string, port string) bool {
 	timeout := time.Second
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), timeout)
 	if err != nil {
-		log.Debugf("Error making TCP connection to %s -> %s", net.JoinHostPort(host, port), err)
+		log.Infof("Error making TCP connection to %s -> %s", net.JoinHostPort(host, port), err)
 	}
 	if conn != nil {
 		defer conn.Close()
