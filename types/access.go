@@ -8,6 +8,7 @@ type Access struct {
 	Owner     string    `json:"Owner"`
 	Created   time.Time `json:"Created"`
 	CloudType CloudType `json:"CloudType"`
+	Tags      Tags      `json:"Tags"`
 }
 
 // GetName returns the name of the access cloud object
@@ -41,4 +42,8 @@ func (a Access) GetItem() interface{} {
 // GetType returns the type of the access cloud object
 func (a Access) GetType() string {
 	return "access"
+}
+
+func (a Access) GetTags() Tags {
+	return a.Tags
 }

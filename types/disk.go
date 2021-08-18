@@ -32,6 +32,7 @@ type Disk struct {
 	Size      int64             `json:"Size"`
 	Type      string            `json:"Type"`
 	Metadata  map[string]string `json:"Metadata"`
+	Tags      Tags              `json:"Tags"`
 }
 
 // GetName returns the name of the disk
@@ -62,4 +63,8 @@ func (d Disk) GetItem() interface{} {
 // GetType returns the disk's string representation
 func (d Disk) GetType() string {
 	return "disk"
+}
+
+func (d Disk) GetTags() Tags {
+	return d.Tags
 }

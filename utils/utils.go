@@ -87,12 +87,26 @@ func LoadFilterConfig(location string) (*types.FilterConfig, error) {
 		return nil, err
 	}
 	config := &types.FilterConfig{}
-	err = yaml.Unmarshal(raw, config)
+	err = yaml.UnmarshalStrict(raw, config)
 	if err != nil {
 		return nil, err
 	}
 	log.Debugf("[UTIL] Filter config loaded:\n%s", raw)
 	return config, nil
+}
+
+func LoadFilterConfigV2(location string) (*types.FilterConfigV2, error) {
+	raw, err := ioutil.ReadFile(location)
+	if err != nil {
+		return nil, err
+	}
+	configV2 := &types.FilterConfigV2{}
+	err = yaml.UnmarshalStrict(raw, configV2)
+	if err != nil {
+		return nil, err
+	}
+	log.Debugf("[UTIL] Filter config V2 loaded:\n%s", raw)
+	return configV2, nil
 }
 
 // GetCloudAccountNames returns the name of the configured cloud accounts

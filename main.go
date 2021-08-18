@@ -55,7 +55,11 @@ func main() {
 		var err error
 		ctx.FilterConfig, err = utils.LoadFilterConfig(*filterConfigLoc)
 		if err != nil {
-			panic("Unable to parse filter configuration: " + err.Error())
+			log.Warnf("[UTIL] Failed to load %s as V1 filter config, trying as V2. Error: %s", *filterConfigLoc, err.Error())
+			ctx.FilterConfig, err = utils.LoadFilterConfigV2(*filterConfigLoc)
+			if err != nil {
+				panic("Unable to parse filter configuration: " + err.Error())
+			}
 		}
 	}
 

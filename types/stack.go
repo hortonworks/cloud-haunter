@@ -64,3 +64,7 @@ func (s Stack) GetItem() interface{} {
 func (s Stack) GetType() string {
 	return "stack"
 }
+
+func (s Stack) GetTags() Tags {
+	return s.Tags
+}

@@ -63,3 +63,7 @@ func (d Database) GetItem() interface{} {
 func (d Database) GetType() string {
 	return "database"
 }
+
+func (d Database) GetTags() Tags {
+	return d.Tags
+}

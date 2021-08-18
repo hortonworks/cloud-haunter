@@ -1,0 +1,30 @@
+---
+filters:
+  -
+    filterTypes:
+      - includeAccess
+      - includeInstance
+    cloudTypes:
+      - aws
+      - azure
+      - gcp
+    filterProperties:
+      - name
+      - owner
+      - label
+    filterValues:
+      - includeThisValue
+  -
+    filterTypes:
+      - excludeAccess
+      - excludeInstance
+    cloudTypes:
+      - aws
+      - azure
+      - gcp
+    filterProperties:
+      - name
+      - owner
+      - label
+    filterValues:
+      - excludeThisValue
