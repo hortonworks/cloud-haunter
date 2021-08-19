@@ -174,6 +174,10 @@ func (t mockEc2Client) DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVo
 	return nil, nil
 }
 
+func (t mockEc2Client) DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error) {
+	return nil, nil
+}
+
 func (t mockEc2Client) DeregisterImage(input *ec2.DeregisterImageInput) (*ec2.DeregisterImageOutput, error) {
 	t.deregisterImagesChannel <- *input.ImageId
 	return nil, nil
