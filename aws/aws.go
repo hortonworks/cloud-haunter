@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/cloudformation"
-	"github.com/hortonworks/cloud-haunter/utils"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aws/aws-sdk-go/service/cloudformation"
+	"github.com/hortonworks/cloud-haunter/utils"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -454,6 +455,19 @@ func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []err
 				if ctx.DryRun {
 					log.Infof("[AWS] Dry-run set, volume is not deleted: %s:%s, region: %s", vol.Name, vol.ID, region)
 				} else {
+					log.Infof("[AWS] Initiate delete volume: %s:%s", vol.Name, vol.ID)
+					var detachError error
+					if vol.State == types.InUse {
+						log.Infof("[AWS] Volume %s:%s is in-use, trying to detach", vol.Name, vol.ID)
+						if _, detachError = ec2Client.DetachVolume(&ec2.DetachVolumeInput{VolumeId: &vol.ID}); detachError == nil {
+							detachError = waitForVolumeUnusedState(ec2Client, vol)
+						}
+					}
+
+					if detachError != nil {
+						log.Infof("[AWS] Skip volume %s:%s as it can not be detached by [%s].", vol.Name, vol.ID, detachError)
+						continue
+					}
 					log.Infof("[AWS] Delete volume: %s:%s", vol.Name, vol.ID)
 					if _, err := ec2Client.DeleteVolume(&ec2.DeleteVolumeInput{VolumeId: &vol.ID}); err != nil {
 						errChan <- err
@@ -473,6 +487,26 @@ func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []err
 		errs = append(errs, err)
 	}
 	return errs
+}
+
+func waitForVolumeUnusedState(ec2Client ec2Client, vol *types.Disk) error {
+	log.Infof("[AWS] Waiting for Volume %s:%s 'available' state...", vol.Name, vol.ID)
+	//Polling state max 10 times with 1 sec interval
+	var counter int = 0
+	d, e := getDisk(ec2Client, vol.ID)
+	for e == nil && d.State != types.Unused && counter < 10 {
+		time.Sleep(1 * time.Second)
+		d, e = getDisk(ec2Client, vol.ID)
+		counter++
+	}
+	if e != nil {
+		return errors.New(fmt.Sprintf("Detach verification failed: %s", e))
+	} else if d.State != types.Unused {
+		return errors.New(fmt.Sprintf("Detach verification failed, disk state is: %s", d.State))
+	} else {
+		log.Infof("[AWS] Volume %s:%s is detached so it can be deleted.", vol.Name, vol.ID)
+	}
+	return nil
 }
 
 func deleteImages(ec2Clients map[string]ec2Client, images []*types.Image) []error {
@@ -535,6 +569,7 @@ type ec2Client interface {
 	DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error)
 	DescribeImages(input *ec2.DescribeImagesInput) (*ec2.DescribeImagesOutput, error)
 	DeregisterImage(input *ec2.DeregisterImageInput) (*ec2.DeregisterImageOutput, error)
+	DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error)
 }
 
 type cfClient interface {
@@ -670,6 +705,21 @@ func getImages(ec2Clients map[string]ec2Client) ([]*types.Image, error) {
 	}
 
 	return images, nil
+}
+
+func getDisk(ec2Client ec2Client, volumeId string) (*types.Disk, error) {
+	result, err := ec2Client.DescribeVolumes(&ec2.DescribeVolumesInput{VolumeIds: []*string{&volumeId}})
+	if err != nil {
+		log.Errorf("[AWS] Failed to fetch the volume, err: %s", err)
+		return nil, err
+	}
+	log.Debugf("[AWS] Processing volumes (%d): [%s]", len(result.Volumes), result.Volumes)
+
+	if len(result.Volumes) == 0 {
+		return nil, errors.New(fmt.Sprintf("Volume not found with id '%s'", volumeId))
+	}
+	return newDisk(result.Volumes[0]), nil
+
 }
 
 func getDisks(ec2Clients map[string]ec2Client) ([]*types.Disk, error) {
@@ -1029,6 +1079,7 @@ func newDisk(volume *ec2.Volume) *types.Disk {
 		Created:   getCreated(volume.CreateTime),
 		Size:      *volume.Size,
 		Type:      *volume.VolumeType,
+		Owner:     tags[ctx.OwnerLabel],
 	}
 }
 
