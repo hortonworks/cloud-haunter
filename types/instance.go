@@ -70,3 +70,7 @@ func (i Instance) GetItem() interface{} {
 func (i Instance) GetType() string {
 	return "instance"
 }
+
+func (i Instance) GetTags() Tags {
+	return i.Tags
+}

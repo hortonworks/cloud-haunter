@@ -55,25 +55,48 @@ func TestConvertTags(t *testing.T) {
 func TestLoadIgnores(t *testing.T) {
 	filterConfig, _ := LoadFilterConfig("testdata/filterConfig.yml")
 
-	assert.Equal(t, []string{"awsName"}, filterConfig.ExcludeAccess.Aws.Names)
-	assert.Equal(t, []string{"azureName"}, filterConfig.ExcludeAccess.Azure.Names)
-	assert.Equal(t, []string{"gcpName"}, filterConfig.ExcludeAccess.Gcp.Names)
+	assert.Equal(t, []string{"awsName"}, filterConfig.GetFilterValues(types.ExcludeAccess, types.AWS, types.Name))
+	assert.Equal(t, []string{"azureName"}, filterConfig.GetFilterValues(types.ExcludeAccess, types.AZURE, types.Name))
+	assert.Equal(t, []string{"gcpName"}, filterConfig.GetFilterValues(types.ExcludeAccess, types.GCP, types.Name))
 
-	assert.Equal(t, []string{"awsOwner"}, filterConfig.ExcludeAccess.Aws.Owners)
-	assert.Equal(t, []string{"azureOwner"}, filterConfig.ExcludeAccess.Azure.Owners)
-	assert.Equal(t, []string{"gcpOwner"}, filterConfig.ExcludeAccess.Gcp.Owners)
+	assert.Equal(t, []string{"awsOwner"}, filterConfig.GetFilterValues(types.ExcludeAccess, types.AWS, types.Owner))
+	assert.Equal(t, []string{"azureOwner"}, filterConfig.GetFilterValues(types.ExcludeAccess, types.AZURE, types.Owner))
+	assert.Equal(t, []string{"gcpOwner"}, filterConfig.GetFilterValues(types.ExcludeAccess, types.GCP, types.Owner))
 
-	assert.Equal(t, []string{"awsLabel"}, filterConfig.ExcludeInstance.Aws.Labels)
-	assert.Equal(t, []string{"azureLabel"}, filterConfig.ExcludeInstance.Azure.Labels)
-	assert.Equal(t, []string{"gcpLabel"}, filterConfig.ExcludeInstance.Gcp.Labels)
+	assert.Equal(t, []string{"awsLabel"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.AWS, types.Label))
+	assert.Equal(t, []string{"azureLabel"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.AZURE, types.Label))
+	assert.Equal(t, []string{"gcpLabel"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.GCP, types.Label))
 
-	assert.Equal(t, []string{"awsName"}, filterConfig.ExcludeInstance.Aws.Names)
-	assert.Equal(t, []string{"azureName"}, filterConfig.ExcludeInstance.Azure.Names)
-	assert.Equal(t, []string{"gcpName"}, filterConfig.ExcludeInstance.Gcp.Names)
+	assert.Equal(t, []string{"awsName"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.AWS, types.Name))
+	assert.Equal(t, []string{"azureName"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.AZURE, types.Name))
+	assert.Equal(t, []string{"gcpName"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.GCP, types.Name))
 
-	assert.Equal(t, []string{"awsOwner"}, filterConfig.ExcludeInstance.Aws.Owners)
-	assert.Equal(t, []string{"azureOwner"}, filterConfig.ExcludeInstance.Azure.Owners)
-	assert.Equal(t, []string{"gcpOwner"}, filterConfig.ExcludeInstance.Gcp.Owners)
+	assert.Equal(t, []string{"awsOwner"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.AWS, types.Owner))
+	assert.Equal(t, []string{"azureOwner"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.AZURE, types.Owner))
+	assert.Equal(t, []string{"gcpOwner"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.GCP, types.Owner))
+
+	assert.Nil(t, filterConfig.GetFilterValues(types.IncludeInstance, types.GCP, types.Owner))
+	assert.Nil(t, filterConfig.GetFilterValues(types.IncludeAccess, types.AWS, types.Name))
+}
+
+func TestLoadIgnoresV2(t *testing.T) {
+	filterConfig, _ := LoadFilterConfigV2("testdata/filterConfigV2.yml")
+
+	assert.Equal(t, []string{"excludeThisValue"}, filterConfig.GetFilterValues(types.ExcludeAccess, types.AWS, types.Name))
+	assert.Equal(t, []string{"excludeThisValue"}, filterConfig.GetFilterValues(types.ExcludeAccess, types.AZURE, types.Name))
+	assert.Equal(t, []string{"excludeThisValue"}, filterConfig.GetFilterValues(types.ExcludeAccess, types.GCP, types.Name))
+
+	assert.Equal(t, []string{"excludeThisValue"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.AWS, types.Label))
+	assert.Equal(t, []string{"excludeThisValue"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.AZURE, types.Label))
+	assert.Equal(t, []string{"excludeThisValue"}, filterConfig.GetFilterValues(types.ExcludeInstance, types.GCP, types.Label))
+
+	assert.Equal(t, []string{"includeThisValue"}, filterConfig.GetFilterValues(types.IncludeAccess, types.AWS, types.Owner))
+	assert.Equal(t, []string{"includeThisValue"}, filterConfig.GetFilterValues(types.IncludeAccess, types.AZURE, types.Owner))
+	assert.Equal(t, []string{"includeThisValue"}, filterConfig.GetFilterValues(types.IncludeAccess, types.GCP, types.Owner))
+
+	assert.Equal(t, []string{"includeThisValue"}, filterConfig.GetFilterValues(types.IncludeInstance, types.AWS, types.Name))
+	assert.Equal(t, []string{"includeThisValue"}, filterConfig.GetFilterValues(types.IncludeInstance, types.AZURE, types.Name))
+	assert.Equal(t, []string{"includeThisValue"}, filterConfig.GetFilterValues(types.IncludeInstance, types.GCP, types.Name))
 }
 
 func TestSplitListToMap(t *testing.T) {

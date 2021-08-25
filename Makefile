@@ -55,7 +55,7 @@ vet:
 	GO111MODULE=on go vet -mod=vendor ./...
 
 test:
-	GO111MODULE=on go test -mod=vendor -timeout 30s -coverprofile coverage -race
+	GO111MODULE=on go test -mod=vendor -timeout 30s -coverprofile coverage -race ./...
 
 _build: build-darwin build-linux
 

@@ -467,6 +467,7 @@ func newImage(image compute.Image) *types.Image {
 		Name:      *image.Name,
 		Region:    *image.Location,
 		CloudType: types.AZURE,
+		Tags:      utils.ConvertTags(image.Tags),
 	}
 }
 

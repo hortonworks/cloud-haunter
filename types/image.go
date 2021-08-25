@@ -27,6 +27,7 @@ type Image struct {
 	Created   time.Time `json:"Created"`
 	CloudType CloudType `json:"CloudType"`
 	Region    string    `json:"Region"`
+	Tags      Tags      `json:"Tags"`
 }
 
 // GetName returns the name of the image
@@ -57,4 +58,8 @@ func (img Image) GetItem() interface{} {
 // GetType returns the image's string representation
 func (img Image) GetType() string {
 	return "image"
+}
+
+func (img Image) GetTags() Tags {
+	return img.Tags
 }

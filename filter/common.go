@@ -5,6 +5,7 @@ import (
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
 	log "github.com/sirupsen/logrus"
+	"reflect"
 )
 
 func filter(filterName string, items []types.CloudItem, filterType types.FilterConfigType, isNeeded func(types.CloudItem) bool) []types.CloudItem {
@@ -28,138 +29,74 @@ func filter(filterName string, items []types.CloudItem, filterType types.FilterC
 	return filtered
 }
 
-func isFilterMatch(filterName string, item types.CloudItem, filterType types.FilterConfigType, filterConfig *types.FilterConfig) bool {
+func isFilterMatch(filterName string, item types.CloudItem, filterType types.FilterConfigType, filterConfig types.IFilterConfig) bool {
+	name := item.GetName()
+	ignoreLabelFound := utils.IsAnyMatch(item.GetTags(), ctx.IgnoreLabel)
+	if ignoreLabelFound {
+		log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
+		if ctx.IgnoreLabelDisabled {
+			log.Debugf("[%s] Ignore label usage is disabled, continuing to apply filter on item: %s", filterName, name)
+		} else {
+			if filterType.IsInclusive() {
+				log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
+				return false
+			}
+			log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
+			return true
+		}
+	}
+
+	if filterConfig == nil {
+		return false
+	}
+
+	var filterEntityType types.FilterEntityType
+
 	switch item.GetItem().(type) {
-	case types.Instance:
-		inst := item.GetItem().(types.Instance)
-		name := item.GetName()
-		ignoreLabelFound := utils.IsAnyMatch(inst.Tags, ctx.IgnoreLabel)
-		if ignoreLabelFound {
-			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
-			if ctx.IgnoreLabelDisabled {
-				log.Debugf("[%s] Ignore label usage is disabled, continuing to apply filter on item: %s", filterName, name)
-			} else {
-				if filterType.IsInclusive() {
-					log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
-					return false
-				}
-				log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
-				return true
-			}
-		}
-		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, inst.Tags)
-		if applied {
-			return filtered
-		}
-	case types.Stack:
-		stack := item.GetItem().(types.Stack)
-		name := item.GetName()
-		ignoreLabelFound := utils.IsAnyMatch(stack.Tags, ctx.IgnoreLabel)
-		if ignoreLabelFound {
-			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
-			if ctx.IgnoreLabelDisabled {
-				log.Debugf("[%s] Ignore label usage is disabled, continuing to apply filter on item: %s", filterName, name)
-			} else {
-				if filterType.IsInclusive() {
-					log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
-					return false
-				}
-				log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
-				return true
-			}
-		}
-		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, stack.Tags)
-		if applied {
-			return filtered
-		}
 	case types.Access:
-		accessFilter, _ := getFilterConfigs(filterConfig, filterType)
-		if accessFilter != nil {
-			switch item.GetCloudType() {
-			case types.AWS:
-				return isNameOrOwnerMatch(filterName, item, accessFilter.Aws.Names, accessFilter.Aws.Owners)
-			case types.AZURE:
-				return isNameOrOwnerMatch(filterName, item, accessFilter.Azure.Names, accessFilter.Azure.Owners)
-			case types.GCP:
-				return isNameOrOwnerMatch(filterName, item, accessFilter.Gcp.Names, accessFilter.Gcp.Owners)
-			default:
-				log.Warnf("[%s] Cloud type not supported: %s", filterName, item.GetCloudType())
-			}
-		}
-	case types.Database:
-		database := item.GetItem().(types.Database)
-		name := item.GetName()
-		ignoreLabelFound := utils.IsAnyMatch(database.Tags, ctx.IgnoreLabel)
-		if ignoreLabelFound {
-			log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
-			if ctx.IgnoreLabelDisabled {
-				log.Debugf("[%s] Ignore label usage is disabled, continuing to apply filter on item: %s", filterName, name)
-			} else {
-				if filterType.IsInclusive() {
-					log.Debugf("[%s] inclusive filter applied on item: %s", filterName, name)
-					return false
-				}
-				log.Debugf("[%s] exclusive filter applied on item: %s", filterName, name)
-				return true
-			}
-		}
-		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, database.Tags)
-		if applied {
-			return filtered
-		}
-	case types.Disk:
-		filtered, applied := applyFilterConfig(filterConfig, filterType, item, filterName, types.Tags{})
-		if applied {
-			return filtered
-		}
-	}
-	return false
-}
-
-func applyFilterConfig(filterConfig *types.FilterConfig, filterType types.FilterConfigType, item types.CloudItem, filterName string, tags types.Tags) (applied, filtered bool) {
-	_, instanceFilter := getFilterConfigs(filterConfig, filterType)
-	if instanceFilter != nil {
-		switch item.GetCloudType() {
-		case types.AWS:
-			return isMatchWithIgnores(filterName, item, tags,
-				instanceFilter.Aws.Names, instanceFilter.Aws.Owners, instanceFilter.Aws.Labels), true
-		case types.AZURE:
-			return isMatchWithIgnores(filterName, item, tags,
-				instanceFilter.Azure.Names, instanceFilter.Azure.Owners, instanceFilter.Azure.Labels), true
-		case types.GCP:
-			return isMatchWithIgnores(filterName, item, tags,
-				instanceFilter.Gcp.Names, instanceFilter.Gcp.Owners, instanceFilter.Gcp.Labels), true
-		default:
-			log.Warnf("[%s] Cloud type not supported: %s", filterName, item.GetCloudType())
-		}
-	}
-	return false, false
-}
-
-func getFilterConfigs(filterConfig *types.FilterConfig, filterType types.FilterConfigType) (accessConfig *types.FilterAccessConfig, instanceConfig *types.FilterInstanceConfig) {
-	if filterConfig != nil {
 		if filterType.IsInclusive() {
-			return filterConfig.IncludeAccess, filterConfig.IncludeInstance
+			filterEntityType = types.IncludeAccess
+		} else {
+			filterEntityType = types.ExcludeAccess
 		}
-		return filterConfig.ExcludeAccess, filterConfig.ExcludeInstance
+	case types.Instance, types.Stack, types.Database, types.Disk:
+		if filterType.IsInclusive() {
+			filterEntityType = types.IncludeInstance
+		} else {
+			filterEntityType = types.ExcludeInstance
+		}
+	default:
+		log.Warnf("Filtering is not implemented for type %s", reflect.TypeOf(item))
+		return false
 	}
-	return nil, nil
-}
 
-func isMatchWithIgnores(filterName string, item types.CloudItem, tags map[string]string, names, owners []string, labels []string) bool {
-	if isNameOrOwnerMatch(filterName, item, names, owners) || utils.IsAnyStartsWith(tags, labels...) {
-		log.Debugf("[%s] item %s match with name/owner or tag %s", filterName, item.GetName(), labels)
-		return true
-	}
-	log.Debugf("[%s] item %s does not match with name/owner or tag %s", filterName, item.GetName(), labels)
-	return false
-}
+	filtered, applied := false, false
 
-func isNameOrOwnerMatch(filterName string, item types.CloudItem, names, owners []string) bool {
-	if utils.IsStartsWith(item.GetName(), names...) || utils.IsStartsWith(item.GetOwner(), owners...) {
-		log.Debugf("[%s] item %s match with filter config name %s or owner %s", filterName, item.GetName(), names, owners)
-		return true
+	if names := filterConfig.GetFilterValues(filterEntityType, item.GetCloudType(), types.Name); names != nil {
+		log.Debugf("[%s] filtering item %s to names [%s]", filterName, item.GetName(), names)
+		filtered, applied = filtered || utils.IsStartsWith(item.GetName(), names...), true
 	}
-	log.Debugf("[%s] item %s does not match with filter config name %s or owner %s", filterName, item.GetName(), names, owners)
+
+	if owners := filterConfig.GetFilterValues(filterEntityType, item.GetCloudType(), types.Owner); owners != nil {
+		log.Debugf("[%s] filtering item %s to owners [%s]", filterName, item.GetName(), owners)
+		filtered, applied = filtered || utils.IsStartsWith(item.GetOwner(), owners...), true
+	}
+
+	if labels := filterConfig.GetFilterValues(filterEntityType, item.GetCloudType(), types.Label); labels != nil {
+		log.Debugf("[%s] filtering item %s to labels [%s]", filterName, item.GetName(), labels)
+		filtered, applied = filtered || utils.IsAnyStartsWith(item.GetTags(), labels...), true
+	}
+
+	if applied {
+		if filtered {
+			log.Debugf("[%s] item %s matches filter", filterName, item.GetName())
+		} else {
+			log.Debugf("[%s] item %s does not match filter", filterName, item.GetName())
+		}
+		return filtered
+	} else {
+		log.Debugf("[%s] item %s could not be filtered", filterName, item.GetName())
+	}
+
 	return false
 }

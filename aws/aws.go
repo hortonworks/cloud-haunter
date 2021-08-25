@@ -818,6 +818,7 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 				Name:      name,
 				Owner:     *akm.UserName,
 				Created:   getCreated(akm.CreateDate),
+				Tags:      types.Tags{},
 			})
 		}
 	}
@@ -1080,6 +1081,7 @@ func newDisk(volume *ec2.Volume) *types.Disk {
 		Size:      *volume.Size,
 		Type:      *volume.VolumeType,
 		Owner:     tags[ctx.OwnerLabel],
+		Tags:      tags,
 	}
 }
 
@@ -1096,6 +1098,7 @@ func newImage(image *ec2.Image, region string) *types.Image {
 		CloudType: types.AWS,
 		Region:    region,
 		Created:   createdAt,
+		Tags:      getEc2Tags(image.Tags),
 	}
 }
 

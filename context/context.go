@@ -33,7 +33,7 @@ var DryRun = false
 var Verbose = false
 
 // IgnoreLabelDisabled is a global flag for enabling/disabling ignore label usage
-var IgnoreLabelDisabled = true
+var IgnoreLabelDisabled = false
 
 // Operations contains all the available operations
 var Operations = make(map[types.OpType]types.Operation)
@@ -51,4 +51,4 @@ var Dispatchers = make(map[string]types.Dispatcher)
 var Actions = make(map[types.ActionType]types.Action)
 
 // FilterConfig contains the include/exclude configurations from config file
-var FilterConfig *types.FilterConfig
+var FilterConfig types.IFilterConfig

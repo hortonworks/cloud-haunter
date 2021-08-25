@@ -255,6 +255,7 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 				"database":    gcpStack.DatabaseName,
 				"zone":        gcpStack.Zone,
 			},
+			Tags: types.Tags{},
 		}
 		stacks = append(stacks, aStack)
 	}
@@ -901,6 +902,7 @@ func getAccesses(serviceAccountAggregator serviceAccountsListAggregator, getKeys
 				Name:      key.Name,
 				Owner:     account.Email,
 				Created:   validAfter,
+				Tags:      types.Tags{},
 			})
 		}
 	}
@@ -918,6 +920,7 @@ func newImage(image *compute.Image) *types.Image {
 		Created:   created,
 		CloudType: types.GCP,
 		Region:    "",
+		Tags:      convertTags(image.Labels),
 	}
 }
 
@@ -1044,6 +1047,7 @@ func (p gcpProvider) getDisks() ([]*types.Disk, error) {
 				State:     getDiskStatus(gDisk),
 				Owner:     tags[ctx.OwnerLabel],
 				Metadata:  map[string]string{"zone": getZone(gDisk.Zone)},
+				Tags:      tags,
 			}
 			disks = append(disks, aDisk)
 		}
