@@ -994,7 +994,10 @@ func getZone(url string) string {
 func getRegionFromZoneURL(zoneURL *string) string {
 	zoneURLParts := strings.Split(*zoneURL, "/")
 	zone := zoneURLParts[len(zoneURLParts)-1]
-	return zone[:len(zone)-2]
+	if zone != "" {
+		return zone[:len(zone)-2]
+	}
+	return "unknown"
 }
 
 func (p gcpProvider) getDisks() ([]*types.Disk, error) {
@@ -1014,11 +1017,27 @@ func (p gcpProvider) getDisks() ([]*types.Disk, error) {
 				return nil, err
 			}
 			tags := convertTags(gDisk.Labels)
+
+			var region string
+			switch {
+			case len(gDisk.Region) > 0:
+				region = gDisk.Region
+				break
+			case len(gDisk.Zone) > 0:
+				region = getRegionFromZoneURL(&gDisk.Zone)
+				break
+			case len(gDisk.ReplicaZones) > 0:
+				region = getRegionFromZoneURL(&gDisk.ReplicaZones[0])
+				break
+			default:
+				region = "unknown"
+			}
+
 			aDisk := &types.Disk{
 				CloudType: types.GCP,
 				ID:        strconv.Itoa(int(gDisk.Id)),
 				Name:      gDisk.Name,
-				Region:    getRegionFromZoneURL(&gDisk.Zone),
+				Region:    region,
 				Created:   creationTimeStamp,
 				Size:      gDisk.SizeGb,
 				Type:      gDisk.Type,
