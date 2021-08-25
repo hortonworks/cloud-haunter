@@ -42,7 +42,7 @@ func init() {
 	applicationCredentials := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
 	if len(applicationCredentials) == 0 {
 		log.Warn("[GCP] GOOGLE_APPLICATION_CREDENTIALS environment variable is missing")
-                log.Warn("[GCP] Assuming Application Default Credentials are configured")
+		log.Warn("[GCP] Assuming Application Default Credentials are configured")
 	}
 	ctx.CloudProviders[types.GCP] = func() types.CloudProvider {
 		if len(provider.projectID) == 0 {
