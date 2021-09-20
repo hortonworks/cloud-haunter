@@ -75,7 +75,7 @@ func ConvertTimeUnix(unixTimestamp string) time.Time {
 func ConvertTags(tagMap map[string]*string) types.Tags {
 	tags := make(types.Tags, 0)
 	for k, v := range tagMap {
-		tags[strings.ToLower(k)] = *v
+		tags[k] = *v
 	}
 	return tags
 }

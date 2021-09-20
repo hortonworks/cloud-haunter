@@ -990,7 +990,7 @@ func newSession(configure func(*aws.Config)) (*session.Session, error) {
 func newInstance(inst *ec2.Instance) *types.Instance {
 	tags := getEc2Tags(inst.Tags)
 	var name string
-	if n, ok := tags["name"]; ok {
+	if n, ok := tags["Name"]; ok {
 		name = n
 	} else {
 		name = *inst.InstanceId
@@ -1151,7 +1151,7 @@ func getDatabaseState(rds rds.DBInstance) types.State {
 func getEc2Tags(ec2Tags []*ec2.Tag) types.Tags {
 	tags := make(types.Tags, 0)
 	for _, t := range ec2Tags {
-		tags[strings.ToLower(*t.Key)] = *t.Value
+		tags[*t.Key] = *t.Value
 	}
 	return tags
 }
@@ -1159,7 +1159,7 @@ func getEc2Tags(ec2Tags []*ec2.Tag) types.Tags {
 func getCFTags(cfTags []*cloudformation.Tag) types.Tags {
 	tags := make(types.Tags, 0)
 	for _, t := range cfTags {
-		tags[strings.ToLower(*t.Key)] = *t.Value
+		tags[*t.Key] = *t.Value
 	}
 	return tags
 }
@@ -1168,7 +1168,7 @@ func getRdsTags(tagList *rds.ListTagsForResourceOutput) types.Tags {
 	tags := make(types.Tags, 0)
 	if tagList != nil && len(tagList.TagList) > 0 {
 		for _, t := range tagList.TagList {
-			tags[strings.ToLower(*t.Key)] = *t.Value
+			tags[*t.Key] = *t.Value
 		}
 	}
 	return tags

@@ -16,8 +16,8 @@ func TestOwnerlessFilter(t *testing.T) {
 	items := []types.CloudItem{
 		&types.Instance{
 			CloudType: types.AWS,
-			Name:      "capital owner",
-			Tags:      types.Tags{"oWNER": "owner"},
+			Name:      "has owner",
+			Owner:     "owner",
 		},
 		&types.Instance{
 			CloudType: types.AWS,
@@ -25,12 +25,12 @@ func TestOwnerlessFilter(t *testing.T) {
 		},
 		&types.Instance{
 			CloudType: types.AWS,
-			Name:      "has owner",
-			Tags:      types.Tags{ctx.OwnerLabel: "owner"},
+			Name:      "empty owner",
+			Owner:     "",
 		},
 	}
 
 	filteredItems := ownerless{}.Execute(items)
 
-	assert.Equal(t, 1, len(filteredItems))
+	assert.Len(t, filteredItems, 2)
 }
