@@ -31,7 +31,7 @@ func filter(filterName string, items []types.CloudItem, filterType types.FilterC
 
 func isFilterMatch(filterName string, item types.CloudItem, filterType types.FilterConfigType, filterConfig types.IFilterConfig) bool {
 	name := item.GetName()
-	ignoreLabelFound := utils.IsAnyMatch(item.GetTags(), ctx.IgnoreLabel)
+	_, ignoreLabelFound := item.GetTags()[ctx.IgnoreLabel]
 	if ignoreLabelFound {
 		log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
 		if ctx.IgnoreLabelDisabled {

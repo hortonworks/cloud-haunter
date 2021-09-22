@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/aws/aws-sdk-go/service/cloudtrail"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -132,6 +133,20 @@ func TestRemoveInstance(t *testing.T) {
 
 	assert.Equal(t, 1, len(instanceIDs))
 	assert.Equal(t, "ID2", *instanceIDs[0])
+}
+
+func TestNewStackOwner(t *testing.T) {
+	ownerTag := cloudformation.Tag{}
+	ownerTag.SetKey("owner")
+	ownerTag.SetValue("validOwner")
+	cfStack := cloudformation.Stack{}
+	cfStack.SetStackId("id")
+	cfStack.SetStackName("name")
+	cfStack.SetTags([]*cloudformation.Tag{&ownerTag})
+
+	stack := newStack(&cfStack, "us-west-1")
+
+	assert.Equal(t, "validOwner", stack.Owner)
 }
 
 type mockEc2Client struct {
