@@ -920,7 +920,7 @@ func newImage(image *compute.Image) *types.Image {
 		Created:   created,
 		CloudType: types.GCP,
 		Region:    "",
-		Tags:      convertTags(image.Labels),
+		Tags:      image.Labels,
 	}
 }
 
@@ -929,14 +929,13 @@ func newInstance(inst *compute.Instance) *types.Instance {
 	if err != nil {
 		log.Warnf("[GCP] cannot convert time: %s, err: %s", inst.CreationTimestamp, err.Error())
 	}
-	tags := convertTags(inst.Labels)
 	return &types.Instance{
 		Name:         inst.Name,
 		ID:           strconv.Itoa(int(inst.Id)),
 		Created:      created,
 		CloudType:    types.GCP,
-		Tags:         tags,
-		Owner:        tags[ctx.OwnerLabel],
+		Tags:         inst.Labels,
+		Owner:        inst.Labels[ctx.OwnerLabel],
 		Metadata:     map[string]string{"zone": getZone(inst.Zone)},
 		Region:       getRegionFromZoneURL(&inst.Zone),
 		InstanceType: inst.MachineType[strings.LastIndex(inst.MachineType, "/")+1:],
@@ -958,14 +957,6 @@ func newInstance(inst *compute.Instance) *types.Instance {
 // 	log.Infof("[GCP] Available regions: %v", regions)
 // 	return regions, nil
 // }
-
-func convertTags(tags map[string]string) map[string]string {
-	result := make(map[string]string, 0)
-	for k, v := range tags {
-		result[strings.ToLower(k)] = v
-	}
-	return result
-}
 
 // Possible values:
 //   "PROVISIONING"
@@ -1019,7 +1010,6 @@ func (p gcpProvider) getDisks() ([]*types.Disk, error) {
 				log.Errorf("[GCP] Failed to get the creation timestamp of disk, err: %s", err.Error())
 				return nil, err
 			}
-			tags := convertTags(gDisk.Labels)
 
 			var region string
 			switch {
@@ -1045,9 +1035,9 @@ func (p gcpProvider) getDisks() ([]*types.Disk, error) {
 				Size:      gDisk.SizeGb,
 				Type:      gDisk.Type,
 				State:     getDiskStatus(gDisk),
-				Owner:     tags[ctx.OwnerLabel],
+				Owner:     gDisk.Labels[ctx.OwnerLabel],
 				Metadata:  map[string]string{"zone": getZone(gDisk.Zone)},
-				Tags:      tags,
+				Tags:      gDisk.Labels,
 			}
 			disks = append(disks, aDisk)
 		}
@@ -1072,7 +1062,7 @@ func (p gcpProvider) getDatabases(aggregator *sqladmin.InstancesListCall) ([]*ty
 			log.Errorf("[GCP] Failed to get the creation timestamp of the DB: %s, err: %s", instanceName, err.Error())
 			return nil, err
 		}
-		tags := convertTags(databaseInstance.Settings.UserLabels)
+		tags := databaseInstance.Settings.UserLabels
 		aDisk := &types.Database{
 			CloudType:    types.GCP,
 			ID:           databaseInstance.Etag,
