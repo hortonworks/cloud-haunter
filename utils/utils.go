@@ -14,19 +14,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// IsAnyMatch looks for any of the given tag in types.Tag
-func IsAnyMatch(haystack map[string]string, needles ...string) bool {
-	for k, v := range haystack {
-		haystack[strings.ToLower(k)] = v
-	}
-	for _, n := range needles {
-		if _, ok := haystack[n]; ok {
-			return true
-		}
-	}
-	return false
-}
-
 // IsAnyStartsWith looks any tag start with given needles
 func IsAnyStartsWith(haystack map[string]string, needles ...string) bool {
 	for k := range haystack {

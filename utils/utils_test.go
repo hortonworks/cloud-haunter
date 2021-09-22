@@ -8,16 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsAnyMatchFound(t *testing.T) {
-	tags := map[string]string{"firsttag": "", "testtag": ""}
-	assert.True(t, IsAnyMatch(tags, "testtag"))
-}
-
-func TestIsAnyMatchNotFound(t *testing.T) {
-	tags := map[string]string{"firsttag": "", "sectag": ""}
-	assert.False(t, IsAnyMatch(tags, "testtag"))
-}
-
 func TestIsAnyStartsWithFound(t *testing.T) {
 	tags := map[string]string{"firsttag": "", "testtag": ""}
 	assert.True(t, IsAnyStartsWith(tags, "te"))
