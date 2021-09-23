@@ -380,13 +380,15 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 	log.Debugf("[AWS] Delete CloudFormation stacks: %v", regionCFStacks)
 
 	wg := sync.WaitGroup{}
-	wg.Add(len(regionCFStacks))
 	errChan := make(chan error)
 
-	for r, s := range regionCFStacks {
-		go func(cfClient cfClient, rdsClient rdsClient, region string, stacks []*types.Stack) {
-			defer wg.Done()
-			for _, stack := range stacks {
+	for r, stacks := range regionCFStacks {
+		wg.Add(len(stacks))
+
+		for _, s := range stacks {
+			go func(cfClient cfClient, rdsClient rdsClient, region string, stack *types.Stack) {
+				defer wg.Done()
+
 				if ctx.DryRun {
 					log.Infof("[AWS] Dry-run set, CloudFormation stack is not deleted: %s, region: %s", stack.Name, region)
 				} else {
@@ -405,25 +407,29 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 						if err != nil && !strings.Contains(err.Error(), "DB instance not found") {
 							log.Errorf("[AWS] Skipping stack %s delete because failed to disable DeletionProtection on db instance: %s, err: %s", stack.Name, *dbInstanceId, err)
 							errChan <- err
-							continue
+							return
 						}
 					} else if !strings.Contains(err.Error(), "Resource DBInstance does not exist for stack") {
 						log.Errorf("[AWS] Failed to fetch the CloudFormation stack resources for stack: %s, err: %s", stack.Name, err)
 						errChan <- err
-						continue
+						return
 					}
 
 					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s", stack.Name, region)
 					if _, err := cfClient.DeleteStack(&cloudformation.DeleteStackInput{StackName: &stack.Name}); err != nil {
 						log.Errorf("[AWS] Failed to start deletion of CloudFormation stack: %s, err: %s", stack.Name, err)
 						errChan <- err
-					} else if err = cfClient.WaitUntilStackDeleteComplete(&cloudformation.DescribeStacksInput{StackName: &stack.Name}); err != nil {
+						return
+					}
+					if err := cfClient.WaitUntilStackDeleteComplete(&cloudformation.DescribeStacksInput{StackName: &stack.Name}); err != nil {
 						log.Errorf("[AWS] Failed to wait for delete complete of CloudFormation stack: %s, err: %s", stack.Name, err)
 						errChan <- err
+						return
 					}
+					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s was successful", stack.Name, region)
 				}
-			}
-		}(cfClients[r], rdsClients[r], r, s)
+			}(cfClients[r], rdsClients[r], r, s)
+		}
 	}
 
 	go func() {
@@ -650,16 +656,28 @@ func getCFStacks(cfClients map[string]cfClient) ([]*types.Stack, error) {
 		log.Debugf("[AWS] Fetching CloudFormation from: %s", r)
 		go func(region string, cfClient cfClient) {
 			defer wg.Done()
+			nextToken := ""
 
-			stackResult, e := cfClient.DescribeStacks(&cloudformation.DescribeStacksInput{})
-			if e != nil {
-				log.Errorf("[AWS] Failed to fetch the CloudFormation stacks in region: %s, err: %s", region, e)
-				return
-			}
-			log.Debugf("[AWS] Processing stacks (%d): [%s] in region: %s", len(stackResult.Stacks), stackResult.Stacks, region)
-			for _, s := range stackResult.Stacks {
-				stack := newStack(s, region)
-				cfChan <- stack
+			for {
+				request := &cloudformation.DescribeStacksInput{}
+				if nextToken != "" {
+					request.SetNextToken(nextToken)
+				}
+				stackResult, e := cfClient.DescribeStacks(request)
+				if e != nil {
+					log.Errorf("[AWS] Failed to fetch the CloudFormation stacks in region: %s, err: %s", region, e)
+					return
+				}
+				log.Debugf("[AWS] Processing stacks (%d): [%s] in region: %s", len(stackResult.Stacks), stackResult.Stacks, region)
+				for _, s := range stackResult.Stacks {
+					stack := newStack(s, region)
+					cfChan <- stack
+				}
+				if stackResult.NextToken != nil {
+					nextToken = *stackResult.NextToken
+				} else {
+					break
+				}
 			}
 		}(r, c)
 	}
