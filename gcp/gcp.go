@@ -213,6 +213,7 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 				DatabaseName:    stackDatabaseName,
 				Created:         instance.Created,
 				State:           instance.State,
+				Tags:            instance.Tags,
 			}
 			gcpStacks[stackId] = &newGcpStack
 		}
@@ -220,6 +221,10 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 
 		log.Debugf("[GCP] Adding instance %s to stack %s", instance.Name, stackId)
 		currentGcpStack.InstanceNames = append(currentGcpStack.InstanceNames, instance.Name)
+
+		for key, value := range instance.Tags {
+			currentGcpStack.Tags[key] = value
+		}
 
 		if instance.State != currentGcpStack.State {
 			currentGcpStack.State = types.Unknown
@@ -255,7 +260,7 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 				"database":    gcpStack.DatabaseName,
 				"zone":        gcpStack.Zone,
 			},
-			Tags: types.Tags{},
+			Tags: gcpStack.Tags,
 		}
 		stacks = append(stacks, aStack)
 	}
@@ -277,6 +282,7 @@ type GcpStack struct {
 	Created         time.Time
 	Owner           string
 	State           types.State
+	Tags            types.Tags
 }
 
 func (p gcpProvider) getNetworksBySelfLink() (map[string]*compute.Network, error) {
