@@ -415,6 +415,10 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 
 					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s", stack.Name, region)
 					if _, err := cfClient.DeleteStack(&cloudformation.DeleteStackInput{StackName: &stack.Name}); err != nil {
+						log.Errorf("[AWS] Failed to start deletion of CloudFormation stack: %s, err: %s", stack.Name, err)
+						errChan <- err
+					} else if err = cfClient.WaitUntilStackDeleteComplete(&cloudformation.DescribeStacksInput{StackName: &stack.Name}); err != nil {
+						log.Errorf("[AWS] Failed to wait for delete complete of CloudFormation stack: %s, err: %s", stack.Name, err)
 						errChan <- err
 					}
 				}
@@ -576,6 +580,7 @@ type cfClient interface {
 	DescribeStacks(*cloudformation.DescribeStacksInput) (*cloudformation.DescribeStacksOutput, error)
 	DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error)
 	DescribeStackResource(input *cloudformation.DescribeStackResourceInput) (*cloudformation.DescribeStackResourceOutput, error)
+	WaitUntilStackDeleteComplete(input *cloudformation.DescribeStacksInput) error
 }
 
 type cloudTrailClient interface {
