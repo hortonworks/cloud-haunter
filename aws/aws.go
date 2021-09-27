@@ -15,6 +15,7 @@ import (
 	"github.com/hortonworks/cloud-haunter/utils"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/cloudtrail"
@@ -198,7 +199,8 @@ func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	log.Debug("[AWS] Delete CloudFormation stacks")
 	cfClients := p.getCFClientsByRegion()
 	rdsClients := p.getRdsClientsByRegion()
-	return deleteCFStacks(cfClients, rdsClients, stacks.Get(types.AWS))
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	return deleteCFStacks(cfClients, rdsClients, ec2Clients, stacks.Get(types.AWS))
 }
 
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
@@ -372,7 +374,7 @@ func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
 	return errs
 }
 
-func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, stacks []*types.Stack) []error {
+func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, ec2Clients map[string]ec2Client, stacks []*types.Stack) []error {
 	regionCFStacks := map[string][]*types.Stack{}
 	for _, stack := range stacks {
 		regionCFStacks[stack.Region] = append(regionCFStacks[stack.Region], stack)
@@ -386,32 +388,35 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 		wg.Add(len(stacks))
 
 		for _, s := range stacks {
-			go func(cfClient cfClient, rdsClient rdsClient, region string, stack *types.Stack) {
+			go func(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, region string, stack *types.Stack) {
 				defer wg.Done()
 
 				if ctx.DryRun {
 					log.Infof("[AWS] Dry-run set, CloudFormation stack is not deleted: %s, region: %s", stack.Name, region)
 				} else {
-					dbStackResource, err := cfClient.DescribeStackResource(&cloudformation.DescribeStackResourceInput{
-						StackName:         &stack.Name,
-						LogicalResourceId: aws.String("DBInstance"),
+					stackResources, err := cfClient.DescribeStackResources(&cloudformation.DescribeStackResourcesInput{
+						StackName: &stack.Name,
 					})
-					if err == nil {
-						dbInstanceId := dbStackResource.StackResourceDetail.PhysicalResourceId
-						log.Infof("[AWS] Disabling DeletionProtection for DB instance: %s, region: %s", *dbInstanceId, region)
-
-						_, err := rdsClient.ModifyDBInstance(&rds.ModifyDBInstanceInput{
-							DBInstanceIdentifier: dbInstanceId,
-							DeletionProtection:   aws.Bool(false),
-						})
-						if err != nil && !strings.Contains(err.Error(), "DB instance not found") {
-							log.Errorf("[AWS] Skipping stack %s delete because failed to disable DeletionProtection on db instance: %s, err: %s", stack.Name, *dbInstanceId, err)
-							errChan <- err
-							return
-						}
-					} else if !strings.Contains(err.Error(), "Resource DBInstance does not exist for stack") {
+					if err != nil {
 						log.Errorf("[AWS] Failed to fetch the CloudFormation stack resources for stack: %s, err: %s", stack.Name, err)
 						errChan <- err
+						return
+					}
+					var resourceErr error
+					for _, stackResource := range stackResources.StackResources {
+						switch *stackResource.ResourceType {
+						case "AWS::RDS::DBInstance":
+							resourceErr = disableDeleteProtection(rdsClient, stack.Name, *stackResource.PhysicalResourceId, region)
+						case "AWS::EC2::VPC":
+							resourceErr = deleteVpcWithDependencies(ec2Client, stack.Name, *stackResource.PhysicalResourceId, region)
+						}
+						if resourceErr != nil {
+							break
+						}
+					}
+					if resourceErr != nil {
+						log.Errorf("[AWS] Failed to delete resource of CloudFormation stack: %s, err: %s", stack.Name, resourceErr)
+						errChan <- resourceErr
 						return
 					}
 
@@ -428,7 +433,7 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 					}
 					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s was successful", stack.Name, region)
 				}
-			}(cfClients[r], rdsClients[r], r, s)
+			}(cfClients[r], rdsClients[r], ec2Clients[r], r, s)
 		}
 	}
 
@@ -442,6 +447,108 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 		errs = append(errs, err)
 	}
 	return errs
+}
+
+func disableDeleteProtection(rdsClient rdsClient, stackName string, dbInstanceId string, region string) error {
+	log.Infof("[AWS] Disabling DeletionProtection for DB instance: %s, region: %s", dbInstanceId, region)
+
+	_, err := rdsClient.ModifyDBInstance(&rds.ModifyDBInstanceInput{
+		DBInstanceIdentifier: &dbInstanceId,
+		DeletionProtection:   aws.Bool(false),
+	})
+	if err != nil && !strings.Contains(err.Error(), "DB instance not found") {
+		log.Errorf("[AWS] Skipping stack %s delete because failed to disable DeletionProtection on db instance: %s, err: %s", stackName, dbInstanceId, err)
+		return err
+	}
+	return nil
+}
+
+/**
+ * CloudFormation is not able to delete a VPC if it has dependencies, so we have to delete them manually.
+ */
+func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId string, region string) error {
+	log.Infof("[AWS] Deleting endpoints of VPC: %s, region: %s", vpcId, region)
+
+	vpcIdFilter := &ec2.Filter{}
+	vpcIdFilter.SetName("vpc-id")
+	vpcIdFilter.SetValues([]*string{&vpcId})
+	vpcEndpoints, err := ec2Client.DescribeVpcEndpoints(&ec2.DescribeVpcEndpointsInput{
+		Filters: []*ec2.Filter{vpcIdFilter},
+	})
+	if err != nil {
+		log.Errorf("[AWS] Skipping stack %s delete because failed to list endpoints of VPC: %s, err: %s", stackName, vpcId, err)
+		return err
+	}
+
+	vpcEndpointIds := []*string{}
+	for _, vpcEndpoint := range vpcEndpoints.VpcEndpoints {
+		vpcEndpointIds = append(vpcEndpointIds, vpcEndpoint.VpcEndpointId)
+	}
+	if len(vpcEndpointIds) > 0 {
+		log.Debugf("[AWS] Deleting %d endpoints of VPC %s", len(vpcEndpointIds), vpcId)
+
+		_, err = ec2Client.DeleteVpcEndpoints(&ec2.DeleteVpcEndpointsInput{
+			VpcEndpointIds: vpcEndpointIds,
+		})
+		if err != nil {
+			log.Errorf("[AWS] Skipping stack %s delete because failed to delete endpoints of VPC: %s, err: %s", stackName, vpcId, err)
+			return err
+		}
+	}
+
+	log.Infof("[AWS] Deleting subnets of VPC: %s, region: %s", vpcId, region)
+
+	subnets, err := ec2Client.DescribeSubnets(&ec2.DescribeSubnetsInput{
+		Filters: []*ec2.Filter{vpcIdFilter},
+	})
+	if err != nil {
+		log.Errorf("[AWS] Skipping stack %s delete because failed to list subnets of VPC: %s, err: %s", stackName, vpcId, err)
+		return err
+	}
+	for _, subnet := range subnets.Subnets {
+		_, err = ec2Client.DeleteSubnet(&ec2.DeleteSubnetInput{
+			SubnetId: subnet.SubnetId,
+		})
+		if err != nil {
+			log.Errorf("[AWS] Skipping stack %s delete because failed to delete subnet: %s, err: %s", stackName, *subnet.SubnetId, err)
+			return err
+		}
+	}
+
+	log.Infof("[AWS] Deleting security groups of VPC: %s, region: %s", vpcId, region)
+
+	securityGroups, err := ec2Client.DescribeSecurityGroups(&ec2.DescribeSecurityGroupsInput{
+		Filters: []*ec2.Filter{vpcIdFilter},
+	})
+	if err != nil {
+		log.Errorf("[AWS] Skipping stack %s delete because failed to list security groups of VPC: %s, err: %s", stackName, vpcId, err)
+		return err
+	}
+	for _, securityGroup := range securityGroups.SecurityGroups {
+		if *securityGroup.GroupName == "default" {
+			// the default subnet can not be deleted
+			continue
+		}
+		_, err = ec2Client.DeleteSecurityGroup(&ec2.DeleteSecurityGroupInput{
+			GroupId: securityGroup.GroupId,
+		})
+		if err != nil {
+			log.Errorf("[AWS] Skipping stack %s delete because failed to delete security group: %s, err: %s", stackName, *securityGroup.GroupId, err)
+			return err
+		}
+	}
+
+	log.Infof("[AWS] Deleting VPC: %s, region: %s", vpcId, region)
+
+	_, err = ec2Client.DeleteVpc(&ec2.DeleteVpcInput{
+		VpcId: &vpcId,
+	})
+	if err != nil && err.(awserr.Error).Code() != "InvalidVpcID.NotFound" {
+		log.Errorf("[AWS] Skipping stack %s delete because failed to delete VPC: %s, err: %s", stackName, vpcId, err)
+		return err
+	}
+
+	return nil
 }
 
 func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []error {
@@ -580,12 +687,20 @@ type ec2Client interface {
 	DescribeImages(input *ec2.DescribeImagesInput) (*ec2.DescribeImagesOutput, error)
 	DeregisterImage(input *ec2.DeregisterImageInput) (*ec2.DeregisterImageOutput, error)
 	DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error)
+	DescribeVpcEndpoints(input *ec2.DescribeVpcEndpointsInput) (*ec2.DescribeVpcEndpointsOutput, error)
+	DeleteVpcEndpoints(input *ec2.DeleteVpcEndpointsInput) (*ec2.DeleteVpcEndpointsOutput, error)
+	DeleteVpc(input *ec2.DeleteVpcInput) (*ec2.DeleteVpcOutput, error)
+	DescribeSubnets(input *ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error)
+	DeleteSubnet(input *ec2.DeleteSubnetInput) (*ec2.DeleteSubnetOutput, error)
+	DescribeSecurityGroups(input *ec2.DescribeSecurityGroupsInput) (*ec2.DescribeSecurityGroupsOutput, error)
+	DeleteSecurityGroup(input *ec2.DeleteSecurityGroupInput) (*ec2.DeleteSecurityGroupOutput, error)
 }
 
 type cfClient interface {
 	DescribeStacks(*cloudformation.DescribeStacksInput) (*cloudformation.DescribeStacksOutput, error)
 	DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error)
 	DescribeStackResource(input *cloudformation.DescribeStackResourceInput) (*cloudformation.DescribeStackResourceOutput, error)
+	DescribeStackResources(input *cloudformation.DescribeStackResourcesInput) (*cloudformation.DescribeStackResourcesOutput, error)
 	WaitUntilStackDeleteComplete(input *cloudformation.DescribeStacksInput) error
 }
 
@@ -668,7 +783,7 @@ func getCFStacks(cfClients map[string]cfClient) ([]*types.Stack, error) {
 					log.Errorf("[AWS] Failed to fetch the CloudFormation stacks in region: %s, err: %s", region, e)
 					return
 				}
-				log.Debugf("[AWS] Processing stacks (%d): [%s] in region: %s", len(stackResult.Stacks), stackResult.Stacks, region)
+				log.Debugf("[AWS] Processing stacks (%d) in region: %s: [%s]", len(stackResult.Stacks), region, stackResult.Stacks)
 				for _, s := range stackResult.Stacks {
 					stack := newStack(s, region)
 					cfChan <- stack
