@@ -1198,6 +1198,10 @@ func getCFState(stack *cloudformation.Stack) types.State {
 	if stack.StackStatus == nil {
 		return types.Unknown
 	}
+	switch *stack.StackStatus {
+	case cloudformation.StackStatusCreateFailed, cloudformation.StackStatusDeleteFailed:
+		return types.Failed
+	}
 	return types.Running
 }
 

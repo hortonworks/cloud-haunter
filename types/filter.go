@@ -16,6 +16,9 @@ const (
 	// RunningFilter filters the cloud items that's state is running
 	RunningFilter = FilterType("running")
 
+	// FailedFilter filters the cloud items that's state is failed
+	FailedFilter = FilterType("failed")
+
 	// UnusedFilter filters the items that are not used
 	UnusedFilter = FilterType("unused")
 

@@ -20,6 +20,9 @@ const (
 	// InUse state of the cloud item
 	InUse = State("in-use")
 
+	// Failed state of the cloud item
+	Failed = State("failed")
+
 	// Unknown state of the cloud item
 	Unknown = State("unknown")
 )
