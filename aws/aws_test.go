@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -163,6 +164,9 @@ func TestRemoveCfStack(t *testing.T) {
 	ec2Clients := map[string]ec2Client{
 		"eu-central-1": mockEc2Client{operationChannel: operationChannel},
 	}
+	s3Clients := map[string]s3Client{
+		"eu-central-1": mockS3Client{operationChannel: operationChannel},
+	}
 	stacks := []*types.Stack{
 		{
 			CloudType: types.AWS,
@@ -174,7 +178,7 @@ func TestRemoveCfStack(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		deleteCFStacks(cfClients, rdsClients, ec2Clients, stacks)
+		deleteCFStacks(cfClients, rdsClients, ec2Clients, s3Clients, stacks)
 	}()
 
 	assert.Equal(t, "DescribeStackResources", <-operationChannel)
@@ -187,6 +191,9 @@ func TestRemoveCfStack(t *testing.T) {
 	assert.Equal(t, "DescribeSecurityGroups", <-operationChannel)
 	assert.Equal(t, "DeleteSecurityGroup:custom-group-id", <-operationChannel)
 	assert.Equal(t, "DeleteVpc", <-operationChannel)
+	assert.Equal(t, "DeleteBucketContents:bucket-name", <-operationChannel)
+	assert.Equal(t, "DeleteBucket:bucket-name", <-operationChannel)
+	assert.Equal(t, "WaitUntilBucketNotExists:bucket-name", <-operationChannel)
 	assert.Equal(t, "DeleteStack", <-operationChannel)
 	assert.Equal(t, "WaitUntilStackDeleteComplete", <-operationChannel)
 }
@@ -401,6 +408,12 @@ func (t mockCfClient) DescribeStackResources(input *cloudformation.DescribeStack
 				LogicalResourceId:  &(&types.S{S: "vpc-id"}).S,
 				ResourceStatus:     &(&types.S{S: "AVAILABLE"}).S,
 			},
+			{
+				ResourceType:       &(&types.S{S: "AWS::S3::Bucket"}).S,
+				PhysicalResourceId: &(&types.S{S: "bucket-name"}).S,
+				LogicalResourceId:  &(&types.S{S: "bucket-name"}).S,
+				ResourceStatus:     &(&types.S{S: "AVAILABLE"}).S,
+			},
 		},
 	}, nil
 }
@@ -427,4 +440,23 @@ func (t mockRdsClient) ListTagsForResource(input *rds.ListTagsForResourceInput) 
 func (t mockRdsClient) ModifyDBInstance(input *rds.ModifyDBInstanceInput) (*rds.ModifyDBInstanceOutput, error) {
 	t.operationChannel <- "ModifyDBInstance"
 	return nil, nil
+}
+
+type mockS3Client struct {
+	operationChannel chan (string)
+}
+
+func (t mockS3Client) DeleteBucket(input *s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error) {
+	t.operationChannel <- "DeleteBucket:" + *input.Bucket
+	return nil, nil
+}
+
+func (t mockS3Client) WaitUntilBucketNotExists(input *s3.HeadBucketInput) error {
+	t.operationChannel <- "WaitUntilBucketNotExists:" + *input.Bucket
+	return nil
+}
+
+func (t mockS3Client) DeleteBucketContents(s3BucketName string) error {
+	t.operationChannel <- "DeleteBucketContents:" + s3BucketName
+	return nil
 }

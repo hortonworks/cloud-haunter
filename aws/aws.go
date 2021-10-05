@@ -22,6 +22,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
@@ -35,6 +38,7 @@ type awsProvider struct {
 	cloudTrailClient     map[string]*cloudtrail.CloudTrail
 	cloudFormationClient map[string]*cloudformation.CloudFormation
 	rdsClients           map[string]*rds.RDS
+	s3Clients            map[string]*s3.S3
 	iamClient            *iam.IAM
 }
 
@@ -80,6 +84,7 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 	p.rdsClients = map[string]*rds.RDS{}
 	p.cloudTrailClient = map[string]*cloudtrail.CloudTrail{}
 	p.cloudFormationClient = map[string]*cloudformation.CloudFormation{}
+	p.s3Clients = map[string]*s3.S3{}
 
 	for _, region := range regions {
 		if client, err := newEc2Client(region); err != nil {
@@ -110,6 +115,12 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 			panic(fmt.Sprintf("[AWS] Failed to create CloudFormation client, err: %s", err.Error()))
 		} else {
 			p.cloudFormationClient[region] = cfClient
+		}
+
+		if s3Client, err := newS3Client(region); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create S3 client, err: %s", err.Error()))
+		} else {
+			p.s3Clients[region] = s3Client
 		}
 	}
 	if iamClient, err := newIamClient(); err != nil {
@@ -191,6 +202,14 @@ func (p awsProvider) getRdsClientsByRegion() map[string]rdsClient {
 	return rdsClients
 }
 
+func (p awsProvider) getS3ClientsByRegion() map[string]s3Client {
+	s3Clients := map[string]s3Client{}
+	for k := range p.s3Clients {
+		s3Clients[k] = s3ClientImpl{p.s3Clients[k]}
+	}
+	return s3Clients
+}
+
 func (p awsProvider) TerminateInstances(*types.InstanceContainer) []error {
 	return []error{errors.New("[AWS] Termination is not supported")}
 }
@@ -200,7 +219,8 @@ func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	cfClients := p.getCFClientsByRegion()
 	rdsClients := p.getRdsClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return deleteCFStacks(cfClients, rdsClients, ec2Clients, stacks.Get(types.AWS))
+	s3Clients := p.getS3ClientsByRegion()
+	return deleteCFStacks(cfClients, rdsClients, ec2Clients, s3Clients, stacks.Get(types.AWS))
 }
 
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
@@ -374,7 +394,7 @@ func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
 	return errs
 }
 
-func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, ec2Clients map[string]ec2Client, stacks []*types.Stack) []error {
+func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, ec2Clients map[string]ec2Client, s3Clients map[string]s3Client, stacks []*types.Stack) []error {
 	regionCFStacks := map[string][]*types.Stack{}
 	for _, stack := range stacks {
 		regionCFStacks[stack.Region] = append(regionCFStacks[stack.Region], stack)
@@ -388,7 +408,7 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 		wg.Add(len(stacks))
 
 		for _, s := range stacks {
-			go func(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, region string, stack *types.Stack) {
+			go func(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, s3Client s3Client, region string, stack *types.Stack) {
 				defer wg.Done()
 
 				if ctx.DryRun {
@@ -416,6 +436,8 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 							}
 						case "AWS::EC2::VPC":
 							resourceErr = deleteVpcWithDependencies(ec2Client, stack.Name, *stackResource.PhysicalResourceId, region)
+						case "AWS::S3::Bucket":
+							resourceErr = deleteS3BucketWithContents(s3Client, stack.Name, *stackResource.PhysicalResourceId, region)
 						}
 						if resourceErr != nil {
 							break
@@ -451,7 +473,7 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 					}
 					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s was successful", stack.Name, region)
 				}
-			}(cfClients[r], rdsClients[r], ec2Clients[r], r, s)
+			}(cfClients[r], rdsClients[r], ec2Clients[r], s3Clients[r], r, s)
 		}
 	}
 
@@ -567,6 +589,27 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 	})
 	if err != nil && err.(awserr.Error).Code() != "InvalidVpcID.NotFound" {
 		log.Errorf("[AWS] Skipping stack %s delete because failed to delete VPC: %s, err: %s", stackName, vpcId, err)
+		return err
+	}
+
+	return nil
+}
+
+func deleteS3BucketWithContents(s3Client s3Client, stackName string, s3BucketName string, region string) error {
+	log.Infof("[AWS] Deleting S3 bucket: %s, region: %s", s3BucketName, region)
+
+	if err := s3Client.DeleteBucketContents(s3BucketName); err != nil {
+		log.Errorf("[AWS] Skipping stack %s delete because failed to delete contents of S3 bucket %s", stackName, s3BucketName)
+		return err
+	}
+
+	if _, err := s3Client.DeleteBucket(&s3.DeleteBucketInput{Bucket: &s3BucketName}); err != nil {
+		log.Errorf("[AWS] Skipping stack %s delete because failed to start deletion of S3 bucket %s, err: %s", stackName, s3BucketName, err)
+		return err
+	}
+
+	if err := s3Client.WaitUntilBucketNotExists(&s3.HeadBucketInput{Bucket: &s3BucketName}); err != nil {
+		log.Errorf("[AWS] Skipping stack %s delete because failed to delete S3 bucket %s, err: %s", stackName, s3BucketName, err)
 		return err
 	}
 
@@ -739,6 +782,21 @@ type rdsClient interface {
 	DescribeDBInstances(input *rds.DescribeDBInstancesInput) (*rds.DescribeDBInstancesOutput, error)
 	ListTagsForResource(input *rds.ListTagsForResourceInput) (*rds.ListTagsForResourceOutput, error)
 	ModifyDBInstance(input *rds.ModifyDBInstanceInput) (*rds.ModifyDBInstanceOutput, error)
+}
+
+type s3Client interface {
+	DeleteBucket(input *s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error)
+	WaitUntilBucketNotExists(input *s3.HeadBucketInput) error
+	DeleteBucketContents(s3BucketName string) error
+}
+
+type s3ClientImpl struct {
+	s3iface.S3API
+}
+
+func (c s3ClientImpl) DeleteBucketContents(s3BucketName string) error {
+	iterator := s3manager.NewDeleteListIterator(c.S3API, &s3.ListObjectsInput{Bucket: &s3BucketName})
+	return s3manager.NewBatchDeleteWithClient(c.S3API).Delete(aws.BackgroundContext(), iterator)
 }
 
 func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
@@ -1133,6 +1191,16 @@ func newCloudFormationClient(region string) (*cloudformation.CloudFormation, err
 		return nil, err
 	}
 	return cloudformation.New(awsSession), nil
+}
+
+func newS3Client(region string) (*s3.S3, error) {
+	awsSession, err := newSession(func(config *aws.Config) {
+		config.Region = &region
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s3.New(awsSession), nil
 }
 
 func newSession(configure func(*aws.Config)) (*session.Session, error) {
