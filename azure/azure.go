@@ -321,7 +321,11 @@ func (p azureProvider) TerminateStacks(stacks *types.StackContainer) []error {
 		} else {
 			_, err := p.rgClient.Delete(context.Background(), rgName)
 			if err != nil {
-				errs = append(errs, err)
+				if strings.Contains(err.Error(), "Code=\"ScopeLocked\"") {
+					log.Warnf("[AZURE] Resource group %s has a resource lock, so it can not be deleted", rgName)
+				} else {
+					errs = append(errs, err)
+				}
 			}
 		}
 	}
