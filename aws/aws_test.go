@@ -392,10 +392,14 @@ func (t mockCfClient) DescribeStackResources(input *cloudformation.DescribeStack
 			{
 				ResourceType:       &(&types.S{S: "AWS::RDS::DBInstance"}).S,
 				PhysicalResourceId: &(&types.S{S: "rds-id"}).S,
+				LogicalResourceId:  &(&types.S{S: "rds-id"}).S,
+				ResourceStatus:     &(&types.S{S: "AVAILABLE"}).S,
 			},
 			{
 				ResourceType:       &(&types.S{S: "AWS::EC2::VPC"}).S,
 				PhysicalResourceId: &(&types.S{S: "vpc-id"}).S,
+				LogicalResourceId:  &(&types.S{S: "vpc-id"}).S,
+				ResourceStatus:     &(&types.S{S: "AVAILABLE"}).S,
 			},
 		},
 	}, nil

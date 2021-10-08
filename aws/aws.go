@@ -403,10 +403,17 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 						return
 					}
 					var resourceErr error
+					retainResources := []*string{}
 					for _, stackResource := range stackResources.StackResources {
 						switch *stackResource.ResourceType {
 						case "AWS::RDS::DBInstance":
-							resourceErr = disableDeleteProtection(rdsClient, stack.Name, *stackResource.PhysicalResourceId, region)
+							if *stackResource.ResourceStatus != cloudformation.ResourceStatusDeleteComplete {
+								var dbExists bool
+								dbExists, resourceErr = disableDeleteProtection(rdsClient, stack.Name, *stackResource.PhysicalResourceId, region)
+								if !dbExists {
+									retainResources = append(retainResources, stackResource.LogicalResourceId)
+								}
+							}
 						case "AWS::EC2::VPC":
 							resourceErr = deleteVpcWithDependencies(ec2Client, stack.Name, *stackResource.PhysicalResourceId, region)
 						}
@@ -421,12 +428,23 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 					}
 
 					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s", stack.Name, region)
-					if _, err := cfClient.DeleteStack(&cloudformation.DeleteStackInput{StackName: &stack.Name}); err != nil {
+					deleteStackInput := &cloudformation.DeleteStackInput{
+						StackName:       &stack.Name,
+						RetainResources: retainResources,
+					}
+					if _, err := cfClient.DeleteStack(deleteStackInput); err != nil {
 						log.Errorf("[AWS] Failed to start deletion of CloudFormation stack: %s, err: %s", stack.Name, err)
 						errChan <- err
 						return
 					}
-					if err := cfClient.WaitUntilStackDeleteComplete(&cloudformation.DescribeStacksInput{StackName: &stack.Name}); err != nil {
+					describeStacksInput := &cloudformation.DescribeStacksInput{StackName: &stack.Name}
+					if err := cfClient.WaitUntilStackDeleteComplete(describeStacksInput); err != nil {
+						if stacks, describeErr := cfClient.DescribeStacks(describeStacksInput); describeErr == nil && stacks.Stacks != nil {
+							cfStack := *stacks.Stacks[0]
+							err = fmt.Errorf("Cloudformation stack: %s, region: %s, is in status %s with reason: %s", *cfStack.StackName, region, *cfStack.StackStatus, *cfStack.StackStatusReason)
+						} else {
+							log.Warnf("[AWS] Failed to describe stack: %s, region: %s for status, err: %s", stack.Name, region, describeErr)
+						}
 						log.Errorf("[AWS] Failed to wait for delete complete of CloudFormation stack: %s, err: %s", stack.Name, err)
 						errChan <- err
 						return
@@ -449,18 +467,22 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 	return errs
 }
 
-func disableDeleteProtection(rdsClient rdsClient, stackName string, dbInstanceId string, region string) error {
+func disableDeleteProtection(rdsClient rdsClient, stackName string, dbInstanceId string, region string) (bool, error) {
 	log.Infof("[AWS] Disabling DeletionProtection for DB instance: %s, region: %s", dbInstanceId, region)
+	dbExists := true
 
 	_, err := rdsClient.ModifyDBInstance(&rds.ModifyDBInstanceInput{
 		DBInstanceIdentifier: &dbInstanceId,
 		DeletionProtection:   aws.Bool(false),
 	})
-	if err != nil && !strings.Contains(err.Error(), "DB instance not found") {
+	if err != nil {
+		dbExists = false
+		if strings.Contains(err.Error(), "DB instance not found") {
+			return dbExists, nil
+		}
 		log.Errorf("[AWS] Skipping stack %s delete because failed to disable DeletionProtection on db instance: %s, err: %s", stackName, dbInstanceId, err)
-		return err
 	}
-	return nil
+	return dbExists, err
 }
 
 /**
