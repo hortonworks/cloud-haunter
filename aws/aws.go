@@ -418,13 +418,8 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 							resourceErr = deleteVpcWithDependencies(ec2Client, stack.Name, *stackResource.PhysicalResourceId, region)
 						}
 						if resourceErr != nil {
-							break
+							log.Warnf("[AWS] Failed to delete resource of CloudFormation stack: %s, err: %s", stack.Name, resourceErr)
 						}
-					}
-					if resourceErr != nil {
-						log.Errorf("[AWS] Failed to delete resource of CloudFormation stack: %s, err: %s", stack.Name, resourceErr)
-						errChan <- resourceErr
-						return
 					}
 
 					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s", stack.Name, region)
@@ -468,7 +463,7 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 }
 
 func disableDeleteProtection(rdsClient rdsClient, stackName string, dbInstanceId string, region string) (bool, error) {
-	log.Infof("[AWS] Disabling DeletionProtection for DB instance: %s, region: %s", dbInstanceId, region)
+	log.Infof("[AWS] Disabling DeletionProtection for DB instance: %s in stack: %s, region: %s", dbInstanceId, stackName, region)
 	dbExists := true
 
 	_, err := rdsClient.ModifyDBInstance(&rds.ModifyDBInstanceInput{
@@ -480,7 +475,7 @@ func disableDeleteProtection(rdsClient rdsClient, stackName string, dbInstanceId
 		if strings.Contains(err.Error(), "DB instance not found") {
 			return dbExists, nil
 		}
-		log.Errorf("[AWS] Skipping stack %s delete because failed to disable DeletionProtection on db instance: %s, err: %s", stackName, dbInstanceId, err)
+		log.Errorf("[AWS] Failed to disable DeletionProtection on db instance: %s in stack: %s, err: %s", dbInstanceId, stackName, err)
 	}
 	return dbExists, err
 }
@@ -489,7 +484,7 @@ func disableDeleteProtection(rdsClient rdsClient, stackName string, dbInstanceId
  * CloudFormation is not able to delete a VPC if it has dependencies, so we have to delete them manually.
  */
 func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId string, region string) error {
-	log.Infof("[AWS] Deleting endpoints of VPC: %s, region: %s", vpcId, region)
+	log.Infof("[AWS] Deleting endpoints of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
 
 	vpcIdFilter := &ec2.Filter{}
 	vpcIdFilter.SetName("vpc-id")
@@ -498,7 +493,7 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 		Filters: []*ec2.Filter{vpcIdFilter},
 	})
 	if err != nil {
-		log.Errorf("[AWS] Skipping stack %s delete because failed to list endpoints of VPC: %s, err: %s", stackName, vpcId, err)
+		log.Errorf("[AWS] Failed to list endpoints of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
 		return err
 	}
 
@@ -513,18 +508,18 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 			VpcEndpointIds: vpcEndpointIds,
 		})
 		if err != nil {
-			log.Errorf("[AWS] Skipping stack %s delete because failed to delete endpoints of VPC: %s, err: %s", stackName, vpcId, err)
+			log.Errorf("[AWS] Failed to delete endpoints of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
 			return err
 		}
 	}
 
-	log.Infof("[AWS] Deleting subnets of VPC: %s, region: %s", vpcId, region)
+	log.Infof("[AWS] Deleting subnets of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
 
 	subnets, err := ec2Client.DescribeSubnets(&ec2.DescribeSubnetsInput{
 		Filters: []*ec2.Filter{vpcIdFilter},
 	})
 	if err != nil {
-		log.Errorf("[AWS] Skipping stack %s delete because failed to list subnets of VPC: %s, err: %s", stackName, vpcId, err)
+		log.Errorf("[AWS] Failed to list subnets of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
 		return err
 	}
 	for _, subnet := range subnets.Subnets {
@@ -532,18 +527,18 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 			SubnetId: subnet.SubnetId,
 		})
 		if err != nil {
-			log.Errorf("[AWS] Skipping stack %s delete because failed to delete subnet: %s, err: %s", stackName, *subnet.SubnetId, err)
+			log.Errorf("[AWS] Failed to delete subnet: %s in stack: %s, err: %s", *subnet.SubnetId, stackName, err)
 			return err
 		}
 	}
 
-	log.Infof("[AWS] Deleting security groups of VPC: %s, region: %s", vpcId, region)
+	log.Infof("[AWS] Deleting security groups of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
 
 	securityGroups, err := ec2Client.DescribeSecurityGroups(&ec2.DescribeSecurityGroupsInput{
 		Filters: []*ec2.Filter{vpcIdFilter},
 	})
 	if err != nil {
-		log.Errorf("[AWS] Skipping stack %s delete because failed to list security groups of VPC: %s, err: %s", stackName, vpcId, err)
+		log.Errorf("[AWS] Failed to list security groups of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
 		return err
 	}
 	for _, securityGroup := range securityGroups.SecurityGroups {
@@ -555,18 +550,18 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 			GroupId: securityGroup.GroupId,
 		})
 		if err != nil {
-			log.Errorf("[AWS] Skipping stack %s delete because failed to delete security group: %s, err: %s", stackName, *securityGroup.GroupId, err)
+			log.Errorf("[AWS] Failed to delete security group: %s in stack: %s, err: %s", *securityGroup.GroupId, stackName, err)
 			return err
 		}
 	}
 
-	log.Infof("[AWS] Deleting VPC: %s, region: %s", vpcId, region)
+	log.Infof("[AWS] Deleting VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
 
 	_, err = ec2Client.DeleteVpc(&ec2.DeleteVpcInput{
 		VpcId: &vpcId,
 	})
 	if err != nil && err.(awserr.Error).Code() != "InvalidVpcID.NotFound" {
-		log.Errorf("[AWS] Skipping stack %s delete because failed to delete VPC: %s, err: %s", stackName, vpcId, err)
+		log.Errorf("[AWS] Failed to delete VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
 		return err
 	}
 
