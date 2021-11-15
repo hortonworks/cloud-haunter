@@ -1,11 +1,12 @@
 package operation
 
 import (
+	"reflect"
+
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
 	log "github.com/sirupsen/logrus"
-	"reflect"
 )
 
 func filter(filterName string, items []types.CloudItem, filterType types.FilterConfigType, isNeeded func(types.CloudItem) bool) []types.CloudItem {
@@ -78,8 +79,14 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 	}
 
 	if owners := filterConfig.GetFilterValues(filterEntityType, item.GetCloudType(), types.Owner); owners != nil {
-		log.Debugf("[%s] filtering item %s to owners [%s]", filterName, item.GetName(), owners)
-		filtered, applied = filtered || utils.IsStartsWith(item.GetOwner(), owners...), true
+		log.Debugf("[%s] filtering item %s with exact match '%t' to owners [%s]", filterName, item.GetName(), ctx.ExactMatchOwner, owners)
+		var ownerMatch bool
+		if ctx.ExactMatchOwner {
+			ownerMatch = utils.IsAnyEquals(item.GetOwner(), owners...)
+		} else {
+			ownerMatch = utils.IsStartsWith(item.GetOwner(), owners...)
+		}
+		filtered, applied = filtered || ownerMatch, true
 	}
 
 	if labels := filterConfig.GetFilterValues(filterEntityType, item.GetCloudType(), types.Label); labels != nil {
