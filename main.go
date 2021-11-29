@@ -36,6 +36,7 @@ func main() {
 	dryRun := flag.Bool("d", false, "dry run")
 	verbose := flag.Bool("v", false, "verbose")
 	ignoreLabelDisabled := flag.Bool("i", false, "disable ignore label")
+	exactMatchOwner := flag.Bool("e", false, "exact match owner")
 
 	flag.Parse()
 
@@ -50,6 +51,7 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 	ctx.IgnoreLabelDisabled = *ignoreLabelDisabled
+	ctx.ExactMatchOwner = *exactMatchOwner
 
 	if filterConfigLoc != nil && len(*filterConfigLoc) != 0 {
 		var err error

@@ -18,6 +18,16 @@ func TestIsAnyStartsWithNotFound(t *testing.T) {
 	assert.False(t, IsAnyStartsWith(tags, "x"))
 }
 
+func TestIsAnyEqualsTrue(t *testing.T) {
+	owners := []string{"owner1", "owner2"}
+	assert.True(t, IsAnyEquals("owner1", owners...))
+}
+
+func TestIsAnyEqualsFalse(t *testing.T) {
+	owners := []string{"owner1", "owner2"}
+	assert.False(t, IsAnyEquals("owner", owners...))
+}
+
 func Test_givenValidUnixTimeStamp_whenConvertTimeUnix_thenReturnsConvertedToTime(t *testing.T) {
 
 	var unixTimestamp = "1527244797"

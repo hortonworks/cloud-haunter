@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"encoding/json"
+
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"gopkg.in/yaml.v2"
@@ -28,6 +29,16 @@ func IsAnyStartsWith(haystack map[string]string, needles ...string) bool {
 func IsStartsWith(hay string, needles ...string) bool {
 	for _, n := range needles {
 		if strings.Index(hay, n) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// IsAnyEquals returns if the input string equals to any of the array elements
+func IsAnyEquals(input string, array ...string) bool {
+	for _, s := range array {
+		if input == s {
 			return true
 		}
 	}

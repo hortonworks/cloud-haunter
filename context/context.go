@@ -35,6 +35,9 @@ var Verbose = false
 // IgnoreLabelDisabled is a global flag for enabling/disabling ignore label usage
 var IgnoreLabelDisabled = false
 
+// ExactMatchOwner is a global flag for 'exact match' or 'starts with' matching of owner
+var ExactMatchOwner = false
+
 // Operations contains all the available operations
 var Operations = make(map[types.OpType]types.Operation)
 
