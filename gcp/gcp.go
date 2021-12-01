@@ -21,7 +21,7 @@ import (
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
-	"google.golang.org/api/sqladmin/v1beta4"
+	sqladmin "google.golang.org/api/sqladmin/v1beta4"
 )
 
 var provider = gcpProvider{}
@@ -167,9 +167,9 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 
 	gcpStacks := map[string]*GcpStack{}
 	for instanceName, instance := range instancesByName {
-		stackId, ok := instance.Tags[ctx.ResourceGroupingLabel]
+		stackId, ok := instance.Tags[strings.ToLower(ctx.ResourceGroupingLabel)]
 		if !ok {
-			log.Warnf("[GCP] Skipping instance %s as it does not have %s tag", instance.Name, ctx.ResourceGroupingLabel)
+			log.Warnf("[GCP] Skipping instance %s as it does not have %s tag", instance.Name, strings.ToLower(ctx.ResourceGroupingLabel))
 			continue
 		}
 
@@ -179,7 +179,7 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 			log.Debugf("[GCP] Creating stack for instance %s", instanceName)
 			var stackDatabaseName string
 			for _, database := range databases {
-				if stackId == database.Tags[ctx.ResourceGroupingLabel] {
+				if stackId == database.Tags[strings.ToLower(ctx.ResourceGroupingLabel)] {
 					log.Debugf("[GCP] Using db %s for stack %s", database.Name, stackId)
 					stackDatabaseName = database.Name
 					break
@@ -228,6 +228,10 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 
 		if instance.State != currentGcpStack.State {
 			currentGcpStack.State = types.Unknown
+		}
+
+		if instance.Created.Before(currentGcpStack.Created) {
+			currentGcpStack.Created = instance.Created
 		}
 
 		for _, address := range externalIpsByRegion[instance.Region] {

@@ -5,13 +5,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/aws/aws-sdk-go/service/cloudtrail"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	elb "github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
+	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
+)
+
+var (
+	RESOURCE_GROUPING_TAG_VALUE = "crn"
+	NOW                         = time.Now()
+	OWNER                       = "user"
 )
 
 func TestProviderInit(t *testing.T) {
@@ -163,18 +172,24 @@ func TestRemoveCfStack(t *testing.T) {
 	ec2Clients := map[string]ec2Client{
 		"eu-central-1": mockEc2Client{operationChannel: operationChannel},
 	}
+	elbClients := map[string]elbClient{
+		"eu-central-1": mockElbClient{operationChannel: operationChannel},
+	}
 	stacks := []*types.Stack{
 		{
 			CloudType: types.AWS,
 			Name:      "stack",
 			Region:    "eu-central-1",
+			Metadata: map[string]string{
+				"type": TYPE_CF,
+			},
 		},
 	}
 
 	go func() {
 		defer close(operationChannel)
 
-		deleteCFStacks(cfClients, rdsClients, ec2Clients, stacks)
+		deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, stacks)
 	}()
 
 	assert.Equal(t, "DescribeStackResources", <-operationChannel)
@@ -189,6 +204,100 @@ func TestRemoveCfStack(t *testing.T) {
 	assert.Equal(t, "DeleteVpc", <-operationChannel)
 	assert.Equal(t, "DeleteStack", <-operationChannel)
 	assert.Equal(t, "WaitUntilStackDeleteComplete", <-operationChannel)
+}
+
+func TestRemoveNativeStack(t *testing.T) {
+	operationChannel := make(chan string)
+
+	cfClients := map[string]cfClient{
+		"eu-central-1": mockCfClient{operationChannel: operationChannel},
+	}
+	rdsClients := map[string]rdsClient{
+		"eu-central-1": mockRdsClient{operationChannel: operationChannel},
+	}
+	ec2Clients := map[string]ec2Client{
+		"eu-central-1": mockEc2Client{operationChannel: operationChannel},
+	}
+	elbClients := map[string]elbClient{
+		"eu-central-1": mockElbClient{operationChannel: operationChannel},
+	}
+	stacks := []*types.Stack{
+		{
+			CloudType: types.AWS,
+			Name:      "stack",
+			Region:    "eu-central-1",
+			Metadata: map[string]string{
+				METADATA_TYPE:            TYPE_NATIVE,
+				METADATA_LOAD_BALANCERS:  "lb-1,lb-2",
+				METADATA_INSTANCES:       "i",
+				METADATA_VOLUMES:         "vol",
+				METADATA_SECURITY_GROUPS: "sg",
+				METADATA_ELASTIC_IPS:     "ip",
+			},
+		},
+	}
+
+	go func() {
+		defer close(operationChannel)
+
+		deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, stacks)
+	}()
+
+	assert.Equal(t, "TerminateInstances:i", <-operationChannel)
+	assert.Equal(t, "WaitUntilInstanceTerminated:i", <-operationChannel)
+
+	asyncOperations := []string{}
+	for op := range operationChannel {
+		asyncOperations = append(asyncOperations, op)
+	}
+
+	assert.Equal(t, 5, len(asyncOperations))
+	assert.Contains(t, asyncOperations, "DeleteVolume:vol")
+	assert.Contains(t, asyncOperations, "DeleteSecurityGroup:sg")
+	assert.Contains(t, asyncOperations, "DeleteLoadBalancer:lb-1")
+	assert.Contains(t, asyncOperations, "DeleteLoadBalancer:lb-2")
+	assert.Contains(t, asyncOperations, "ReleaseAddress:ip")
+}
+
+func TestGetNativeStacks(t *testing.T) {
+	operationChannel := make(chan string)
+
+	ec2Clients := map[string]ec2Client{
+		"eu-central-1": mockEc2Client{operationChannel: operationChannel},
+	}
+	elbClients := map[string]elbClient{
+		"eu-central-1": mockElbClient{operationChannel: operationChannel},
+	}
+
+	var stack *types.Stack
+
+	go func() {
+		defer close(operationChannel)
+
+		stacks, err := getNativeStacks(ec2Clients, elbClients)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(stacks))
+		stack = stacks[0]
+	}()
+
+	for _ = range operationChannel {
+		// ignore
+	}
+
+	assert.Equal(t, RESOURCE_GROUPING_TAG_VALUE, stack.ID)
+	assert.Equal(t, RESOURCE_GROUPING_TAG_VALUE, stack.Name)
+	assert.Equal(t, NOW, stack.Created)
+	assert.Equal(t, types.AWS, stack.CloudType)
+	assert.Equal(t, getEc2Tags(getResourceGroupedEc2Tags()), stack.Tags)
+	assert.Equal(t, OWNER, stack.Owner)
+	assert.Equal(t, "eu-central-1", stack.Region)
+	assert.Equal(t, types.Running, stack.State)
+	assert.Equal(t, TYPE_NATIVE, stack.Metadata[METADATA_TYPE])
+	assert.Equal(t, "lb-1", stack.Metadata[METADATA_LOAD_BALANCERS])
+	assert.Equal(t, "ID", stack.Metadata[METADATA_INSTANCES])
+	assert.Equal(t, "vol-2", stack.Metadata[METADATA_VOLUMES])
+	assert.Equal(t, "default-group-id,custom-group-id", stack.Metadata[METADATA_SECURITY_GROUPS])
+	assert.Equal(t, "ip-1", stack.Metadata[METADATA_ELASTIC_IPS])
 }
 
 type mockEc2Client struct {
@@ -232,8 +341,10 @@ func (t mockEc2Client) DescribeImages(input *ec2.DescribeImagesInput) (*ec2.Desc
 }
 
 func (t mockEc2Client) DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error) {
-	t.operationChannel <- "DeleteVolume"
-	t.deregisterVolumesChannel <- *input.VolumeId
+	t.operationChannel <- "DeleteVolume:" + *input.VolumeId
+	if t.deregisterVolumesChannel != nil {
+		t.deregisterVolumesChannel <- *input.VolumeId
+	}
 	return nil, nil
 }
 
@@ -302,10 +413,12 @@ func (t mockEc2Client) DescribeSecurityGroups(input *ec2.DescribeSecurityGroupsI
 			{
 				GroupId:   &(&types.S{S: "default-group-id"}).S,
 				GroupName: &(&types.S{S: "default"}).S,
+				Tags:      getResourceGroupedEc2Tags(),
 			},
 			{
 				GroupId:   &(&types.S{S: "custom-group-id"}).S,
 				GroupName: &(&types.S{S: "custom"}).S,
+				Tags:      getResourceGroupedEc2Tags(),
 			},
 		},
 	}, nil
@@ -313,6 +426,33 @@ func (t mockEc2Client) DescribeSecurityGroups(input *ec2.DescribeSecurityGroupsI
 
 func (t mockEc2Client) DeleteSecurityGroup(input *ec2.DeleteSecurityGroupInput) (*ec2.DeleteSecurityGroupOutput, error) {
 	t.operationChannel <- "DeleteSecurityGroup:" + *input.GroupId
+	return nil, nil
+}
+
+func (t mockEc2Client) TerminateInstances(input *ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error) {
+	t.operationChannel <- "TerminateInstances:" + strings.Join(aws.StringValueSlice(input.InstanceIds), ",")
+	return nil, nil
+}
+
+func (t mockEc2Client) WaitUntilInstanceTerminated(input *ec2.DescribeInstancesInput) error {
+	t.operationChannel <- "WaitUntilInstanceTerminated:" + strings.Join(aws.StringValueSlice(input.InstanceIds), ",")
+	return nil
+}
+
+func (t mockEc2Client) DescribeAddresses(input *ec2.DescribeAddressesInput) (*ec2.DescribeAddressesOutput, error) {
+	t.operationChannel <- "DescribeAddresses"
+	return &ec2.DescribeAddressesOutput{
+		Addresses: []*ec2.Address{
+			{
+				AllocationId: aws.String("ip-1"),
+				Tags:         getResourceGroupedEc2Tags(),
+			},
+		},
+	}, nil
+}
+
+func (t mockEc2Client) ReleaseAddress(input *ec2.ReleaseAddressInput) (*ec2.ReleaseAddressOutput, error) {
+	t.operationChannel <- "ReleaseAddress:" + aws.StringValue(input.AllocationId)
 	return nil, nil
 }
 
@@ -357,12 +497,32 @@ func (t mockIamClient) ListAccessKeys(*iam.ListAccessKeysInput) (*iam.ListAccess
 }
 
 func newTestInstance() *ec2.Instance {
-	now := time.Now()
 	return &ec2.Instance{
 		InstanceId:   &(&types.S{S: "ID"}).S,
-		LaunchTime:   &now,
+		LaunchTime:   &NOW,
 		Placement:    &ec2.Placement{},
 		InstanceType: &(&types.S{S: "m5.xlarge"}).S,
+		State: &ec2.InstanceState{
+			Code: aws.Int64(0),
+			Name: aws.String(ec2.StateAvailable),
+		},
+		BlockDeviceMappings: []*ec2.InstanceBlockDeviceMapping{
+			{
+				DeviceName: aws.String("/dev/sda"),
+				Ebs: &ec2.EbsInstanceBlockDevice{
+					DeleteOnTermination: aws.Bool(true),
+					VolumeId:            aws.String("vol-1"),
+				},
+			},
+			{
+				DeviceName: aws.String("/dev/sdb"),
+				Ebs: &ec2.EbsInstanceBlockDevice{
+					DeleteOnTermination: aws.Bool(false),
+					VolumeId:            aws.String("vol-2"),
+				},
+			},
+		},
+		Tags: getResourceGroupedEc2Tags(),
 	}
 }
 
@@ -427,4 +587,58 @@ func (t mockRdsClient) ListTagsForResource(input *rds.ListTagsForResourceInput) 
 func (t mockRdsClient) ModifyDBInstance(input *rds.ModifyDBInstanceInput) (*rds.ModifyDBInstanceOutput, error) {
 	t.operationChannel <- "ModifyDBInstance"
 	return nil, nil
+}
+
+type mockElbClient struct {
+	operationChannel chan (string)
+}
+
+func (t mockElbClient) DescribeLoadBalancers(input *elb.DescribeLoadBalancersInput) (*elb.DescribeLoadBalancersOutput, error) {
+	t.operationChannel <- "DescribeLoadBalancers"
+	return &elb.DescribeLoadBalancersOutput{
+		LoadBalancers: []*elb.LoadBalancer{
+			{
+				LoadBalancerArn: aws.String("lb-1"),
+			},
+		},
+	}, nil
+}
+
+func (t mockElbClient) DescribeTags(input *elb.DescribeTagsInput) (*elb.DescribeTagsOutput, error) {
+	t.operationChannel <- "DescribeLoadBalancers"
+	return &elb.DescribeTagsOutput{
+		TagDescriptions: []*elb.TagDescription{
+			{
+				ResourceArn: aws.String("lb-1"),
+				Tags:        getResourceGroupedElbTags(),
+			},
+		},
+	}, nil
+}
+
+func (t mockElbClient) DeleteLoadBalancer(input *elb.DeleteLoadBalancerInput) (*elb.DeleteLoadBalancerOutput, error) {
+	t.operationChannel <- "DeleteLoadBalancer:" + *input.LoadBalancerArn
+	return nil, nil
+}
+
+func getResourceGroupedElbTags() []*elb.Tag {
+	return []*elb.Tag{
+		{
+			Key:   aws.String(ctx.ResourceGroupingLabel),
+			Value: aws.String(RESOURCE_GROUPING_TAG_VALUE),
+		},
+	}
+}
+
+func getResourceGroupedEc2Tags() []*ec2.Tag {
+	return []*ec2.Tag{
+		{
+			Key:   aws.String(ctx.ResourceGroupingLabel),
+			Value: aws.String(RESOURCE_GROUPING_TAG_VALUE),
+		},
+		{
+			Key:   aws.String(ctx.OwnerLabel),
+			Value: aws.String(OWNER),
+		},
+	}
 }
