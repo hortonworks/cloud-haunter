@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/cloudformation"
+	elb "github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/hortonworks/cloud-haunter/utils"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -27,6 +28,19 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	TYPE_NATIVE = "Native"
+	TYPE_CF     = "CloudFormation"
+	CF_TAG      = "aws:cloudformation:stack-id"
+
+	METADATA_TYPE            = "type"
+	METADATA_LOAD_BALANCERS  = "loadBalancers"
+	METADATA_INSTANCES       = "instances"
+	METADATA_VOLUMES         = "volumes"
+	METADATA_SECURITY_GROUPS = "securityGroups"
+	METADATA_ELASTIC_IPS     = "elasticIps"
+)
+
 var provider = awsProvider{}
 
 type awsProvider struct {
@@ -35,6 +49,7 @@ type awsProvider struct {
 	cloudTrailClient     map[string]*cloudtrail.CloudTrail
 	cloudFormationClient map[string]*cloudformation.CloudFormation
 	rdsClients           map[string]*rds.RDS
+	elbClients           map[string]*elb.ELBV2
 	iamClient            *iam.IAM
 }
 
@@ -78,6 +93,7 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 	p.ec2Clients = map[string]*ec2.EC2{}
 	p.autoScalingClients = map[string]*autoscaling.AutoScaling{}
 	p.rdsClients = map[string]*rds.RDS{}
+	p.elbClients = map[string]*elb.ELBV2{}
 	p.cloudTrailClient = map[string]*cloudtrail.CloudTrail{}
 	p.cloudFormationClient = map[string]*cloudformation.CloudFormation{}
 
@@ -98,6 +114,12 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 			panic(fmt.Sprintf("[AWS] Failed to create RDS client in region %s, err: %s", region, err.Error()))
 		} else {
 			p.rdsClients[region] = client
+		}
+
+		if elbClient, err := newElbClient(region); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create ELB client in region %s, err: %s", region, err.Error()))
+		} else {
+			p.elbClients[region] = elbClient
 		}
 
 		if ctClient, err := newCloudTrailClient(region); err != nil {
@@ -145,7 +167,18 @@ func (p awsProvider) GetInstances() ([]*types.Instance, error) {
 func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	log.Debug("[AWS] Fetching CloudFormation stacks")
 	cfClients := p.getCFClientsByRegion()
-	return getCFStacks(cfClients)
+	cfStacks, cfError := getCFStacks(cfClients)
+	if cfError != nil {
+		return nil, cfError
+	}
+	log.Debug("[AWS] Fetching native stacks")
+	elbClients := p.getElbClientsByRegion()
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	nativeStacks, nativeError := getNativeStacks(ec2Clients, elbClients)
+	if nativeError != nil {
+		return nil, nativeError
+	}
+	return append(cfStacks, nativeStacks...), nil
 }
 
 func (p awsProvider) GetDatabases() ([]*types.Database, error) {
@@ -175,6 +208,14 @@ func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[str
 	return ec2Clients, ctClients
 }
 
+func (p awsProvider) getElbClientsByRegion() map[string]elbClient {
+	elbClients := map[string]elbClient{}
+	for k := range p.elbClients {
+		elbClients[k] = p.elbClients[k]
+	}
+	return elbClients
+}
+
 func (p awsProvider) getCFClientsByRegion() map[string]cfClient {
 	cfClients := map[string]cfClient{}
 	for k := range p.cloudFormationClient {
@@ -200,7 +241,8 @@ func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	cfClients := p.getCFClientsByRegion()
 	rdsClients := p.getRdsClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return deleteCFStacks(cfClients, rdsClients, ec2Clients, stacks.Get(types.AWS))
+	elbClients := p.getElbClientsByRegion()
+	return deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, stacks.Get(types.AWS))
 }
 
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
@@ -374,79 +416,43 @@ func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
 	return errs
 }
 
-func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, ec2Clients map[string]ec2Client, stacks []*types.Stack) []error {
-	regionCFStacks := map[string][]*types.Stack{}
+func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, stacks []*types.Stack) []error {
+	regionStacks := map[string][]*types.Stack{}
 	for _, stack := range stacks {
-		regionCFStacks[stack.Region] = append(regionCFStacks[stack.Region], stack)
+		regionStacks[stack.Region] = append(regionStacks[stack.Region], stack)
 	}
-	log.Debugf("[AWS] Delete CloudFormation stacks: %v", regionCFStacks)
+	stacksJson, _ := json.MarshalIndent(regionStacks, "", "  ")
+	log.Debugf("[AWS] Delete stacks: %s", stacksJson)
 
 	wg := sync.WaitGroup{}
 	errChan := make(chan error)
 
-	for r, stacks := range regionCFStacks {
+	for r, stacks := range regionStacks {
 		wg.Add(len(stacks))
 
 		for _, s := range stacks {
-			go func(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, region string, stack *types.Stack) {
+			go func(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, elbClient elbClient, region string, stack *types.Stack) {
 				defer wg.Done()
 
 				if ctx.DryRun {
-					log.Infof("[AWS] Dry-run set, CloudFormation stack is not deleted: %s, region: %s", stack.Name, region)
+					log.Infof("[AWS] Dry-run set, stack is not deleted: %s, region: %s", stack.Name, region)
 				} else {
-					stackResources, err := cfClient.DescribeStackResources(&cloudformation.DescribeStackResourcesInput{
-						StackName: &stack.Name,
-					})
-					if err != nil {
-						log.Errorf("[AWS] Failed to fetch the CloudFormation stack resources for stack: %s, err: %s", stack.Name, err)
-						errChan <- err
-						return
-					}
-					var resourceErr error
-					retainResources := []*string{}
-					for _, stackResource := range stackResources.StackResources {
-						switch *stackResource.ResourceType {
-						case "AWS::RDS::DBInstance":
-							if *stackResource.ResourceStatus != cloudformation.ResourceStatusDeleteComplete {
-								var dbExists bool
-								dbExists, resourceErr = disableDeleteProtection(rdsClient, stack.Name, *stackResource.PhysicalResourceId, region)
-								if !dbExists {
-									retainResources = append(retainResources, stackResource.LogicalResourceId)
-								}
-							}
-						case "AWS::EC2::VPC":
-							resourceErr = deleteVpcWithDependencies(ec2Client, stack.Name, *stackResource.PhysicalResourceId, region)
+					switch stack.Metadata[METADATA_TYPE] {
+					case TYPE_NATIVE:
+						err := deleteNativeStack(ec2Client, elbClient, region, stack)
+						if err != nil {
+							errChan <- err
 						}
-						if resourceErr != nil {
-							log.Warnf("[AWS] Failed to delete resource of CloudFormation stack: %s, err: %s", stack.Name, resourceErr)
+					case TYPE_CF:
+						err := deleteCfStack(cfClient, rdsClient, ec2Client, region, stack)
+						if err != nil {
+							errChan <- err
 						}
+					default:
+						errChan <- fmt.Errorf("[AWS] Stack type %s (of stack %s in region %s) delete is not implemented", stack.Metadata[METADATA_TYPE], stack.ID, region)
 					}
-
-					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s", stack.Name, region)
-					deleteStackInput := &cloudformation.DeleteStackInput{
-						StackName:       &stack.Name,
-						RetainResources: retainResources,
-					}
-					if _, err := cfClient.DeleteStack(deleteStackInput); err != nil {
-						log.Errorf("[AWS] Failed to start deletion of CloudFormation stack: %s, err: %s", stack.Name, err)
-						errChan <- err
-						return
-					}
-					describeStacksInput := &cloudformation.DescribeStacksInput{StackName: &stack.Name}
-					if err := cfClient.WaitUntilStackDeleteComplete(describeStacksInput); err != nil {
-						if stacks, describeErr := cfClient.DescribeStacks(describeStacksInput); describeErr == nil && stacks.Stacks != nil {
-							cfStack := *stacks.Stacks[0]
-							err = fmt.Errorf("Cloudformation stack: %s, region: %s, is in status %s with reason: %s", *cfStack.StackName, region, *cfStack.StackStatus, *cfStack.StackStatusReason)
-						} else {
-							log.Warnf("[AWS] Failed to describe stack: %s, region: %s for status, err: %s", stack.Name, region, describeErr)
-						}
-						log.Errorf("[AWS] Failed to wait for delete complete of CloudFormation stack: %s, err: %s", stack.Name, err)
-						errChan <- err
-						return
-					}
-					log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s was successful", stack.Name, region)
 				}
-			}(cfClients[r], rdsClients[r], ec2Clients[r], r, s)
+			}(cfClients[r], rdsClients[r], ec2Clients[r], elbClients[r], r, s)
 		}
 	}
 
@@ -460,6 +466,171 @@ func deleteCFStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClie
 		errs = append(errs, err)
 	}
 	return errs
+}
+
+func deleteNativeStack(ec2Client ec2Client, elbClient elbClient, region string, stack *types.Stack) error {
+	log.Infof("[AWS] Delete Native stack: %s, region: %s", stack.Name, region)
+
+	instanceIds := getResourceList(stack.Metadata[METADATA_INSTANCES])
+
+	_, err := ec2Client.TerminateInstances(&ec2.TerminateInstancesInput{
+		InstanceIds: aws.StringSlice(instanceIds),
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to terminate instances: %s in stack: %s, err: %s", stack.Metadata[METADATA_INSTANCES], stack.ID, err)
+		return err
+	}
+
+	err = ec2Client.WaitUntilInstanceTerminated(&ec2.DescribeInstancesInput{
+		InstanceIds: aws.StringSlice(instanceIds),
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to wait for terminated instances: %s in stack: %s, err: %s", stack.Metadata[METADATA_INSTANCES], stack.ID, err)
+		return err
+	}
+
+	wg := sync.WaitGroup{}
+	errChan := make(chan error)
+
+	volumes := getResourceList(stack.Metadata[METADATA_VOLUMES])
+	wg.Add(len(volumes))
+
+	for _, v := range volumes {
+		go func(volume string) {
+			defer wg.Done()
+
+			_, err := ec2Client.DeleteVolume(&ec2.DeleteVolumeInput{
+				VolumeId: aws.String(volume),
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to delete volume: %s in stack: %s, err: %s", volume, stack.ID, err)
+				errChan <- err
+			}
+		}(v)
+	}
+
+	securityGroups := getResourceList(stack.Metadata[METADATA_SECURITY_GROUPS])
+	wg.Add(len(securityGroups))
+
+	for _, sg := range securityGroups {
+		go func(securityGroup string) {
+			defer wg.Done()
+
+			_, err := ec2Client.DeleteSecurityGroup(&ec2.DeleteSecurityGroupInput{
+				GroupId: aws.String(securityGroup),
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to delete security group: %s in stack: %s, err: %s", securityGroup, stack.ID, err)
+				errChan <- err
+			}
+		}(sg)
+	}
+
+	loadBalancers := getResourceList(stack.Metadata[METADATA_LOAD_BALANCERS])
+	wg.Add(len(loadBalancers))
+
+	for _, lb := range loadBalancers {
+		go func(loadBalancerArn string) {
+			defer wg.Done()
+
+			_, err := elbClient.DeleteLoadBalancer(&elb.DeleteLoadBalancerInput{
+				LoadBalancerArn: aws.String(loadBalancerArn),
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to delete load balancer: %s in stack: %s, err: %s", loadBalancerArn, stack.ID, err)
+				errChan <- err
+			}
+		}(lb)
+	}
+
+	elasticIps := getResourceList(stack.Metadata[METADATA_ELASTIC_IPS])
+	wg.Add(len(elasticIps))
+
+	for _, i := range elasticIps {
+		go func(ip string) {
+			defer wg.Done()
+
+			_, err := ec2Client.ReleaseAddress(&ec2.ReleaseAddressInput{
+				AllocationId: aws.String(ip),
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to release elastic IP: %s in stack: %s, err: %s", ip, stack.ID, err)
+				errChan <- err
+			}
+		}(i)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	for err := range errChan {
+		close(errChan)
+		return err
+	}
+
+	log.Infof("[AWS] Delete Native stack: %s, region: %s was successful", stack.Name, region)
+	return nil
+}
+
+func getResourceList(resources string) []string {
+	if resources != "" {
+		return strings.Split(resources, ",")
+	}
+	return []string{}
+}
+
+func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, region string, stack *types.Stack) error {
+	stackResources, err := cfClient.DescribeStackResources(&cloudformation.DescribeStackResourcesInput{
+		StackName: &stack.Name,
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to fetch the CloudFormation stack resources for stack: %s, err: %s", stack.Name, err)
+		return err
+	}
+	var resourceErr error
+	retainResources := []*string{}
+	for _, stackResource := range stackResources.StackResources {
+		switch *stackResource.ResourceType {
+		case "AWS::RDS::DBInstance":
+			if *stackResource.ResourceStatus != cloudformation.ResourceStatusDeleteComplete {
+				var dbExists bool
+				dbExists, resourceErr = disableDeleteProtection(rdsClient, stack.Name, *stackResource.PhysicalResourceId, region)
+				if !dbExists {
+					retainResources = append(retainResources, stackResource.LogicalResourceId)
+				}
+			}
+		case "AWS::EC2::VPC":
+			resourceErr = deleteVpcWithDependencies(ec2Client, stack.Name, *stackResource.PhysicalResourceId, region)
+		}
+		if resourceErr != nil {
+			log.Warnf("[AWS] Failed to delete resource of CloudFormation stack: %s, err: %s", stack.Name, resourceErr)
+		}
+	}
+
+	log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s", stack.Name, region)
+	deleteStackInput := &cloudformation.DeleteStackInput{
+		StackName:       &stack.Name,
+		RetainResources: retainResources,
+	}
+	if _, err := cfClient.DeleteStack(deleteStackInput); err != nil {
+		log.Errorf("[AWS] Failed to start deletion of CloudFormation stack: %s, err: %s", stack.Name, err)
+		return err
+	}
+	describeStacksInput := &cloudformation.DescribeStacksInput{StackName: &stack.Name}
+	if err := cfClient.WaitUntilStackDeleteComplete(describeStacksInput); err != nil {
+		if stacks, describeErr := cfClient.DescribeStacks(describeStacksInput); describeErr == nil && stacks.Stacks != nil {
+			cfStack := *stacks.Stacks[0]
+			err = fmt.Errorf("[AWS] Cloudformation stack: %s, region: %s, is in status %s with reason: %s", *cfStack.StackName, region, *cfStack.StackStatus, *cfStack.StackStatusReason)
+		} else {
+			log.Warnf("[AWS] Failed to describe stack: %s, region: %s for status, err: %s", stack.Name, region, describeErr)
+		}
+		log.Errorf("[AWS] Failed to wait for delete complete of CloudFormation stack: %s, err: %s", stack.Name, err)
+		return err
+	}
+	log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s was successful", stack.Name, region)
+	return nil
 }
 
 func disableDeleteProtection(rdsClient rdsClient, stackName string, dbInstanceId string, region string) (bool, error) {
@@ -711,6 +882,10 @@ type ec2Client interface {
 	DeleteSubnet(input *ec2.DeleteSubnetInput) (*ec2.DeleteSubnetOutput, error)
 	DescribeSecurityGroups(input *ec2.DescribeSecurityGroupsInput) (*ec2.DescribeSecurityGroupsOutput, error)
 	DeleteSecurityGroup(input *ec2.DeleteSecurityGroupInput) (*ec2.DeleteSecurityGroupOutput, error)
+	TerminateInstances(input *ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error)
+	WaitUntilInstanceTerminated(input *ec2.DescribeInstancesInput) error
+	DescribeAddresses(input *ec2.DescribeAddressesInput) (*ec2.DescribeAddressesOutput, error)
+	ReleaseAddress(input *ec2.ReleaseAddressInput) (*ec2.ReleaseAddressOutput, error)
 }
 
 type cfClient interface {
@@ -736,6 +911,12 @@ type rdsClient interface {
 	ModifyDBInstance(input *rds.ModifyDBInstanceInput) (*rds.ModifyDBInstanceOutput, error)
 }
 
+type elbClient interface {
+	DescribeLoadBalancers(input *elb.DescribeLoadBalancersInput) (*elb.DescribeLoadBalancersOutput, error)
+	DescribeTags(input *elb.DescribeTagsInput) (*elb.DescribeTagsOutput, error)
+	DeleteLoadBalancer(input *elb.DeleteLoadBalancerInput) (*elb.DeleteLoadBalancerOutput, error)
+}
+
 func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
 	instChan := make(chan *types.Instance, 5)
 	wg := sync.WaitGroup{}
@@ -746,24 +927,33 @@ func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]
 		go func(region string, ec2Client ec2Client, cloudTrailClient cloudTrailClient) {
 			defer wg.Done()
 
-			instanceResult, e := ec2Client.DescribeInstances(&ec2.DescribeInstancesInput{})
-			if e != nil {
-				log.Errorf("[AWS] Failed to fetch the instances in region: %s, err: %s", region, e)
-				return
-			}
-			log.Debugf("[AWS] Processing instances (%d): [%s] in region: %s", len(instanceResult.Reservations), instanceResult.Reservations, region)
-			for _, res := range instanceResult.Reservations {
-				for _, inst := range res.Instances {
-					i := newInstance(inst)
-					if len(i.Owner) == 0 && i.State == types.Running {
-						log.Debugf("[AWS] instance %s does not have an %s tag, check CloudTrail logs", i.Name, ctx.OwnerLabel)
-						if iamUser := getIAMUserFromCloudTrail(*inst.InstanceId, cloudTrailClient); iamUser != nil {
-							i.Metadata = map[string]string{"IAMUser": *iamUser}
+			request := &ec2.DescribeInstancesInput{}
+			for {
+				instanceResult, e := ec2Client.DescribeInstances(request)
+				if e != nil {
+					log.Errorf("[AWS] Failed to fetch the instances in region: %s, err: %s", region, e)
+					return
+				}
+				log.Debugf("[AWS] Processing instances (%d): [%s] in region: %s", len(instanceResult.Reservations), instanceResult.Reservations, region)
+				for _, res := range instanceResult.Reservations {
+					for _, inst := range res.Instances {
+						i := newInstance(inst)
+						if len(i.Owner) == 0 && i.State == types.Running {
+							log.Debugf("[AWS] instance %s does not have an %s tag, check CloudTrail logs", i.Name, ctx.OwnerLabel)
+							if iamUser := getIAMUserFromCloudTrail(*inst.InstanceId, cloudTrailClient); iamUser != nil {
+								i.Metadata = map[string]string{"IAMUser": *iamUser}
+							}
 						}
+						instChan <- i
 					}
-					instChan <- i
+				}
+				if instanceResult.NextToken != nil {
+					request.SetNextToken(*instanceResult.NextToken)
+				} else {
+					break
 				}
 			}
+
 		}(r, c, cloudTrailClients[r])
 	}
 
@@ -822,6 +1012,256 @@ func getCFStacks(cfClients map[string]cfClient) ([]*types.Stack, error) {
 	var stacks []*types.Stack
 	for stack := range cfChan {
 		stacks = append(stacks, stack)
+	}
+	return stacks, nil
+}
+
+type AwsNativeStack struct {
+	ID             string
+	Region         string
+	LoadBalancers  []string
+	Instances      []string
+	Volumes        []string
+	SecurityGroups []string
+	ElasticIps     []string
+	Created        time.Time
+	Owner          string
+	State          types.State
+	Tags           types.Tags
+}
+
+func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbClient) ([]*types.Stack, error) {
+	stackChan := make(chan AwsNativeStack, 5)
+	wg := sync.WaitGroup{}
+	wg.Add(len(ec2Clients))
+
+	for r, c := range ec2Clients {
+		log.Debugf("[AWS] Fetching resources and assembling native stacks from region: %s", r)
+		go func(region string, ec2Client ec2Client, elbClient elbClient) {
+			defer wg.Done()
+
+			elbRequest := &elb.DescribeLoadBalancersInput{}
+			loadBalancersByGroup := map[string][]*elb.LoadBalancer{}
+			for {
+				loadBalancersOutput, err := elbClient.DescribeLoadBalancers(elbRequest)
+				if err != nil {
+					log.Errorf("[AWS] Failed to fetch load balancers in region %s, err: %s", region, err)
+					return
+				}
+				for _, loadBalancer := range loadBalancersOutput.LoadBalancers {
+					tagsResponse, err := elbClient.DescribeTags(&elb.DescribeTagsInput{ResourceArns: []*string{loadBalancer.LoadBalancerArn}})
+					if err != nil {
+						log.Errorf("[AWS] Failed to fetch tags of load balancer %s in region %s", *loadBalancer.LoadBalancerName, region)
+						continue
+					}
+					for _, tagDescription := range tagsResponse.TagDescriptions {
+						for _, tag := range tagDescription.Tags {
+							if *tag.Key == ctx.ResourceGroupingLabel {
+								loadBalancersByGroup[*tag.Value] = append(loadBalancersByGroup[*tag.Value], loadBalancer)
+								break
+							}
+						}
+					}
+				}
+				if loadBalancersOutput.NextMarker != nil {
+					elbRequest.SetMarker(*loadBalancersOutput.NextMarker)
+				} else {
+					break
+				}
+			}
+
+			elasticIpsByGroup := map[string][]*ec2.Address{}
+			elasticIpsOutput, err := ec2Client.DescribeAddresses(&ec2.DescribeAddressesInput{})
+			if err != nil {
+				log.Errorf("[AWS] Failed to fetch elastic IPs in region %s, err: %s", region, err)
+				return
+			}
+			for _, ip := range elasticIpsOutput.Addresses {
+				tags := getEc2Tags(ip.Tags)
+				if _, ok := tags[CF_TAG]; ok {
+					log.Debugf("[AWS] Skipping elastic IP %s in region %s for native stack assembly, as it has a CF tag", *ip.PublicIp, region)
+					continue
+				}
+				if group, ok := tags[ctx.ResourceGroupingLabel]; ok {
+					elasticIpsByGroup[group] = append(elasticIpsByGroup[group], ip)
+				}
+			}
+
+			securityGroupsRequest := &ec2.DescribeSecurityGroupsInput{}
+			securityGroupsByGroup := map[string][]*ec2.SecurityGroup{}
+			for {
+				securityGroupsOutput, err := ec2Client.DescribeSecurityGroups(securityGroupsRequest)
+				if err != nil {
+					log.Errorf("[AWS] Failed to fetch security groups in region %s, err: %s", region, err)
+					return
+				}
+				for _, sg := range securityGroupsOutput.SecurityGroups {
+					tags := getEc2Tags(sg.Tags)
+					if _, ok := tags[CF_TAG]; ok {
+						log.Debugf("[AWS] Skipping security group %s in region %s for native stack assembly, as it has a CF tag", *sg.GroupName, region)
+						continue
+					}
+					if group, ok := tags[ctx.ResourceGroupingLabel]; ok {
+						securityGroupsByGroup[group] = append(securityGroupsByGroup[group], sg)
+					}
+				}
+				if securityGroupsOutput.NextToken != nil {
+					securityGroupsRequest.SetNextToken(*securityGroupsOutput.NextToken)
+				} else {
+					break
+				}
+			}
+
+			ec2Request := &ec2.DescribeInstancesInput{}
+			awsInstances := []*ec2.Instance{}
+			for {
+				instancesOutput, err := ec2Client.DescribeInstances(ec2Request)
+				if err != nil {
+					log.Errorf("[AWS] Failed to fetch the instances in region: %s, err: %s", region, err)
+					return
+				}
+				for _, r := range instancesOutput.Reservations {
+					awsInstances = append(awsInstances, r.Instances...)
+				}
+				if instancesOutput.NextToken != nil {
+					ec2Request.SetNextToken(*instancesOutput.NextToken)
+				} else {
+					break
+				}
+			}
+
+			nativeStacks := map[string]*AwsNativeStack{}
+			for _, awsInstance := range awsInstances {
+				instance := newInstance(awsInstance)
+				if _, ok := instance.Tags[CF_TAG]; ok {
+					log.Debugf("[AWS] Skipping instance %s in region %s for native stack assembly, as it has a CF tag", instance.ID, region)
+					continue
+				}
+				group, ok := instance.Tags[ctx.ResourceGroupingLabel]
+				if !ok {
+					log.Warnf("[AWS] Failed to find stack for instance %s with grouping tag %s in region %s", instance.ID, ctx.ResourceGroupingLabel, region)
+					continue
+				}
+
+				if _, ok := nativeStacks[group]; !ok {
+					log.Debugf("[AWS] Creating stack for instance %s", instance.ID)
+					newStack := &AwsNativeStack{
+						ID:             group,
+						Region:         region,
+						LoadBalancers:  []string{},
+						Instances:      []string{},
+						SecurityGroups: []string{},
+						ElasticIps:     []string{},
+						Created:        instance.Created,
+						Owner:          instance.Owner,
+						State:          instance.State,
+						Tags:           instance.Tags,
+					}
+
+					if loadBalancers, ok := loadBalancersByGroup[group]; ok {
+						for _, loadBalancer := range loadBalancers {
+							newStack.LoadBalancers = append(newStack.LoadBalancers, *loadBalancer.LoadBalancerArn)
+						}
+						delete(loadBalancersByGroup, group)
+					}
+					if elasticIps, ok := elasticIpsByGroup[group]; ok {
+						for _, ip := range elasticIps {
+							newStack.ElasticIps = append(newStack.ElasticIps, *ip.AllocationId)
+						}
+						delete(elasticIpsByGroup, group)
+					}
+					if securityGroups, ok := securityGroupsByGroup[group]; ok {
+						for _, securityGroup := range securityGroups {
+							newStack.SecurityGroups = append(newStack.SecurityGroups, *securityGroup.GroupId)
+						}
+						delete(securityGroupsByGroup, group)
+					}
+
+					nativeStacks[group] = newStack
+				}
+				nativeStack := nativeStacks[group]
+				nativeStack.Instances = append(nativeStack.Instances, instance.ID)
+
+				for key, value := range instance.Tags {
+					nativeStack.Tags[key] = value
+				}
+
+				if instance.State != nativeStack.State {
+					nativeStack.State = types.Unknown
+				}
+
+				if instance.Created.Before(nativeStack.Created) {
+					nativeStack.Created = instance.Created
+				}
+
+				for _, blockDeviceMapping := range awsInstance.BlockDeviceMappings {
+					if !*blockDeviceMapping.Ebs.DeleteOnTermination {
+						nativeStack.Volumes = append(nativeStack.Volumes, *blockDeviceMapping.Ebs.VolumeId)
+					}
+				}
+			}
+
+			if len(loadBalancersByGroup) != 0 {
+				for group, loadBalancers := range loadBalancersByGroup {
+					lbNames := []string{}
+					for _, lb := range loadBalancers {
+						lbNames = append(lbNames, *lb.LoadBalancerName)
+					}
+					log.Warnf("[AWS] Loadbalancers %s with group %s does not have a stack", strings.Join(lbNames, ","), group)
+				}
+			}
+
+			if len(elasticIpsByGroup) != 0 {
+				for group, ips := range elasticIpsByGroup {
+					ipAddresses := []string{}
+					for _, ip := range ips {
+						ipAddresses = append(ipAddresses, *ip.PublicIp)
+					}
+					log.Warnf("[AWS] Elastic IPs %s with group %s does not have a stack", strings.Join(ipAddresses, ","), group)
+				}
+			}
+
+			if len(securityGroupsByGroup) != 0 {
+				for group, securityGroups := range securityGroupsByGroup {
+					securityGroupIds := []string{}
+					for _, sg := range securityGroups {
+						securityGroupIds = append(securityGroupIds, *sg.GroupId)
+					}
+					log.Warnf("[AWS] Security groups %s with group %s does not have a stack", strings.Join(securityGroupIds, ","), group)
+				}
+			}
+
+			for _, nativeStack := range nativeStacks {
+				stackChan <- *nativeStack
+			}
+		}(r, c, elbClients[r])
+	}
+
+	go func() {
+		wg.Wait()
+		close(stackChan)
+	}()
+
+	var stacks []*types.Stack
+	for awsStack := range stackChan {
+		stacks = append(stacks, &types.Stack{
+			ID:        awsStack.ID,
+			Name:      awsStack.ID,
+			Created:   awsStack.Created,
+			CloudType: types.AWS,
+			Tags:      awsStack.Tags,
+			Owner:     awsStack.Owner,
+			Region:    awsStack.Region,
+			State:     awsStack.State,
+			Metadata: map[string]string{
+				METADATA_TYPE:            TYPE_NATIVE,
+				METADATA_LOAD_BALANCERS:  strings.Join(awsStack.LoadBalancers, ","),
+				METADATA_INSTANCES:       strings.Join(awsStack.Instances, ","),
+				METADATA_VOLUMES:         strings.Join(awsStack.Volumes, ","),
+				METADATA_SECURITY_GROUPS: strings.Join(awsStack.SecurityGroups, ","),
+				METADATA_ELASTIC_IPS:     strings.Join(awsStack.ElasticIps, ","),
+			},
+		})
 	}
 	return stacks, nil
 }
@@ -1130,6 +1570,16 @@ func newCloudFormationClient(region string) (*cloudformation.CloudFormation, err
 	return cloudformation.New(awsSession), nil
 }
 
+func newElbClient(region string) (*elb.ELBV2, error) {
+	awsSession, err := newSession(func(config *aws.Config) {
+		config.Region = &region
+	})
+	if err != nil {
+		return nil, err
+	}
+	return elb.New(awsSession), nil
+}
+
 func newSession(configure func(*aws.Config)) (*session.Session, error) {
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -1179,6 +1629,7 @@ func newStack(stack *cloudformation.Stack, region string) *types.Stack {
 		Owner:     tags[ctx.OwnerLabel],
 		Region:    region,
 		State:     getCFState(stack),
+		Metadata:  map[string]string{METADATA_TYPE: TYPE_CF},
 	}
 }
 
