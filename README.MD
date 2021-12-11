@@ -20,7 +20,7 @@ Cloud Haunter (ch) supports the three major cloud providers.
 | Access   | IAM user                                             | -               | IAM service accounts           |
 | Database | RDS database                                         | -               | SQL instances                  |
 | Alert    | CloudWatch alarm                                     | -               | -                              |
-
+| Storage  | -                                                    | Storage account | -                              |
 
 ### Filters appliable to resources:
  * long running
@@ -39,6 +39,7 @@ Cloud Haunter (ch) supports the three major cloud providers.
  * terminate stacks [AWS, AZURE, GCP]
  * terminate disks [AWS, GCP]
  * terminate images [AWS, AZURE, GCP]
+ * cleanup storages [AZURE]
 
 ## Prerequisites
 ---
@@ -90,25 +91,27 @@ VERSION:
 AUTHOR(S):
    Hortonworks
 OPERATIONS:
+	-o getAccess
+	-o getAlerts
 	-o getDatabases
 	-o getDisks
 	-o getImages
 	-o getInstances
-	-o readImages
 	-o getStacks
-	-o getAccess
-	-o getAlerts
+	-o getStorages
+	-o readImages
 FILTERS:
 	-f failed
 	-f longrunning
 	-f match
+	-f nomatch
 	-f oldaccess
 	-f ownerless
-	-f nomatch
 	-f running
 	-f stopped
 	-f unused
 ACTIONS:
+	-a cleanup
 	-a json
 	-a log
 	-a notification
@@ -161,6 +164,9 @@ HELP:
 
 #### Old access
  * ACCESS_AVAILABLE_PERIOD, default: 2880h
+
+#### Retention days for cleanup
+ * RETENTION_DAYS, default: 90
 
 ### Usage examples
 

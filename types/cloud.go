@@ -38,4 +38,6 @@ type CloudProvider interface {
 	DeleteImages(*ImageContainer) []error
 	GetStacks() ([]*Stack, error)
 	GetAlerts() ([]*Alert, error)
+	GetStorages() ([]*Storage, error)
+	CleanupStorages(storageContainer *StorageContainer, retentionDays int) []error
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"sort"
 
 	"github.com/hortonworks/cloud-haunter/utils"
 
@@ -120,6 +121,7 @@ func main() {
 	action.Execute(*op, filterNames, items)
 }
 
+// should be kept in sync with README.md
 func printHelp() {
 	println(`NAME:
    Cloud Haunter
@@ -131,16 +133,16 @@ VERSION:`)
 AUTHOR(S):
    Hortonworks
 OPERATIONS:`)
-	for ot := range ctx.Operations {
-		println("\t-o " + ot.String())
+	for _, o := range getSortedOperations() {
+		println("\t-o " + o)
 	}
 	println("FILTERS:")
-	for f := range ctx.Filters {
-		println("\t-f " + f.String())
+	for _, f := range getSortedFilters() {
+		println("\t-f " + f)
 	}
 	println("ACTIONS:")
-	for a := range ctx.Actions {
-		println("\t-a " + a.String())
+	for _, a := range getSortedActions() {
+		println("\t-a " + a)
 	}
 	println("CLOUDS:")
 	println("\t-c AWS")
@@ -152,4 +154,31 @@ OPERATIONS:`)
 	println("DISABLE_IGNORE_LABEL:\n\t-i")
 	println("EXACT_MATCH_OWNERS:\n\t-e")
 	println("HELP:\n\t-h")
+}
+
+func getSortedOperations() []string {
+	operations := []string{}
+	for ot := range ctx.Operations {
+		operations = append(operations, string(ot))
+	}
+	sort.Strings(operations)
+	return operations
+}
+
+func getSortedFilters() []string {
+	filters := []string{}
+	for f := range ctx.Filters {
+		filters = append(filters, string(f))
+	}
+	sort.Strings(filters)
+	return filters
+}
+
+func getSortedActions() []string {
+	actions := []string{}
+	for a := range ctx.Actions {
+		actions = append(actions, string(a))
+	}
+	sort.Strings(actions)
+	return actions
 }

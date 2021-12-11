@@ -120,3 +120,11 @@ func (p dummyProvider) GetAlerts() ([]*types.Alert, error) {
 func (p dummyProvider) DeleteAlerts(*types.AlertContainer) []error {
 	return nil
 }
+
+func (p dummyProvider) GetStorages() ([]*types.Storage, error) {
+	return nil, nil
+}
+
+func (p dummyProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
+	return nil
+}

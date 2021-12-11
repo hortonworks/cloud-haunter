@@ -929,6 +929,14 @@ func (p awsProvider) DeleteAlerts(alertContainer *types.AlertContainer) []error 
 	return deleteAlerts(cloudWatchClients, alertContainer.Get(types.AWS))
 }
 
+func (p awsProvider) GetStorages() ([]*types.Storage, error) {
+	return nil, errors.New("[AWS] Getting storages is not supported yet")
+}
+
+func (p awsProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
+	return []error{errors.New("[AWS] Cleanup storages is not supported yet")}
+}
+
 type ec2Client interface {
 	DescribeRegions(*ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error)
 	DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)

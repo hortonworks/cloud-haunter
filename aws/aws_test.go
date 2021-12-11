@@ -293,7 +293,7 @@ func TestGetNativeStacks(t *testing.T) {
 		stack = stacks[0]
 	}()
 
-	for _ = range operationChannel {
+	for range operationChannel {
 		// ignore
 	}
 
