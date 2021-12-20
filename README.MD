@@ -5,20 +5,23 @@
 `Haunter is a pokémon ghost which will poison and kill your unidentified and orphan cloud resources`
  
 The main goal of this project is to save costs in the cloud by monitoring and terminating resources.
-Cloud Haunter (ch) is supports the three major cloud providers.
+Cloud Haunter (ch) supports the three major cloud providers.
 
 `The project is under construction, use on your own risk!`
 
-Current version of the software has limited features, it can monitor:
- * accesses and keys [AWS, GCP]
- * databases [AWS, GCP]
- * instances [AZURE, AWS, GCP]
- * stacks [AZURE, AWS, GCP]
- * disks [AWS, GCP]
- * images [AWS, AZURE, GCP]
- * read images JSON from SDIN
+## Supported resources
+---
 
-Can filter by:
+|          | AWS                                                  | AZURE           | GCP                            |
+|----------|------------------------------------------------------|-----------------|--------------------------------|
+| Stack    | Cloudformation stack, Native stack assembled by tags | Resource group  | Native stack assembled by tags |
+| Instance | EC2 instance                                         | Virtual machine | Compute Engine instances       |
+| Disk     | EC2 disk                                             | -               | Compute Engine disks           |
+| Access   | IAM user                                             | -               | IAM service accounts           |
+| Database | RDS database                                         | -               | SQL instances                  |
+
+
+### Filters appliable to resources:
  * long running
  * without owner
  * actually running
@@ -26,7 +29,7 @@ Can filter by:
  * old cloud credentials
  * resource unused
 
-And can do action:
+### Actions appliable to resources:
  * send notification
  * log result
  * print result in json format
@@ -36,14 +39,17 @@ And can do action:
  * terminate disks [AWS, GCP]
  * terminate images [AWS, AZURE, GCP]
 
+## Prerequisites
+---
 For the proper work, you have to use some custom tags/labels on your cloud resources.
 
 #### AWS
- * Owner tag: `owner` or `Owner`
+ * Owner tag: `owner`
  * Ignore tag: `cloud-cost-reducer-ignore`
+ * Resource grouping label: `Cloudera-Environment-Resource-Name` (for native stacks)
 
 #### Azure
- * Owner tag: `owner` or `Owner`
+ * Owner tag: `owner`
  * Ignore tag: `cloud-cost-reducer-ignore`
  * Resource creation time, because Azure SDK doesn't response it: `cb-creation-timestamp`
 
@@ -55,23 +61,22 @@ For the proper work, you have to use some custom tags/labels on your cloud resou
 
 There is an option to use custom tags/labels, but you have to recompile the project with a bunch of custom environment variables like `OWNER_LABEL`. Please check Makefile.
 
-### Ignorance config
+### Resource filtering
 
 This tool works well if you use it from early days of your cloud account and all of your users are following the basic rules of tagging instances. On the other hand introducing it on an existing environment should be pain in the back.
-There is an option to declare your ignore policies in a YAML file (please have look at utils/testdata/filterConfig.yml).
-CH will skip all the resources where the name, owner, or any of the tags are starting with the given configuration.
-
-## Future plans
- * automatic instance termination
- * more notification types
- * looking for orphan resources (images, volumes, IPs)
- * multiple cloud accounts
+There is an option to declare your include/exclude policies in a YAML file (please have look at utils/testdata/filterConfig.yml).
+CH will include/exclude all the resources where the name, owner, or any of the tags are matching with the given configuration.
 
 ## Installation
+---
 
-`# curl -Ls https://github.com/hortonworks/cloud-haunter/releases/download/v0.5.0/cloud-haunter_0.5.0_$(uname)_x86_64.tgz | tar x`
+```
+curl -Ls https://github.com/hortonworks/cloud-haunter/releases/download/v0.5.41/cloud-haunter_0.5.41_$(uname)_x86_64.tgz | tar x
+```
+**NOTE**: You can find the latest version released under https://github.com/hortonworks/cloud-haunter/releases
 
 ## Usage
+---
 
 ```
 NAME:
@@ -117,6 +122,8 @@ VERBOSE:
 	-v
 DISABLE_IGNORE_LABEL:
 	-i
+EXACT_MATCH_OWNERS:
+	-e
 HELP:
 	-h
 ```
@@ -142,7 +149,7 @@ HELP:
  * HIPCHAT_SERVER
  * HIPCHAT_ROOM
 
-### Slack
+#### Slack
  * SLACK_WEBHOOK_URL
 
 #### Long running
@@ -150,3 +157,61 @@ HELP:
 
 #### Old access
  * ACCESS_AVAILABLE_PERIOD, default: 2880h
+
+### Usage examples
+
+Terminate AWS stacks with owners not exactly matching the known owners, even if they have an ignore label
+```
+# Set up cloud provider settings
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+
+# Run Cloud Haunter
+ch -o getStacks -a termination -f nomatch -c aws -fc known-owners-filter-config.yml -i -e
+```
+
+Terminate Azure instances with specific owners if they are running longer than 6 hours
+```
+# Set up cloud provider settings
+export AZURE_SUBSCRIPTION_ID=...
+export AZURE_TENANT_ID=...
+export AZURE_CLIENT_ID=...
+export AZURE_CLIENT_SECRET=...
+
+# Set up additional parameters
+export RUNNING_PERIOD=6h
+
+# Run Cloud Haunter
+ch -o getInstances -a termination -f longrunning,match -c azure -fc owner-filter-config-v2.yml -e
+```
+
+**NOTE**: You can find example filter config files under _utils/testdata_
+
+## Development
+
+### Dependencies
+
+ * Golang 1.15
+ * Docker
+ * GNU Make
+
+### Building the project
+
+Make sure you have the needed dependencies ony your development machine, then simply use make for building the project:
+
+```
+make build
+```
+
+You may also need to format your changes before building to pass the pre-build checks, you can do this with `make format`
+
+### Adding a new dependency
+
+ * Import the dependency in your go code
+ * Run `make mod-tidy`
+
+### Releasing a new version
+
+```
+VERSION={{new-semantic-version}} make release
+```
