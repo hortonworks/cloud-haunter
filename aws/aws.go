@@ -611,8 +611,10 @@ func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, 
 
 	log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s", stack.Name, region)
 	deleteStackInput := &cloudformation.DeleteStackInput{
-		StackName:       &stack.Name,
-		RetainResources: retainResources,
+		StackName: &stack.Name,
+	}
+	if stack.State == types.Failed {
+		deleteStackInput.SetRetainResources(retainResources)
 	}
 	if _, err := cfClient.DeleteStack(deleteStackInput); err != nil {
 		log.Errorf("[AWS] Failed to start deletion of CloudFormation stack: %s, err: %s", stack.Name, err)
