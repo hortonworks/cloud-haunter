@@ -444,7 +444,7 @@ func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient
 							errChan <- err
 						}
 					case TYPE_CF:
-						err := deleteCfStack(cfClient, rdsClient, ec2Client, region, stack)
+						err := deleteCfStack(cfClient, rdsClient, ec2Client, elbClient, region, stack)
 						if err != nil {
 							errChan <- err
 						}
@@ -533,11 +533,8 @@ func deleteNativeStack(ec2Client ec2Client, elbClient elbClient, region string, 
 		go func(loadBalancerArn string) {
 			defer wg.Done()
 
-			_, err := elbClient.DeleteLoadBalancer(&elb.DeleteLoadBalancerInput{
-				LoadBalancerArn: aws.String(loadBalancerArn),
-			})
+			err := deleteLoadBalancer(elbClient, stack.ID, loadBalancerArn, region)
 			if err != nil {
-				log.Errorf("[AWS] Failed to delete load balancer: %s in stack: %s, err: %s", loadBalancerArn, stack.ID, err)
 				errChan <- err
 			}
 		}(lb)
@@ -581,7 +578,7 @@ func getResourceList(resources string) []string {
 	return []string{}
 }
 
-func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, region string, stack *types.Stack) error {
+func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, elbClient elbClient, region string, stack *types.Stack) error {
 	stackResources, err := cfClient.DescribeStackResources(&cloudformation.DescribeStackResourcesInput{
 		StackName: &stack.Name,
 	})
@@ -603,7 +600,10 @@ func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, 
 			}
 		case "AWS::EC2::VPC":
 			resourceErr = deleteVpcWithDependencies(ec2Client, stack.Name, *stackResource.PhysicalResourceId, region)
+		case "AWS::ElasticLoadBalancingV2::LoadBalancer":
+			resourceErr = deleteLoadBalancer(elbClient, stack.Name, *stackResource.PhysicalResourceId, region)
 		}
+
 		if resourceErr != nil {
 			log.Warnf("[AWS] Failed to delete resource of CloudFormation stack: %s, err: %s", stack.Name, resourceErr)
 		}
@@ -739,6 +739,18 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 	}
 
 	return nil
+}
+
+func deleteLoadBalancer(elbClient elbClient, stackName string, elbArn string, region string) error {
+	log.Infof("[AWS] Deleting load balancer: %s in stack: %s, region: %s", elbArn, stackName, region)
+
+	_, err := elbClient.DeleteLoadBalancer(&elb.DeleteLoadBalancerInput{
+		LoadBalancerArn: aws.String(elbArn),
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to delete load balancer: %s in stack: %s, err: %s", elbArn, stackName, err)
+	}
+	return err
 }
 
 func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []error {

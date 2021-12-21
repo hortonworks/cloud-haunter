@@ -202,6 +202,7 @@ func TestRemoveCfStack(t *testing.T) {
 	assert.Equal(t, "DescribeSecurityGroups", <-operationChannel)
 	assert.Equal(t, "DeleteSecurityGroup:custom-group-id", <-operationChannel)
 	assert.Equal(t, "DeleteVpc", <-operationChannel)
+	assert.Equal(t, "DeleteLoadBalancer:elb-arn", <-operationChannel)
 	assert.Equal(t, "DeleteStack", <-operationChannel)
 	assert.Equal(t, "WaitUntilStackDeleteComplete", <-operationChannel)
 }
@@ -559,6 +560,12 @@ func (t mockCfClient) DescribeStackResources(input *cloudformation.DescribeStack
 				ResourceType:       &(&types.S{S: "AWS::EC2::VPC"}).S,
 				PhysicalResourceId: &(&types.S{S: "vpc-id"}).S,
 				LogicalResourceId:  &(&types.S{S: "vpc-id"}).S,
+				ResourceStatus:     &(&types.S{S: "AVAILABLE"}).S,
+			},
+			{
+				ResourceType:       &(&types.S{S: "AWS::ElasticLoadBalancingV2::LoadBalancer"}).S,
+				PhysicalResourceId: &(&types.S{S: "elb-arn"}).S,
+				LogicalResourceId:  &(&types.S{S: "elb-id"}).S,
 				ResourceStatus:     &(&types.S{S: "AVAILABLE"}).S,
 			},
 		},
