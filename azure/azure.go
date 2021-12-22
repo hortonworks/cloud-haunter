@@ -388,6 +388,14 @@ func (p azureProvider) GetDatabases() ([]*types.Database, error) {
 	return nil, errors.New("[AZURE] Get databases is not supported")
 }
 
+func (p azureProvider) GetAlerts() ([]*types.Alert, error) {
+	return nil, errors.New("[AZURE] Getting alerts is not supported yet")
+}
+
+func (p azureProvider) DeleteAlerts(*types.AlertContainer) []error {
+	return []error{errors.New("[AZURE] Deleting alerts is not supported yet")}
+}
+
 func deleteImages(imagesClient imagesClient, imagesToDelete []azureImage, existingImages []compute.Image) []error {
 	wg := sync.WaitGroup{}
 	errorChan := make(chan error)

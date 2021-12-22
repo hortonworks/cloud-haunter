@@ -58,6 +58,11 @@ func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 				log.Debugf("[LONGRUNNING] Filter disk, because it's in used state: %s", item.GetName())
 				return false
 			}
+		case types.Alert:
+			if item.GetItem().(types.Alert).State != types.Unused {
+				log.Debugf("[LONGRUNNING] Filter alert, because it's in used state: %s", item.GetName())
+				return false
+			}
 		default:
 			log.Fatalf("[LONGRUNNING] Filter does not apply for cloud item: %s", item.GetName())
 			return true

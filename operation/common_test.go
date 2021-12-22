@@ -112,3 +112,11 @@ func (p dummyProvider) DeleteImages(*types.ImageContainer) []error {
 func (p dummyProvider) TerminateStacks(*types.StackContainer) []error {
 	return nil
 }
+
+func (p dummyProvider) GetAlerts() ([]*types.Alert, error) {
+	return nil, nil
+}
+
+func (p dummyProvider) DeleteAlerts(*types.AlertContainer) []error {
+	return nil
+}

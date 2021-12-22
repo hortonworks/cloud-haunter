@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/aws/aws-sdk-go/service/cloudtrail"
+	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	elb "github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/aws/aws-sdk-go/service/iam"
@@ -175,6 +176,9 @@ func TestRemoveCfStack(t *testing.T) {
 	elbClients := map[string]elbClient{
 		"eu-central-1": mockElbClient{operationChannel: operationChannel},
 	}
+	cwClients := map[string]cloudWatchClient{
+		"eu-central-1": mockCwClient{operationChannel: operationChannel},
+	}
 	stacks := []*types.Stack{
 		{
 			CloudType: types.AWS,
@@ -189,7 +193,7 @@ func TestRemoveCfStack(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, stacks)
+		deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, cwClients, stacks)
 	}()
 
 	assert.Equal(t, "DescribeStackResources", <-operationChannel)
@@ -222,6 +226,9 @@ func TestRemoveNativeStack(t *testing.T) {
 	elbClients := map[string]elbClient{
 		"eu-central-1": mockElbClient{operationChannel: operationChannel},
 	}
+	cwClients := map[string]cloudWatchClient{
+		"eu-central-1": mockCwClient{operationChannel: operationChannel},
+	}
 	stacks := []*types.Stack{
 		{
 			CloudType: types.AWS,
@@ -234,6 +241,7 @@ func TestRemoveNativeStack(t *testing.T) {
 				METADATA_VOLUMES:         "vol",
 				METADATA_SECURITY_GROUPS: "sg",
 				METADATA_ELASTIC_IPS:     "ip",
+				METADATA_ALARMS:          "alarm",
 			},
 		},
 	}
@@ -241,7 +249,7 @@ func TestRemoveNativeStack(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, stacks)
+		deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, cwClients, stacks)
 	}()
 
 	assert.Equal(t, "TerminateInstances:i", <-operationChannel)
@@ -252,12 +260,13 @@ func TestRemoveNativeStack(t *testing.T) {
 		asyncOperations = append(asyncOperations, op)
 	}
 
-	assert.Equal(t, 5, len(asyncOperations))
+	assert.Equal(t, 6, len(asyncOperations))
 	assert.Contains(t, asyncOperations, "DeleteVolume:vol")
 	assert.Contains(t, asyncOperations, "DeleteSecurityGroup:sg")
 	assert.Contains(t, asyncOperations, "DeleteLoadBalancer:lb-1")
 	assert.Contains(t, asyncOperations, "DeleteLoadBalancer:lb-2")
 	assert.Contains(t, asyncOperations, "ReleaseAddress:ip")
+	assert.Contains(t, asyncOperations, "DeleteAlarms:alarm")
 }
 
 func TestGetNativeStacks(t *testing.T) {
@@ -269,13 +278,16 @@ func TestGetNativeStacks(t *testing.T) {
 	elbClients := map[string]elbClient{
 		"eu-central-1": mockElbClient{operationChannel: operationChannel},
 	}
+	cwClients := map[string]cloudWatchClient{
+		"eu-central-1": mockCwClient{operationChannel: operationChannel},
+	}
 
 	var stack *types.Stack
 
 	go func() {
 		defer close(operationChannel)
 
-		stacks, err := getNativeStacks(ec2Clients, elbClients)
+		stacks, err := getNativeStacks(ec2Clients, elbClients, cwClients)
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(stacks))
 		stack = stacks[0]
@@ -625,6 +637,32 @@ func (t mockElbClient) DescribeTags(input *elb.DescribeTagsInput) (*elb.Describe
 
 func (t mockElbClient) DeleteLoadBalancer(input *elb.DeleteLoadBalancerInput) (*elb.DeleteLoadBalancerOutput, error) {
 	t.operationChannel <- "DeleteLoadBalancer:" + *input.LoadBalancerArn
+	return nil, nil
+}
+
+type mockCwClient struct {
+	operationChannel chan (string)
+}
+
+func (t mockCwClient) DescribeAlarms(input *cloudwatch.DescribeAlarmsInput) (*cloudwatch.DescribeAlarmsOutput, error) {
+	t.operationChannel <- "DescribeAlarms"
+	return &cloudwatch.DescribeAlarmsOutput{
+		MetricAlarms: []*cloudwatch.MetricAlarm{
+			{
+				AlarmName: aws.String("alarm-1"),
+				Dimensions: []*cloudwatch.Dimension{
+					{
+						Name:  aws.String("InstanceId"),
+						Value: aws.String("ID"),
+					},
+				},
+			},
+		},
+	}, nil
+}
+
+func (t mockCwClient) DeleteAlarms(input *cloudwatch.DeleteAlarmsInput) (*cloudwatch.DeleteAlarmsOutput, error) {
+	t.operationChannel <- "DeleteAlarms:" + strings.Join(aws.StringValueSlice(input.AlarmNames), ",")
 	return nil, nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"fmt"
+
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
@@ -45,6 +46,8 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 					errors = deleteDisks(provider, cloudItems)
 				case types.Image:
 					errors = deleteImages(provider, cloudItems)
+				case types.Alert:
+					errors = deleteAlerts(provider, cloudItems)
 				default:
 					panic(fmt.Sprintf("[TERMINATION] Operation on type %T is not allowed", t))
 				}
@@ -95,4 +98,13 @@ func deleteImages(provider types.CloudProvider, items []*types.CloudItem) []erro
 		images = append(images, &image)
 	}
 	return provider.DeleteImages(types.NewImageContainer(images))
+}
+
+func deleteAlerts(provider types.CloudProvider, items []*types.CloudItem) []error {
+	var alerts []*types.Alert
+	for _, item := range items {
+		alert := (*item).GetItem().(types.Alert)
+		alerts = append(alerts, &alert)
+	}
+	return provider.DeleteAlerts(types.NewAlertContainer(alerts))
 }

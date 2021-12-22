@@ -29,6 +29,7 @@ type CloudProvider interface {
 	TerminateInstances(*InstanceContainer) []error
 	StopDatabases(*DatabaseContainer) []error
 	TerminateStacks(*StackContainer) []error
+	DeleteAlerts(*AlertContainer) []error
 	GetAccesses() ([]*Access, error)
 	GetDatabases() ([]*Database, error)
 	GetDisks() ([]*Disk, error)
@@ -36,4 +37,5 @@ type CloudProvider interface {
 	GetImages() ([]*Image, error)
 	DeleteImages(*ImageContainer) []error
 	GetStacks() ([]*Stack, error)
+	GetAlerts() ([]*Alert, error)
 }
