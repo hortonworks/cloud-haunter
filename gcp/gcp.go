@@ -1089,6 +1089,14 @@ func (p gcpProvider) getDatabases(aggregator *sqladmin.InstancesListCall) ([]*ty
 	return databases, nil
 }
 
+func (p gcpProvider) GetAlerts() ([]*types.Alert, error) {
+	return nil, errors.New("[GCP] Getting alerts is not supported yet")
+}
+
+func (p gcpProvider) DeleteAlerts(*types.AlertContainer) []error {
+	return []error{errors.New("[GCP] Deleting alerts is not supported yet")}
+}
+
 func getDatabaseInstanceCreationTimeStamp(opService *sqladmin.OperationsListCall, dbName string) (time.Time, error) {
 	operationsList, err := opService.Do()
 	if err != nil {

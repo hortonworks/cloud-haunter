@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/cloudtrail"
+	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
@@ -39,6 +40,7 @@ const (
 	METADATA_VOLUMES         = "volumes"
 	METADATA_SECURITY_GROUPS = "securityGroups"
 	METADATA_ELASTIC_IPS     = "elasticIps"
+	METADATA_ALARMS          = "alarms"
 )
 
 var provider = awsProvider{}
@@ -50,6 +52,7 @@ type awsProvider struct {
 	cloudFormationClient map[string]*cloudformation.CloudFormation
 	rdsClients           map[string]*rds.RDS
 	elbClients           map[string]*elb.ELBV2
+	cloudWatchClients    map[string]*cloudwatch.CloudWatch
 	iamClient            *iam.IAM
 }
 
@@ -96,6 +99,7 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 	p.elbClients = map[string]*elb.ELBV2{}
 	p.cloudTrailClient = map[string]*cloudtrail.CloudTrail{}
 	p.cloudFormationClient = map[string]*cloudformation.CloudFormation{}
+	p.cloudWatchClients = map[string]*cloudwatch.CloudWatch{}
 
 	for _, region := range regions {
 		if client, err := newEc2Client(region); err != nil {
@@ -132,6 +136,12 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 			panic(fmt.Sprintf("[AWS] Failed to create CloudFormation client, err: %s", err.Error()))
 		} else {
 			p.cloudFormationClient[region] = cfClient
+		}
+
+		if cwClient, err := newCloudWatchClient(region); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create CloudWatch client, err: %s", err.Error()))
+		} else {
+			p.cloudWatchClients[region] = cwClient
 		}
 	}
 	if iamClient, err := newIamClient(); err != nil {
@@ -174,7 +184,8 @@ func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	log.Debug("[AWS] Fetching native stacks")
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	nativeStacks, nativeError := getNativeStacks(ec2Clients, elbClients)
+	cloudWatchClients := p.getCloudWatchClientsByRegion()
+	nativeStacks, nativeError := getNativeStacks(ec2Clients, elbClients, cloudWatchClients)
 	if nativeError != nil {
 		return nil, nativeError
 	}
@@ -232,6 +243,14 @@ func (p awsProvider) getRdsClientsByRegion() map[string]rdsClient {
 	return rdsClients
 }
 
+func (p awsProvider) getCloudWatchClientsByRegion() map[string]cloudWatchClient {
+	cwClients := map[string]cloudWatchClient{}
+	for k := range p.cloudWatchClients {
+		cwClients[k] = p.cloudWatchClients[k]
+	}
+	return cwClients
+}
+
 func (p awsProvider) TerminateInstances(*types.InstanceContainer) []error {
 	return []error{errors.New("[AWS] Termination is not supported")}
 }
@@ -242,7 +261,8 @@ func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	rdsClients := p.getRdsClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
 	elbClients := p.getElbClientsByRegion()
-	return deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, stacks.Get(types.AWS))
+	cloudWatchClients := p.getCloudWatchClientsByRegion()
+	return deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, cloudWatchClients, stacks.Get(types.AWS))
 }
 
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
@@ -416,7 +436,7 @@ func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
 	return errs
 }
 
-func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, stacks []*types.Stack) []error {
+func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, stacks []*types.Stack) []error {
 	regionStacks := map[string][]*types.Stack{}
 	for _, stack := range stacks {
 		regionStacks[stack.Region] = append(regionStacks[stack.Region], stack)
@@ -431,7 +451,7 @@ func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient
 		wg.Add(len(stacks))
 
 		for _, s := range stacks {
-			go func(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, elbClient elbClient, region string, stack *types.Stack) {
+			go func(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, elbClient elbClient, cloudWatchClient cloudWatchClient, region string, stack *types.Stack) {
 				defer wg.Done()
 
 				if ctx.DryRun {
@@ -439,7 +459,7 @@ func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient
 				} else {
 					switch stack.Metadata[METADATA_TYPE] {
 					case TYPE_NATIVE:
-						err := deleteNativeStack(ec2Client, elbClient, region, stack)
+						err := deleteNativeStack(ec2Client, elbClient, cloudWatchClient, region, stack)
 						if err != nil {
 							errChan <- err
 						}
@@ -452,7 +472,7 @@ func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient
 						errChan <- fmt.Errorf("[AWS] Stack type %s (of stack %s in region %s) delete is not implemented", stack.Metadata[METADATA_TYPE], stack.ID, region)
 					}
 				}
-			}(cfClients[r], rdsClients[r], ec2Clients[r], elbClients[r], r, s)
+			}(cfClients[r], rdsClients[r], ec2Clients[r], elbClients[r], cloudWatchClients[r], r, s)
 		}
 	}
 
@@ -468,7 +488,7 @@ func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient
 	return errs
 }
 
-func deleteNativeStack(ec2Client ec2Client, elbClient elbClient, region string, stack *types.Stack) error {
+func deleteNativeStack(ec2Client ec2Client, elbClient elbClient, cloudWatchClient cloudWatchClient, region string, stack *types.Stack) error {
 	log.Infof("[AWS] Delete Native stack: %s, region: %s", stack.Name, region)
 
 	instanceIds := getResourceList(stack.Metadata[METADATA_INSTANCES])
@@ -556,6 +576,21 @@ func deleteNativeStack(ec2Client ec2Client, elbClient elbClient, region string, 
 			}
 		}(i)
 	}
+
+	alarms := getResourceList(stack.Metadata[METADATA_ALARMS])
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		_, err := cloudWatchClient.DeleteAlarms(&cloudwatch.DeleteAlarmsInput{
+			AlarmNames: aws.StringSlice(alarms),
+		})
+		if err != nil {
+			log.Errorf("[AWS] Failed to delete alarms: %s in stack: %s, err: %s", stack.Metadata[METADATA_ALARMS], stack.ID, err)
+			errChan <- err
+		}
+	}()
 
 	go func() {
 		wg.Wait()
@@ -881,6 +916,19 @@ func (p awsProvider) GetAccesses() ([]*types.Access, error) {
 	return getAccesses(p.iamClient)
 }
 
+func (p awsProvider) GetAlerts() ([]*types.Alert, error) {
+	log.Debug("[AWS] Fetch alerts")
+	cloudWatchClients := p.getCloudWatchClientsByRegion()
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	return getAlerts(cloudWatchClients, ec2Clients)
+}
+
+func (p awsProvider) DeleteAlerts(alertContainer *types.AlertContainer) []error {
+	log.Debug("[AWS] Delete alerts")
+	cloudWatchClients := p.getCloudWatchClientsByRegion()
+	return deleteAlerts(cloudWatchClients, alertContainer.Get(types.AWS))
+}
+
 type ec2Client interface {
 	DescribeRegions(*ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error)
 	DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
@@ -929,6 +977,11 @@ type elbClient interface {
 	DescribeLoadBalancers(input *elb.DescribeLoadBalancersInput) (*elb.DescribeLoadBalancersOutput, error)
 	DescribeTags(input *elb.DescribeTagsInput) (*elb.DescribeTagsOutput, error)
 	DeleteLoadBalancer(input *elb.DeleteLoadBalancerInput) (*elb.DeleteLoadBalancerOutput, error)
+}
+
+type cloudWatchClient interface {
+	DescribeAlarms(input *cloudwatch.DescribeAlarmsInput) (*cloudwatch.DescribeAlarmsOutput, error)
+	DeleteAlarms(input *cloudwatch.DeleteAlarmsInput) (*cloudwatch.DeleteAlarmsOutput, error)
 }
 
 func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
@@ -1038,20 +1091,21 @@ type AwsNativeStack struct {
 	Volumes        []string
 	SecurityGroups []string
 	ElasticIps     []string
+	Alarms         []string
 	Created        time.Time
 	Owner          string
 	State          types.State
 	Tags           types.Tags
 }
 
-func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbClient) ([]*types.Stack, error) {
+func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient) ([]*types.Stack, error) {
 	stackChan := make(chan AwsNativeStack, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
 
 	for r, c := range ec2Clients {
 		log.Debugf("[AWS] Fetching resources and assembling native stacks from region: %s", r)
-		go func(region string, ec2Client ec2Client, elbClient elbClient) {
+		go func(region string, ec2Client ec2Client, elbClient elbClient, cloudWatchClient cloudWatchClient) {
 			defer wg.Done()
 
 			elbRequest := &elb.DescribeLoadBalancersInput{}
@@ -1126,6 +1180,28 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 				}
 			}
 
+			alarmsByInstanceId := map[string]*cloudwatch.MetricAlarm{}
+			alarmRequest := &cloudwatch.DescribeAlarmsInput{}
+			for {
+				output, err := cloudWatchClient.DescribeAlarms(alarmRequest)
+				if err != nil {
+					log.Errorf("[AWS] Failed to fetch the CloudWatch alarms in region: %s, err: %s", region, err)
+					return
+				}
+				for _, alarm := range output.MetricAlarms {
+					for _, d := range alarm.Dimensions {
+						if *d.Name == "InstanceId" {
+							alarmsByInstanceId[*d.Value] = alarm
+						}
+					}
+				}
+				if output.NextToken != nil {
+					alarmRequest.SetNextToken(*output.NextToken)
+				} else {
+					break
+				}
+			}
+
 			ec2Request := &ec2.DescribeInstancesInput{}
 			awsInstances := []*ec2.Instance{}
 			for {
@@ -1166,6 +1242,7 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 						Instances:      []string{},
 						SecurityGroups: []string{},
 						ElasticIps:     []string{},
+						Alarms:         []string{},
 						Created:        instance.Created,
 						Owner:          instance.Owner,
 						State:          instance.State,
@@ -1195,6 +1272,10 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 				}
 				nativeStack := nativeStacks[group]
 				nativeStack.Instances = append(nativeStack.Instances, instance.ID)
+
+				if alarm, ok := alarmsByInstanceId[instance.ID]; ok {
+					nativeStack.Alarms = append(nativeStack.Alarms, *alarm.AlarmName)
+				}
 
 				for key, value := range instance.Tags {
 					nativeStack.Tags[key] = value
@@ -1248,7 +1329,7 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 			for _, nativeStack := range nativeStacks {
 				stackChan <- *nativeStack
 			}
-		}(r, c, elbClients[r])
+		}(r, c, elbClients[r], cloudWatchClients[r])
 	}
 
 	go func() {
@@ -1274,6 +1355,7 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 				METADATA_VOLUMES:         strings.Join(awsStack.Volumes, ","),
 				METADATA_SECURITY_GROUPS: strings.Join(awsStack.SecurityGroups, ","),
 				METADATA_ELASTIC_IPS:     strings.Join(awsStack.ElasticIps, ","),
+				METADATA_ALARMS:          strings.Join(awsStack.Alarms, ","),
 			},
 		})
 	}
@@ -1434,6 +1516,134 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 	return accesses, nil
 }
 
+func getAlerts(cloudWatchClients map[string]cloudWatchClient, ec2Clients map[string]ec2Client) ([]*types.Alert, error) {
+	alertChan := make(chan *types.Alert)
+	wg := sync.WaitGroup{}
+	wg.Add(len(cloudWatchClients))
+
+	for r, c := range cloudWatchClients {
+		go func(region string, cloudWatchClient cloudWatchClient, ec2Client ec2Client) {
+			defer wg.Done()
+
+			input := &cloudwatch.DescribeAlarmsInput{}
+			for {
+				log.Debugf("[AWS] Fetching CloudWatch alerts from: %s", region)
+				output, err := cloudWatchClient.DescribeAlarms(input)
+				if err != nil {
+					log.Errorf("[AWS] Failed to fetch the CloudWatch alarms in region: %s, err: %s", region, err)
+					return
+				}
+				for _, a := range output.MetricAlarms {
+					alert := types.Alert{
+						ID:        *a.AlarmArn,
+						Name:      *a.AlarmName,
+						Created:   *a.AlarmConfigurationUpdatedTimestamp,
+						CloudType: types.AWS,
+						Owner:     "",
+						Region:    region,
+						State:     getAlarmState(*a),
+						Tags:      map[string]string{},
+						Metadata:  map[string]string{},
+					}
+					for _, d := range a.Dimensions {
+						alert.Metadata[*d.Name] = *d.Value
+					}
+					if instanceId, ok := alert.Metadata["InstanceId"]; ok && alert.State == types.Unused {
+						// AWS reports alarms of stopped instances the same as of terminated instances, so their instances have to be queried
+						log.Debugf("[AWS] Querying instance %s for alert %s", instanceId, alert.ID)
+						request := &ec2.DescribeInstancesInput{
+							InstanceIds: aws.StringSlice([]string{instanceId}),
+						}
+						_, err := ec2Client.DescribeInstances(request)
+						if err != nil {
+							if awsErr, ok := err.(awserr.Error); ok {
+								if awsErr.Code() != ec2.UnsuccessfulInstanceCreditSpecificationErrorCodeInvalidInstanceIdNotFound {
+									log.Warnf("[AWS] Error received when querying instance %s, err: %s", instanceId, err)
+									alert.State = types.Unknown
+								}
+							} else {
+								log.Warnf("[AWS] Error received when querying instance %s, err: %s", instanceId, err)
+								alert.State = types.Unknown
+							}
+						} else {
+							alert.State = types.InUse
+						}
+					}
+					alertChan <- &alert
+				}
+				if output.NextToken != nil {
+					input.SetNextToken(*output.NextToken)
+				} else {
+					break
+				}
+			}
+		}(r, c, ec2Clients[r])
+	}
+
+	go func() {
+		wg.Wait()
+		close(alertChan)
+	}()
+
+	var alerts []*types.Alert
+	for alert := range alertChan {
+		alerts = append(alerts, alert)
+	}
+	return alerts, nil
+}
+
+func deleteAlerts(cloudWatchClients map[string]cloudWatchClient, alerts []*types.Alert) []error {
+	log.Infof("[AWS] Deleting %d alerts", len(alerts))
+
+	regionAlerts := map[string][]*types.Alert{}
+	for _, alert := range alerts {
+		regionAlerts[alert.Region] = append(regionAlerts[alert.Region], alert)
+	}
+
+	errChan := make(chan error)
+	wg := sync.WaitGroup{}
+	wg.Add(len(regionAlerts))
+
+	for r, a := range regionAlerts {
+		go func(cloudWatchClient cloudWatchClient, region string, alertsInRegion []*types.Alert) {
+			defer wg.Done()
+
+			alertNames := []*string{}
+			for _, alert := range alerts {
+				alertNames = append(alertNames, &alert.Name)
+			}
+
+			for i := 0; i < len(alertsInRegion); i += ctx.AwsBulkOperationSize {
+				endIndex := i + ctx.AwsBulkOperationSize
+				if endIndex > len(alertsInRegion) {
+					endIndex = len(alertsInRegion)
+				}
+				currentAlertNames := alertNames[i:endIndex]
+				log.Infof("[AWS] Deleting %d alerts in region %s", len(currentAlertNames), region)
+				_, err := cloudWatchClient.DeleteAlarms(&cloudwatch.DeleteAlarmsInput{
+					AlarmNames: currentAlertNames,
+				})
+				if err != nil {
+					log.Errorf("[AWS] Failed to delete alerts in region %s, err: %s", region, err)
+					errChan <- err
+				}
+			}
+		}(cloudWatchClients[r], r, a)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errors []error
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+
+	return errors
+}
+
 func getDatabases(rdsClients map[string]rdsClient, cloudTrailClients map[string]cloudTrailClient) ([]*types.Database, error) {
 	dbChan := make(chan *types.Database)
 	wg := sync.WaitGroup{}
@@ -1582,6 +1792,16 @@ func newCloudFormationClient(region string) (*cloudformation.CloudFormation, err
 		return nil, err
 	}
 	return cloudformation.New(awsSession), nil
+}
+
+func newCloudWatchClient(region string) (*cloudwatch.CloudWatch, error) {
+	awsSession, err := newSession(func(config *aws.Config) {
+		config.Region = &region
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cloudwatch.New(awsSession), nil
 }
 
 func newElbClient(region string) (*elb.ELBV2, error) {
@@ -1767,6 +1987,17 @@ func getDatabaseState(rds rds.DBInstance) types.State {
 		return types.Running
 	case "stopped":
 		return types.Stopped
+	default:
+		return types.Unknown
+	}
+}
+
+func getAlarmState(alarm cloudwatch.MetricAlarm) types.State {
+	switch *alarm.StateValue {
+	case cloudwatch.StateValueOk, cloudwatch.StateValueAlarm:
+		return types.InUse
+	case cloudwatch.StateValueInsufficientData:
+		return types.Unused
 	default:
 		return types.Unknown
 	}

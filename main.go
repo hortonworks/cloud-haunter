@@ -143,12 +143,13 @@ OPERATIONS:`)
 		println("\t-a " + a.String())
 	}
 	println("CLOUDS:")
-	for ct := range ctx.CloudProviders {
-		println("\t-c " + ct.String())
-	}
+	println("\t-c AWS")
+	println("\t-c AZURE")
+	println("\t-c GCP")
 	println("FILTER_CONFIG:\n\t-fc=/location/of/filter/config.yml")
 	println("DRY RUN:\n\t-d")
 	println("VERBOSE:\n\t-v")
 	println("DISABLE_IGNORE_LABEL:\n\t-i")
+	println("EXACT_MATCH_OWNERS:\n\t-e")
 	println("HELP:\n\t-h")
 }

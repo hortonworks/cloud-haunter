@@ -22,9 +22,15 @@ func (f unused) Execute(items []types.CloudItem) []types.CloudItem {
 				log.Debugf("[UNUSED] Filter disk, because it's in use: %s", item.GetName())
 				return false
 			}
+		case types.Alert:
+			if item.GetItem().(types.Alert).State != types.Unused {
+				log.Debugf("[UNUSED] Filter alert, because it's in use: %s", item.GetName())
+				return false
+			}
 		default:
 			log.Fatalf("[UNUSED] Filter does not apply for cloud item: %s", item.GetName())
 		}
+		log.Debugf("[UNUSED] Item was not filtered: %s", item.GetName())
 		return true
 	})
 }

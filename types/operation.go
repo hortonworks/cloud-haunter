@@ -21,6 +21,9 @@ const (
 
 	// Stacks operation to return all stack (CF, ARM..)
 	Stacks = OpType("getStacks")
+
+	// Alerts operation to return all alerts (e.g. CloudWatch)
+	Alerts = OpType("getAlerts")
 )
 
 // OpType type of the operation

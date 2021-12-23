@@ -60,7 +60,7 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 		} else {
 			filterEntityType = types.ExcludeAccess
 		}
-	case types.Instance, types.Stack, types.Database, types.Disk:
+	case types.Instance, types.Stack, types.Database, types.Disk, types.Alert:
 		if filterType.IsInclusive() {
 			filterEntityType = types.IncludeInstance
 		} else {

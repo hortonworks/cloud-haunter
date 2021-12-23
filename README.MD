@@ -19,6 +19,7 @@ Cloud Haunter (ch) supports the three major cloud providers.
 | Disk     | EC2 disk                                             | -               | Compute Engine disks           |
 | Access   | IAM user                                             | -               | IAM service accounts           |
 | Database | RDS database                                         | -               | SQL instances                  |
+| Alert    | CloudWatch alarm                                     | -               | -                              |
 
 
 ### Filters appliable to resources:
@@ -89,21 +90,24 @@ VERSION:
 AUTHOR(S):
    Hortonworks
 OPERATIONS:
+	-o getDatabases
+	-o getDisks
 	-o getImages
 	-o getInstances
 	-o readImages
 	-o getStacks
 	-o getAccess
-	-o getDatabases
-	-o getDisks
+	-o getAlerts
 FILTERS:
-	-f running
-	-f stopped
-	-f unused
+	-f failed
 	-f longrunning
 	-f match
 	-f oldaccess
 	-f ownerless
+	-f nomatch
+	-f running
+	-f stopped
+	-f unused
 ACTIONS:
 	-a json
 	-a log
