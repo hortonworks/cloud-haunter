@@ -1608,9 +1608,9 @@ func deleteAlerts(cloudWatchClients map[string]cloudWatchClient, alerts []*types
 		go func(cloudWatchClient cloudWatchClient, region string, alertsInRegion []*types.Alert) {
 			defer wg.Done()
 
-			alertNames := []*string{}
+			alertNames := []string{}
 			for _, alert := range alerts {
-				alertNames = append(alertNames, &alert.Name)
+				alertNames = append(alertNames, alert.Name)
 			}
 
 			for i := 0; i < len(alertsInRegion); i += ctx.AwsBulkOperationSize {
@@ -1619,13 +1619,17 @@ func deleteAlerts(cloudWatchClients map[string]cloudWatchClient, alerts []*types
 					endIndex = len(alertsInRegion)
 				}
 				currentAlertNames := alertNames[i:endIndex]
-				log.Infof("[AWS] Deleting %d alerts in region %s", len(currentAlertNames), region)
-				_, err := cloudWatchClient.DeleteAlarms(&cloudwatch.DeleteAlarmsInput{
-					AlarmNames: currentAlertNames,
-				})
-				if err != nil {
-					log.Errorf("[AWS] Failed to delete alerts in region %s, err: %s", region, err)
-					errChan <- err
+				if ctx.DryRun {
+					log.Infof("[AWS] Dry-run set, alerts %s were not deleted in region %s", currentAlertNames, region)
+				} else {
+					log.Infof("[AWS] Deleting alerts %s in region %s", currentAlertNames, region)
+					_, err := cloudWatchClient.DeleteAlarms(&cloudwatch.DeleteAlarmsInput{
+						AlarmNames: aws.StringSlice(currentAlertNames),
+					})
+					if err != nil {
+						log.Errorf("[AWS] Failed to delete alerts %s in region %s, err: %s", currentAlertNames, region, err)
+						errChan <- err
+					}
 				}
 			}
 		}(cloudWatchClients[r], r, a)
