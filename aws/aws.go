@@ -189,7 +189,11 @@ func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	if nativeError != nil {
 		return nil, nativeError
 	}
-	return append(cfStacks, nativeStacks...), nil
+
+	allStacks := append(cfStacks, nativeStacks...)
+	getElasticIpsForStacks(ec2Clients, allStacks)
+
+	return allStacks, nil
 }
 
 func (p awsProvider) GetDatabases() ([]*types.Database, error) {
@@ -560,22 +564,15 @@ func deleteNativeStack(ec2Client ec2Client, elbClient elbClient, cloudWatchClien
 		}(lb)
 	}
 
-	elasticIps := getResourceList(stack.Metadata[METADATA_ELASTIC_IPS])
-	wg.Add(len(elasticIps))
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-	for _, i := range elasticIps {
-		go func(ip string) {
-			defer wg.Done()
-
-			_, err := ec2Client.ReleaseAddress(&ec2.ReleaseAddressInput{
-				AllocationId: aws.String(ip),
-			})
-			if err != nil {
-				log.Errorf("[AWS] Failed to release elastic IP: %s in stack: %s, err: %s", ip, stack.ID, err)
-				errChan <- err
-			}
-		}(i)
-	}
+		err := deleteElasticIpsOfStack(ec2Client, stack)
+		if err != nil {
+			errChan <- err
+		}
+	}()
 
 	alarms := getResourceList(stack.Metadata[METADATA_ALARMS])
 	wg.Add(1)
@@ -611,6 +608,40 @@ func getResourceList(resources string) []string {
 		return strings.Split(resources, ",")
 	}
 	return []string{}
+}
+
+func deleteElasticIpsOfStack(ec2Client ec2Client, stack *types.Stack) error {
+	elasticIps := getResourceList(stack.Metadata[METADATA_ELASTIC_IPS])
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(elasticIps))
+	errChan := make(chan error)
+
+	for _, i := range elasticIps {
+		go func(ip string) {
+			defer wg.Done()
+
+			_, err := ec2Client.ReleaseAddress(&ec2.ReleaseAddressInput{
+				AllocationId: aws.String(ip),
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to release elastic IP: %s in stack: %s, err: %s", ip, stack.ID, err)
+				errChan <- err
+			}
+		}(i)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	for err := range errChan {
+		close(errChan)
+		return err
+	}
+
+	return nil
 }
 
 func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, elbClient elbClient, region string, stack *types.Stack) error {
@@ -666,6 +697,13 @@ func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, 
 		log.Errorf("[AWS] Failed to wait for delete complete of CloudFormation stack: %s, err: %s", stack.Name, err)
 		return err
 	}
+
+	log.Infof("[AWS] Deleting elastic ips of stack: %s in region: %s", stack.Name, region)
+	err = deleteElasticIpsOfStack(ec2Client, stack)
+	if err != nil {
+		return err
+	}
+
 	log.Infof("[AWS] Delete CloudFormation stack: %s, region: %s was successful", stack.Name, region)
 	return nil
 }
@@ -1138,23 +1176,6 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 				}
 			}
 
-			elasticIpsByGroup := map[string][]*ec2.Address{}
-			elasticIpsOutput, err := ec2Client.DescribeAddresses(&ec2.DescribeAddressesInput{})
-			if err != nil {
-				log.Errorf("[AWS] Failed to fetch elastic IPs in region %s, err: %s", region, err)
-				return
-			}
-			for _, ip := range elasticIpsOutput.Addresses {
-				tags := getEc2Tags(ip.Tags)
-				if _, ok := tags[CF_TAG]; ok {
-					log.Debugf("[AWS] Skipping elastic IP %s in region %s for native stack assembly, as it has a CF tag", *ip.PublicIp, region)
-					continue
-				}
-				if group, ok := tags[ctx.ResourceGroupingLabel]; ok {
-					elasticIpsByGroup[group] = append(elasticIpsByGroup[group], ip)
-				}
-			}
-
 			securityGroupsRequest := &ec2.DescribeSecurityGroupsInput{}
 			securityGroupsByGroup := map[string][]*ec2.SecurityGroup{}
 			for {
@@ -1255,12 +1276,6 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 						}
 						delete(loadBalancersByGroup, group)
 					}
-					if elasticIps, ok := elasticIpsByGroup[group]; ok {
-						for _, ip := range elasticIps {
-							newStack.ElasticIps = append(newStack.ElasticIps, *ip.AllocationId)
-						}
-						delete(elasticIpsByGroup, group)
-					}
 					if securityGroups, ok := securityGroupsByGroup[group]; ok {
 						for _, securityGroup := range securityGroups {
 							newStack.SecurityGroups = append(newStack.SecurityGroups, *securityGroup.GroupId)
@@ -1306,16 +1321,6 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 				}
 			}
 
-			if len(elasticIpsByGroup) != 0 {
-				for group, ips := range elasticIpsByGroup {
-					ipAddresses := []string{}
-					for _, ip := range ips {
-						ipAddresses = append(ipAddresses, *ip.PublicIp)
-					}
-					log.Warnf("[AWS] Elastic IPs %s with group %s does not have a stack", strings.Join(ipAddresses, ","), group)
-				}
-			}
-
 			if len(securityGroupsByGroup) != 0 {
 				for group, securityGroups := range securityGroupsByGroup {
 					securityGroupIds := []string{}
@@ -1354,12 +1359,64 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 				METADATA_INSTANCES:       strings.Join(awsStack.Instances, ","),
 				METADATA_VOLUMES:         strings.Join(awsStack.Volumes, ","),
 				METADATA_SECURITY_GROUPS: strings.Join(awsStack.SecurityGroups, ","),
-				METADATA_ELASTIC_IPS:     strings.Join(awsStack.ElasticIps, ","),
 				METADATA_ALARMS:          strings.Join(awsStack.Alarms, ","),
 			},
 		})
 	}
 	return stacks, nil
+}
+
+func getElasticIpsForStacks(ec2Clients map[string]ec2Client, stacks []*types.Stack) error {
+	for region, ec2Client := range ec2Clients {
+		elasticIpsByGroup, err := getElasticIpsByGroup(ec2Client, region)
+		if err != nil {
+			log.Errorf("[AWS] Failed to fetch elastic ips in region %s, err: %s", region, err)
+			return err
+		}
+
+		for _, stack := range stacks {
+			group := stack.Tags[ctx.ResourceGroupingLabel]
+			if elasticIps, ok := elasticIpsByGroup[group]; ok {
+				stackElasticIps := []string{}
+				for _, ip := range elasticIps {
+					stackElasticIps = append(stackElasticIps, *ip.AllocationId)
+				}
+				delete(elasticIpsByGroup, group)
+				stack.Metadata[METADATA_ELASTIC_IPS] = strings.Join(stackElasticIps, ",")
+			}
+		}
+
+		if len(elasticIpsByGroup) != 0 {
+			for group, ips := range elasticIpsByGroup {
+				ipAddresses := []string{}
+				for _, ip := range ips {
+					ipAddresses = append(ipAddresses, *ip.PublicIp)
+				}
+				log.Warnf("[AWS] Elastic IPs %s with group %s does not have a stack", strings.Join(ipAddresses, ","), group)
+			}
+		}
+	}
+	return nil
+}
+
+func getElasticIpsByGroup(ec2Client ec2Client, region string) (map[string][]*ec2.Address, error) {
+	elasticIpsByGroup := map[string][]*ec2.Address{}
+	elasticIpsOutput, err := ec2Client.DescribeAddresses(&ec2.DescribeAddressesInput{})
+	if err != nil {
+		log.Errorf("[AWS] Failed to fetch elastic IPs in region %s, err: %s", region, err)
+		return nil, err
+	}
+	for _, ip := range elasticIpsOutput.Addresses {
+		tags := getEc2Tags(ip.Tags)
+		if _, ok := tags[CF_TAG]; ok {
+			log.Debugf("[AWS] Skipping elastic IP %s in region %s for native stack assembly, as it has a CF tag", *ip.PublicIp, region)
+			continue
+		}
+		if group, ok := tags[ctx.ResourceGroupingLabel]; ok {
+			elasticIpsByGroup[group] = append(elasticIpsByGroup[group], ip)
+		}
+	}
+	return elasticIpsByGroup, nil
 }
 
 func getImages(ec2Clients map[string]ec2Client) ([]*types.Image, error) {

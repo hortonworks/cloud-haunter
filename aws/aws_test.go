@@ -185,7 +185,8 @@ func TestRemoveCfStack(t *testing.T) {
 			Name:      "stack",
 			Region:    "eu-central-1",
 			Metadata: map[string]string{
-				"type": TYPE_CF,
+				METADATA_TYPE:        TYPE_CF,
+				METADATA_ELASTIC_IPS: "ip-1",
 			},
 		},
 	}
@@ -209,6 +210,7 @@ func TestRemoveCfStack(t *testing.T) {
 	assert.Equal(t, "DeleteLoadBalancer:elb-arn", <-operationChannel)
 	assert.Equal(t, "DeleteStack", <-operationChannel)
 	assert.Equal(t, "WaitUntilStackDeleteComplete", <-operationChannel)
+	assert.Equal(t, "ReleaseAddress:ip-1", <-operationChannel)
 }
 
 func TestRemoveNativeStack(t *testing.T) {
@@ -310,7 +312,6 @@ func TestGetNativeStacks(t *testing.T) {
 	assert.Equal(t, "ID", stack.Metadata[METADATA_INSTANCES])
 	assert.Equal(t, "vol-2", stack.Metadata[METADATA_VOLUMES])
 	assert.Equal(t, "default-group-id,custom-group-id", stack.Metadata[METADATA_SECURITY_GROUPS])
-	assert.Equal(t, "ip-1", stack.Metadata[METADATA_ELASTIC_IPS])
 }
 
 type mockEc2Client struct {
