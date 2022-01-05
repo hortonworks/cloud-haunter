@@ -24,6 +24,9 @@ const (
 
 	// Alerts operation to return all alerts (e.g. CloudWatch)
 	Alerts = OpType("getAlerts")
+
+	// Storages operation to return all storages (S3, storage account..)
+	Storages = OpType("getStorages")
 )
 
 // OpType type of the operation

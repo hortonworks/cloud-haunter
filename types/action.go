@@ -22,6 +22,9 @@ const (
 
 	// TerminationAction terminates the cloud item if the item supports such operation
 	TerminationAction = ActionType("termination")
+
+	// CleanupAction cleans up the cloud item  if the item supports such operation
+	CleanupAction = ActionType("cleanup")
 )
 
 // Action to execute on the cloud items

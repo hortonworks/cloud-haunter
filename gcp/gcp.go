@@ -1097,6 +1097,14 @@ func (p gcpProvider) DeleteAlerts(*types.AlertContainer) []error {
 	return []error{errors.New("[GCP] Deleting alerts is not supported yet")}
 }
 
+func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
+	return nil, errors.New("[GCP] Getting storages is not supported yet")
+}
+
+func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
+	return []error{errors.New("[GCP] Cleanup storages is not supported yet")}
+}
+
 func getDatabaseInstanceCreationTimeStamp(opService *sqladmin.OperationsListCall, dbName string) (time.Time, error) {
 	operationsList, err := opService.Do()
 	if err != nil {

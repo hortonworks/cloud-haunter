@@ -3,6 +3,8 @@ package azure
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +16,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2015-11-01/resources"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2015-11-01/subscriptions"
+	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-04-01/storage"
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	ctx "github.com/hortonworks/cloud-haunter/context"
@@ -24,13 +28,15 @@ import (
 var provider = azureProvider{}
 
 type azureProvider struct {
-	subscriptionID     string
-	vmClient           compute.VirtualMachinesClient
-	subscriptionClient subscriptions.Client
-	vmScaleSetClient   compute.VirtualMachineScaleSetsClient
-	vmScaleSetVMClient compute.VirtualMachineScaleSetVMsClient
-	imageClient        compute.ImagesClient
-	rgClient           resources.GroupsClient
+	subscriptionID         string
+	vmClient               compute.VirtualMachinesClient
+	subscriptionClient     subscriptions.Client
+	vmScaleSetClient       compute.VirtualMachineScaleSetsClient
+	vmScaleSetVMClient     compute.VirtualMachineScaleSetVMsClient
+	imageClient            compute.ImagesClient
+	rgClient               resources.GroupsClient
+	storageAccountClient   storage.AccountsClient
+	storageContainerClient storage.BlobContainersClient
 	// resClient      resources.Client
 }
 
@@ -70,6 +76,10 @@ func (p *azureProvider) init(subscriptionID string, authorizer func() (autorest.
 	p.imageClient.Authorizer = authorization
 	p.rgClient = resources.NewGroupsClient(subscriptionID)
 	p.rgClient.Authorizer = authorization
+	p.storageAccountClient = storage.NewAccountsClient(subscriptionID)
+	p.storageAccountClient.Authorizer = authorization
+	p.storageContainerClient = storage.NewBlobContainersClient(subscriptionID)
+	p.storageContainerClient.Authorizer = authorization
 	return nil
 }
 
@@ -394,6 +404,170 @@ func (p azureProvider) GetAlerts() ([]*types.Alert, error) {
 
 func (p azureProvider) DeleteAlerts(*types.AlertContainer) []error {
 	return []error{errors.New("[AZURE] Deleting alerts is not supported yet")}
+}
+
+func (p azureProvider) GetStorages() ([]*types.Storage, error) {
+	accountListResultIterator, err := p.storageAccountClient.ListComplete(context.Background())
+	if err != nil {
+		log.Errorf("[AZURE] Failed to get storage accounts, err: %s", err)
+		return nil, err
+	}
+	storages := []*types.Storage{}
+	for accountListResultIterator.NotDone() {
+		storageAccount := accountListResultIterator.Value()
+		resourceGroup, resourceName := getResourceGroupName(*storageAccount.ID)
+		tags := utils.ConvertTags(storageAccount.Tags)
+		storage := &types.Storage{
+			ID:        *storageAccount.ID,
+			Name:      resourceName,
+			Owner:     tags[ctx.OwnerLabel],
+			Created:   storageAccount.CreationTime.Time,
+			CloudType: types.AZURE,
+			Tags:      tags,
+			Region:    *storageAccount.PrimaryLocation,
+			MetaData: map[string]string{
+				"ResourceGroup": resourceGroup,
+			},
+		}
+
+		storages = append(storages, storage)
+
+		err = accountListResultIterator.Next()
+		if err != nil {
+			log.Errorf("[AZURE] Failed to get storage accounts next iteration, err: %s", err)
+			return nil, err
+		}
+	}
+	return storages, nil
+}
+
+func (p azureProvider) getContainerUrls(storage types.Storage) (*[]azblob.ContainerURL, error) {
+	serviceUrl, err := p.getServiceUrl(storage)
+	if err != nil {
+		return nil, err
+	}
+	log.Debugf("[AZURE] Listing containers for storage account %s", storage.Name)
+	containerUrls := []azblob.ContainerURL{}
+	containerMarker := azblob.Marker{}
+	for containerMarker.NotDone() {
+		containers, err := serviceUrl.ListContainersSegment(context.Background(), containerMarker, azblob.ListContainersSegmentOptions{})
+		if err != nil {
+			log.Errorf("[AZURE] Failed to list containers for storage account %s, err: %s", storage.Name, err)
+			return nil, err
+		}
+		for _, c := range containers.ContainerItems {
+			containerUrls = append(containerUrls, serviceUrl.NewContainerURL(c.Name))
+		}
+		containerMarker = containers.NextMarker
+	}
+	log.Debugf("[AZURE] Storage account %s has %d containers", storage.Name, len(containerUrls))
+	return &containerUrls, nil
+}
+
+func (p azureProvider) getServiceUrl(storage types.Storage) (*azblob.ServiceURL, error) {
+	log.Debugf("[AZURE] Getting service url for storage account %s", storage.Name)
+	keysResult, err := p.storageAccountClient.ListKeys(context.Background(), storage.MetaData["ResourceGroup"], storage.Name, "")
+	if err != nil {
+		log.Errorf("[AZURE] Failed to list access keys for storage account %s, err: %s", storage.Name, err)
+		return nil, err
+	}
+	key := *(((*keysResult.Keys)[0]).Value)
+	credential, err := azblob.NewSharedKeyCredential(storage.Name, key)
+	if err != nil {
+		log.Errorf("[AZURE] Failed to create credential for storage account %s, err: %s", storage.Name, err)
+		return nil, err
+	}
+	url, err := url.Parse(fmt.Sprintf(`https://%s.blob.core.windows.net`, storage.Name))
+	if err != nil {
+		log.Errorf("[AZURE] Failed to create url for storage account %s, err: %s", storage.Name, err)
+		return nil, err
+	}
+	serviceUrl := azblob.NewServiceURL(*url, azblob.NewPipeline(credential, azblob.PipelineOptions{}))
+	log.Debugf("[AZURE] Service url for storage account %s is %s", storage.Name, serviceUrl.String())
+	return &serviceUrl, nil
+}
+
+func (p azureProvider) getBlobsInContainer(storage types.Storage, containerUrl azblob.ContainerURL) (*[]azblob.BlobItemInternal, error) {
+	log.Debugf("[AZURE] Getting blobs in storage account %s container %s", storage.Name, containerUrl.String())
+	blobItems := []azblob.BlobItemInternal{}
+	marker := azblob.Marker{}
+	for marker.NotDone() {
+		blobs, err := containerUrl.ListBlobsFlatSegment(context.Background(), marker, azblob.ListBlobsSegmentOptions{})
+		if err != nil {
+			log.Errorf("[AZURE] Failed to list blobs for storage account %s container %s, err: %s", storage.Name, containerUrl.String(), err)
+			return nil, err
+		}
+		blobItems = append(blobItems, blobs.Segment.BlobItems...)
+		marker = blobs.NextMarker
+	}
+	log.Debugf("[AZURE] Storage account %s container %s has %d blobs", storage.Name, containerUrl.String(), len(blobItems))
+	return &blobItems, nil
+}
+
+func (p azureProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
+	retentionTime := time.Now().AddDate(0, 0, -retentionDays)
+	log.Debugf("[AZURE] Cleaning up storages older than %s", retentionTime)
+
+	wg := sync.WaitGroup{}
+	errorChan := make(chan error)
+
+	storages := storageContainer.Get(types.AZURE)
+	storagesByRegion := map[string][]*types.Storage{}
+	for _, storage := range storages {
+		storagesByRegion[storage.Region] = append(storagesByRegion[storage.Region], storage)
+	}
+	wg.Add(len(storagesByRegion))
+
+	for r, s := range storagesByRegion {
+		go func(region string, storagesInRegion []*types.Storage) {
+			defer wg.Done()
+
+			for _, storage := range storagesInRegion {
+				var cleanedUpStorage int64
+				containerUrls, err := p.getContainerUrls(*storage)
+				if err != nil {
+					log.Errorf("[AZURE] Failed to get containers for storage account %s, err: %s", storage.Name, err)
+					errorChan <- err
+					continue
+				}
+				for _, containerUrl := range *containerUrls {
+					blobs, err := p.getBlobsInContainer(*storage, containerUrl)
+					if err != nil {
+						log.Errorf("[AZURE] Failed to list blobs in container %s , err: %s", containerUrl.String(), err)
+						errorChan <- err
+						continue
+					}
+					for _, blob := range *blobs {
+						if blob.Properties.CreationTime.Before(retentionTime) {
+							log.Infof("[AZURE] Blob %s in storage account %s is older than %s", blob.Name, storage.Name, retentionTime)
+							if !ctx.DryRun {
+								_, err := containerUrl.NewBlobURL(blob.Name).Delete(context.Background(), azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
+								if err != nil {
+									log.Errorf("[AZURE] Failed to delete blob %s in storage account %s", blob.Name, storage.Name)
+									errorChan <- err
+								} else {
+									cleanedUpStorage += *blob.Properties.ContentLength
+								}
+							}
+						}
+					}
+				}
+				log.Infof("[AZURE] Cleaned up %s worth of files in storage account %s", utils.GetHumanReadableFileSize(cleanedUpStorage), storage.Name)
+			}
+		}(r, s)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errorChan)
+	}()
+
+	var errs []error
+	for err := range errorChan {
+		errs = append(errs, err)
+	}
+
+	return errs
 }
 
 func deleteImages(imagesClient imagesClient, imagesToDelete []azureImage, existingImages []compute.Image) []error {
