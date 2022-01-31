@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -1088,6 +1089,9 @@ func getCFStacks(cfClients map[string]cfClient) ([]*types.Stack, error) {
 	for stack := range cfChan {
 		stacks = append(stacks, stack)
 	}
+	sort.Slice(stacks, func(p, q int) bool {
+		return stacks[p].Created.After(stacks[q].Created)
+	})
 	return stacks, nil
 }
 
