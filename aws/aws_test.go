@@ -29,7 +29,7 @@ func TestProviderInit(t *testing.T) {
 
 	provider.init(func() ([]string, error) {
 		return []string{"region1", "region2"}, nil
-	})
+	}, false)
 
 	assert.Equal(t, 2, len(provider.ec2Clients))
 }

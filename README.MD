@@ -118,6 +118,7 @@ ACTIONS:
 	-a stop
 	-a termination
 CLOUDS:
+	-c AWS_GOV
 	-c AWS
 	-c AZURE
 	-c GCP
