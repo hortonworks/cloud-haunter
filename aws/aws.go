@@ -55,6 +55,7 @@ type awsProvider struct {
 	elbClients           map[string]*elb.ELBV2
 	cloudWatchClients    map[string]*cloudwatch.CloudWatch
 	iamClient            *iam.IAM
+	govCloud             bool
 }
 
 func init() {
@@ -78,7 +79,7 @@ func init() {
 			err = provider.init(func() ([]string, error) {
 				log.Debug("[AWS] Fetching regions")
 				return getRegions(ec2Client)
-			})
+			}, false)
 			if err != nil {
 				panic("[AWS] Failed to initialize provider, err: " + err.Error())
 			}
@@ -88,7 +89,7 @@ func init() {
 	}
 }
 
-func (p *awsProvider) init(getRegions func() ([]string, error)) error {
+func (p *awsProvider) init(getRegions func() ([]string, error), govCloud bool) error {
 	regions, err := getRegions()
 	if err != nil {
 		return err
@@ -101,6 +102,7 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 	p.cloudTrailClient = map[string]*cloudtrail.CloudTrail{}
 	p.cloudFormationClient = map[string]*cloudformation.CloudFormation{}
 	p.cloudWatchClients = map[string]*cloudwatch.CloudWatch{}
+	p.govCloud = govCloud
 
 	for _, region := range regions {
 		if client, err := newEc2Client(region); err != nil {
@@ -155,15 +157,17 @@ func (p *awsProvider) init(getRegions func() ([]string, error)) error {
 
 func (p awsProvider) GetAccountName() string {
 	log.Debugf("[AWS] Fetch account aliases")
-	if result, err := p.iamClient.ListAccountAliases(&iam.ListAccountAliasesInput{}); err != nil {
-		log.Errorf("[AWS] Failed to retrieve account aliases, err: %s", err.Error())
-	} else {
-		var aliases []string
-		for _, a := range result.AccountAliases {
-			aliases = append(aliases, *a)
-		}
-		if len(aliases) != 0 {
-			return strings.Join(aliases, ",")
+	if !p.govCloud {
+		if result, err := p.iamClient.ListAccountAliases(&iam.ListAccountAliasesInput{}); err != nil {
+			log.Errorf("[AWS] Failed to retrieve account aliases, err: %s", err.Error())
+		} else {
+			var aliases []string
+			for _, a := range result.AccountAliases {
+				aliases = append(aliases, *a)
+			}
+			if len(aliases) != 0 {
+				return strings.Join(aliases, ",")
+			}
 		}
 	}
 	return "unknown"

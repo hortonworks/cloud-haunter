@@ -11,6 +11,9 @@ const (
 	// AWS cloud type
 	AWS = CloudType("AWS")
 
+	// AWS_GOV cloud type
+	AWS_GOV = CloudType("AWS_GOV")
+
 	// GCP cloud type
 	GCP = CloudType("GCP")
 
