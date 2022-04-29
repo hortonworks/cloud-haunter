@@ -1133,7 +1133,11 @@ func getDatabaseInstanceCreationTimeStamp(opService *sqladmin.OperationsListCall
 func getDiskStatus(gDisk *compute.Disk) types.State {
 	switch gDisk.Status {
 	case "CREATING", "RESTORING", "STAGING", "READY", "FAILED":
-		return types.Running
+		if len(gDisk.Users) == 0 {
+			return types.Unused
+		} else {
+			return types.Running
+		}
 	case "DELETING":
 		return types.Terminated
 	default:
