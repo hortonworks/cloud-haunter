@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	elb "github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/hortonworks/cloud-haunter/utils"
@@ -46,6 +48,8 @@ const (
 
 var provider = awsProvider{}
 
+var rateLimiter = rate.NewLimiter(rate.Every(time.Duration(ctx.AwsApiOperationRateLimitIntervalInSeconds)*time.Second), ctx.AwsApiOperationRateLimit)
+
 type awsProvider struct {
 	ec2Clients           map[string]*ec2.EC2
 	autoScalingClients   map[string]*autoscaling.AutoScaling
@@ -56,6 +60,11 @@ type awsProvider struct {
 	cloudWatchClients    map[string]*cloudwatch.CloudWatch
 	iamClient            *iam.IAM
 	govCloud             bool
+}
+
+type ThrottledTransport struct {
+	roundTripperWrap http.RoundTripper
+	ratelimiter      *rate.Limiter
 }
 
 func init() {
@@ -1834,11 +1843,26 @@ func newElbClient(region string) (*elb.ELBV2, error) {
 	return elb.New(awsSession), nil
 }
 
+func NewThrottledTransport(rateLimiter *rate.Limiter, transportWrap http.RoundTripper) http.RoundTripper {
+	return &ThrottledTransport{
+		roundTripperWrap: transportWrap,
+		ratelimiter:      rateLimiter,
+	}
+}
+
+func (c *ThrottledTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	err := c.ratelimiter.Wait(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	return c.roundTripperWrap.RoundTrip(r)
+}
+
 func newSession(configure func(*aws.Config)) (*session.Session, error) {
 	httpClient := &http.Client{
-		Transport: &http.Transport{
+		Transport: NewThrottledTransport(rateLimiter, &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}}
+		})}
 	config := aws.Config{HTTPClient: httpClient}
 	if configure != nil {
 		configure(&config)
