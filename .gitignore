@@ -6,5 +6,6 @@ release
 .vscode
 .idea
 .env
-cloud-haunter
+cloud-haunter*
 release
+ch
