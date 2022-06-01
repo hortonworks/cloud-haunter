@@ -24,6 +24,12 @@ var (
 	AzureCreationTimeLabel = "creation-timestamp,cb-creation-timestamp,cdp-creation-timestamp"
 
 	AwsBulkOperationSize = 50
+
+	// AWS rate limit interval in seconds for each API calls regardless the region
+	AwsApiOperationRateLimitIntervalInSeconds = 30
+
+	// AWS rate limit for each API calls regardless the region
+	AwsApiOperationRateLimit = 1000
 )
 
 // DryRun is a global flag to skip concrete action
