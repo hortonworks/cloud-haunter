@@ -13,7 +13,7 @@ require (
 	github.com/tbruyelle/hipchat-go v0.0.0-20160921153256-749fb9e14beb
 	golang.org/x/oauth2 v0.0.0-20180620175406-ef147856a6dd
 	google.golang.org/api v0.0.0-20180717000714-0025a57598c0
-	gopkg.in/yaml.v2 v2.2.2
+	gopkg.in/yaml.v2 v2.2.8
 )
 
 require (
