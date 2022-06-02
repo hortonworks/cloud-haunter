@@ -91,5 +91,4 @@ release: cleanup build
 	./release.sh
 
 download:
-	curl -LOs https://github.com/hortonworks/cloud-haunter/releases/download/v$(VERSION)/cloud-haunter_$(VERSION)_$(shell uname)_x86_64.tgz
-	tar -xvf cloud-haunter_$(VERSION)_$(shell uname)_x86_64.tgz
+	./download.sh
