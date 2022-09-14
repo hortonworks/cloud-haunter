@@ -638,6 +638,10 @@ func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, 
 	var resourceErr error
 	retainResources := []*string{}
 	for _, stackResource := range stackResources.StackResources {
+		if *stackResource.PhysicalResourceId == nil {
+			log.Error("[AWS] Missing Physical ID in the CloudFormation stack resources for stack: %s", stack.Name)
+			break
+		}
 		switch *stackResource.ResourceType {
 		case "AWS::RDS::DBInstance":
 			if *stackResource.ResourceStatus != cloudformation.ResourceStatusDeleteComplete {
