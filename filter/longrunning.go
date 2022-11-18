@@ -61,6 +61,7 @@ func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 		case types.Alert:
 			if item.GetItem().(types.Alert).State != types.Unused {
 				log.Debugf("[LONGRUNNING] Filter alert, because it's in used state: %s", item.GetName())
+			}
 		case types.Cluster:
 			if item.GetItem().(types.Cluster).State != types.Running {
 				log.Debugf("[LONGRUNNING] Filter instance, because it's not in RUNNING state: %s", item.GetName())

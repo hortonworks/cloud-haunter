@@ -37,7 +37,6 @@ const (
 
 	// Updating state of the cloud item
 	Updating = State("updating")
->>>>>>> d8b89d6 (add support for gcp dataproc clusters)
 
 	// Unknown state of the cloud item
 	Unknown = State("unknown")

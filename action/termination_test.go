@@ -87,14 +87,6 @@ func (p *mockProvider) GetClusters() ([]*types.Cluster, error) {
 	return nil, nil
 }
 
-func (p *mockProvider) GetStorages() ([]*types.Storage, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
-	return nil
-}
-
 type terminationSuite struct {
 	suite.Suite
 	providers    map[types.CloudType]func() types.CloudProvider

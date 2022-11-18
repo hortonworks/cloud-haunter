@@ -30,6 +30,8 @@ import (
 
 var provider = gcpProvider{}
 
+const DATAPROC_ENDPOINT_SUFFIX = "-dataproc.googleapis.com:443"
+
 type gcpProvider struct {
 	projectID      string
 	computeClient  *compute.Service
@@ -986,14 +988,15 @@ func getRegions(p gcpProvider) ([]string, error) {
 }
 
 // Possible values:
-//   "PROVISIONING"
-//   "RUNNING"
-//   "STAGING"
-//   "STOPPED"
-//   "STOPPING"
-//   "SUSPENDED"
-//   "SUSPENDING"
-//   "TERMINATED"
+//
+//	"PROVISIONING"
+//	"RUNNING"
+//	"STAGING"
+//	"STOPPED"
+//	"STOPPING"
+//	"SUSPENDED"
+//	"SUSPENDING"
+//	"TERMINATED"
 func getInstanceState(instance *compute.Instance) types.State {
 	switch instance.Status {
 	case "PROVISIONING", "RUNNING", "STAGING":
@@ -1083,7 +1086,7 @@ func (p gcpProvider) getDatabases(aggregator *sqladmin.InstancesListCall) ([]*ty
 	for _, databaseInstance := range gDatabaseList.Items {
 		instanceName := databaseInstance.Name
 
-		listOperationCall := p.sqlClient.Operations.List(p.projectID, instanceName)
+		listOperationCall := p.sqlClient.Operations.List(instanceName)
 		creationTimeStamp, err := getDatabaseInstanceCreationTimeStamp(listOperationCall, instanceName)
 		if err != nil {
 			log.Errorf("[GCP] Failed to get the creation timestamp of the DB: %s, err: %s", instanceName, err.Error())
@@ -1141,12 +1144,12 @@ func getDatabaseInstanceCreationTimeStamp(opService *sqladmin.OperationsListCall
 	return time.Time{}, errors.New(fmt.Sprintf("[GCP] Failed to get the CREATE operation of the DB instance: %s", dbName))
 }
 
-//Possible values:
-//CREATING: Disk is provisioning.
-//RESTORING: Source data is being copied into the disk.
-//FAILED: Disk creation failed.
-//READY: Disk is ready for use.
-//DELETING: Disk is deleting.
+// Possible values:
+// CREATING: Disk is provisioning.
+// RESTORING: Source data is being copied into the disk.
+// FAILED: Disk creation failed.
+// READY: Disk is ready for use.
+// DELETING: Disk is deleting.
 func getDiskStatus(gDisk *compute.Disk) types.State {
 	switch gDisk.Status {
 	case "CREATING", "RESTORING", "STAGING", "READY", "FAILED":
@@ -1162,13 +1165,13 @@ func getDiskStatus(gDisk *compute.Disk) types.State {
 	}
 }
 
-//SQL_INSTANCE_STATE_UNSPECIFIED	The state of the instance is unknown.
-//RUNNABLE	The instance is running.
-//SUSPENDED	The instance is currently offline, but it may run again in the future.
-//PENDING_DELETE	The instance is being deleted.
-//PENDING_CREATE	The instance is being created.
-//MAINTENANCE	The instance is down for maintenance.
-//FAILED	The instance failed to be created.
+// SQL_INSTANCE_STATE_UNSPECIFIED	The state of the instance is unknown.
+// RUNNABLE	The instance is running.
+// SUSPENDED	The instance is currently offline, but it may run again in the future.
+// PENDING_DELETE	The instance is being deleted.
+// PENDING_CREATE	The instance is being created.
+// MAINTENANCE	The instance is down for maintenance.
+// FAILED	The instance failed to be created.
 func getDatabaseInstanceStatus(instance *sqladmin.DatabaseInstance) types.State {
 	switch instance.State {
 	case "RUNNABLE":
@@ -1215,7 +1218,7 @@ func newCluster(cluster *dataprocpb.Cluster, region string) *types.Cluster {
 		Created:   cluster.Status.StateStartTime.AsTime(),
 		CloudType: types.GCP,
 		Region:    region,
-		Tags:      convertTags(cluster.Labels),
+		Tags:      cluster.Labels,
 		Config:    cluster.GetConfig(),
 		State:     getClusterState(cluster.Status.GetState()),
 	}
@@ -1235,7 +1238,7 @@ func getClusterState(s dataprocpb.ClusterStatus_State) types.State {
 		8: types.Starting,
 	}
 
-	status, ok := statuses[s]
+	status, ok := statuses[int32(s)]
 	if !ok {
 		return types.Unknown
 	}
@@ -1267,7 +1270,7 @@ func (p gcpProvider) GetClusters() ([]*types.Cluster, error) {
 		return nil, err
 	}
 	for _, r := range regionsList {
-		regionalClient, err := dataproc.NewClusterControllerClient(ctx, option.WithEndpoint(r+"-dataproc.googleapis.com:443"))
+		regionalClient, err := dataproc.NewClusterControllerClient(ctx, option.WithEndpoint(r+DATAPROC_ENDPOINT_SUFFIX))
 		if err != nil {
 			log.Errorf("[GET_CLUSTERS] Error creating dataproc client for region %s: %+v", r, err)
 			return nil, err

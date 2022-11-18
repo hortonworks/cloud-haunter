@@ -132,11 +132,3 @@ func (p dummyProvider) CleanupStorages(storageContainer *types.StorageContainer,
 func (p dummyProvider) GetClusters() ([]*types.Cluster, error) {
 	return nil, nil
 }
-
-func (p dummyProvider) GetStorages() ([]*types.Storage, error) {
-	return nil, nil
-}
-
-func (p dummyProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
-	return nil
-}

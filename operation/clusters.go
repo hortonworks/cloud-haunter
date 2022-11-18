@@ -1,8 +1,8 @@
 package operation
 
 import (
-	ctx "github.com/blentz/cloud-haunter/context"
-	"github.com/blentz/cloud-haunter/types"
+	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 

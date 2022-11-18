@@ -71,3 +71,7 @@ func (cluster Cluster) GetItem() interface{} {
 func (cluster Cluster) GetType() string {
 	return "cluster"
 }
+
+func (cluster Cluster) GetTags() Tags {
+	return cluster.Tags
+}

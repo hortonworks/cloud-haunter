@@ -1913,17 +1913,18 @@ func newStack(stack *cloudformation.Stack, region string) *types.Stack {
 
 // The low byte represents the state. The high byte is an opaque internal value
 // and should be ignored.
-//    * 0 : pending
 //
-//    * 16 : running
+//   - 0 : pending
 //
-//    * 32 : shutting-down
+//   - 16 : running
 //
-//    * 48 : terminated
+//   - 32 : shutting-down
 //
-//    * 64 : stopping
+//   - 48 : terminated
 //
-//    * 80 : stopped
+//   - 64 : stopping
+//
+//   - 80 : stopped
 func getInstanceState(instance *ec2.Instance) types.State {
 	if instance.State == nil {
 		return types.Unknown

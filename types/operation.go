@@ -30,9 +30,6 @@ const (
 
 	// Clusters operation to return all clusters
 	Clusters = OpType("getClusters")
-
-	// Storages operation to return all storages (S3, storage account..)
-	Storages = OpType("getStorages")
 )
 
 // OpType type of the operation
