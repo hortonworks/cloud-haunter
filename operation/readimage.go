@@ -63,7 +63,7 @@ func (o readImages) Execute(clouds []types.CloudType) []types.CloudItem {
 		}
 	}
 
-	return convertToCloudItems(images)
+	return convertImagesToCloudItems(images)
 }
 
 type cloudImages struct {

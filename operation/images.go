@@ -25,6 +25,6 @@ func (o images) collect(clouds []types.CloudType) (chan []types.CloudItem, chan 
 		if err != nil {
 			return nil, err
 		}
-		return convertToCloudItems(images), nil
+		return convertImagesToCloudItems(images), nil
 	})
 }

@@ -33,7 +33,7 @@ func init() {
 }
 
 func (f oldAccess) Execute(items []types.CloudItem) []types.CloudItem {
-	log.Debugf("[OLDACCESS] Filtering accesses (%d): [%s]", len(items), items)
+	log.Debugf("[OLDACCESS] Filtering items (%d): [%s]", len(items), items)
 	return filter("OLDACCESS", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
 		switch item.GetItem().(type) {
 		case types.Access:

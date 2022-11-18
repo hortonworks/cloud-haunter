@@ -14,7 +14,7 @@ type running struct {
 }
 
 func (f running) Execute(items []types.CloudItem) []types.CloudItem {
-	log.Debugf("[RUNNING] Filtering instances (%d): [%s]", len(items), items)
+	log.Debugf("[RUNNING] Filtering items (%d): [%s]", len(items), items)
 	return filter("RUNNING", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
 		switch item.GetItem().(type) {
 		case types.Instance:
@@ -35,6 +35,11 @@ func (f running) Execute(items []types.CloudItem) []types.CloudItem {
 		case types.Disk:
 			if item.GetItem().(types.Disk).State != types.Unused {
 				log.Debugf("[RUNNING] Filter disk, because it's in used state: %s", item.GetName())
+				return false
+			}
+		case types.Cluster:
+			if item.GetItem().(types.Cluster).State != types.Running {
+				log.Debugf("[RUNNING] Filter cluster, because it's not in RUNNING state: %s", item.GetName())
 				return false
 			}
 		default:

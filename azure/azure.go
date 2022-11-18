@@ -692,13 +692,15 @@ func getScaleSetInstanceState(view compute.VirtualMachineScaleSetVMInstanceView)
 }
 
 // Possible values:
-//   "PowerState/deallocated"
-//   "PowerState/deallocating"
-//   "PowerState/running"
-//   "PowerState/starting"
-//   "PowerState/stopped"
-//   "PowerState/stopping"
-//   "PowerState/unknown"
+//
+//	"PowerState/deallocated"
+//	"PowerState/deallocating"
+//	"PowerState/running"
+//	"PowerState/starting"
+//	"PowerState/stopped"
+//	"PowerState/stopping"
+//	"PowerState/unknown"
+//
 // The assumption is that the status without time is the currently active status
 func convertViewStatusToState(actualStatus compute.InstanceViewStatus) types.State {
 	switch *actualStatus.Code {
@@ -734,4 +736,8 @@ func newStack(rg resources.Group) *types.Stack {
 		State:     types.Running,
 		Region:    *rg.Location,
 	}
+}
+
+func (p azureProvider) GetClusters() ([]*types.Cluster, error) {
+	return nil, errors.New("NotImplemented")
 }
