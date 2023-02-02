@@ -199,7 +199,7 @@ func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
-	nativeStacks, nativeError := getNativeStacks(ec2Clients, elbClients, cloudWatchClients)
+	nativeStacks, nativeError := getNativeStacks(ec2Clients, elbClients, cloudWatchClients, cfStacks)
 	if nativeError != nil {
 		return nil, nativeError
 	}
@@ -1123,7 +1123,7 @@ type AwsNativeStack struct {
 	Tags           types.Tags
 }
 
-func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient) ([]*types.Stack, error) {
+func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, cfStacks []*types.Stack) ([]*types.Stack, error) {
 	stackChan := make(chan AwsNativeStack, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
@@ -1321,33 +1321,47 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 				}
 			}
 
+			cfStackGroups := []string{}
+			for _, cfStack := range cfStacks {
+				if group, ok := cfStack.Tags[ctx.ResourceGroupingLabel]; ok {
+					cfStackGroups = append(cfStackGroups, group)
+				}
+			}
+			log.Debugf("[AWS] CF stack groups in region %s: %s", region, strings.Join(cfStackGroups, ","))
+
 			if len(loadBalancersByGroup) != 0 {
 				for group, loadBalancers := range loadBalancersByGroup {
-					lbNames := []string{}
-					for _, lb := range loadBalancers {
-						lbNames = append(lbNames, *lb.LoadBalancerName)
+					if !utils.IsAnyEquals(group, cfStackGroups...) {
+						lbNames := []string{}
+						for _, lb := range loadBalancers {
+							lbNames = append(lbNames, *lb.LoadBalancerName)
+						}
+						log.Warnf("[AWS] Loadbalancers %s with group %s does not have a stack in region %s", strings.Join(lbNames, ","), group, region)
 					}
-					log.Warnf("[AWS] Loadbalancers %s with group %s does not have a stack", strings.Join(lbNames, ","), group)
 				}
 			}
 
 			if len(elasticIpsByGroup) != 0 {
 				for group, ips := range elasticIpsByGroup {
-					ipAddresses := []string{}
-					for _, ip := range ips {
-						ipAddresses = append(ipAddresses, *ip.PublicIp)
+					if !utils.IsAnyEquals(group, cfStackGroups...) {
+						ipAddresses := []string{}
+						for _, ip := range ips {
+							ipAddresses = append(ipAddresses, *ip.PublicIp)
+						}
+						log.Warnf("[AWS] Elastic IPs %s with group %s does not have a stack in region %s", strings.Join(ipAddresses, ","), group, region)
 					}
-					log.Warnf("[AWS] Elastic IPs %s with group %s does not have a stack", strings.Join(ipAddresses, ","), group)
 				}
 			}
 
 			if len(securityGroupsByGroup) != 0 {
 				for group, securityGroups := range securityGroupsByGroup {
-					securityGroupIds := []string{}
-					for _, sg := range securityGroups {
-						securityGroupIds = append(securityGroupIds, *sg.GroupId)
+					if !utils.IsAnyEquals(group, cfStackGroups...) {
+						securityGroupIds := []string{}
+						for _, sg := range securityGroups {
+							securityGroupIds = append(securityGroupIds, *sg.GroupId)
+						}
+						log.Warnf("[AWS] Security groups %s with group %s does not have a stack in region %s", strings.Join(securityGroupIds, ","), group, region)
 					}
-					log.Warnf("[AWS] Security groups %s with group %s does not have a stack", strings.Join(securityGroupIds, ","), group)
 				}
 			}
 
