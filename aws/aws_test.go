@@ -287,7 +287,7 @@ func TestGetNativeStacks(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		stacks, err := getNativeStacks(ec2Clients, elbClients, cwClients)
+		stacks, err := getNativeStacks(ec2Clients, elbClients, cwClients, []*types.Stack{})
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(stacks))
 		stack = stacks[0]
