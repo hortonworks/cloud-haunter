@@ -7,9 +7,9 @@ require (
 	github.com/Azure/azure-storage-blob-go v0.14.0
 	github.com/Azure/go-autorest/autorest v0.11.23
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.9
-	github.com/aws/aws-sdk-go v1.29.34
+	github.com/aws/aws-sdk-go v1.34.0
 	github.com/sirupsen/logrus v1.0.5
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.5.1
 	github.com/tbruyelle/hipchat-go v0.0.0-20160921153256-749fb9e14beb
 	golang.org/x/oauth2 v0.0.0-20180620175406-ef147856a6dd
 	google.golang.org/api v0.0.0-20180717000714-0025a57598c0
@@ -33,7 +33,7 @@ require (
 	github.com/golang/protobuf v1.2.0 // indirect
 	github.com/google/go-querystring v0.0.0-20170111101155-53e6ce116135 // indirect
 	github.com/google/uuid v1.2.0 // indirect
-	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af // indirect
+	github.com/jmespath/go-jmespath v0.3.0 // indirect
 	github.com/mattn/go-ieproxy v0.0.1 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
