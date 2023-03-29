@@ -191,7 +191,9 @@ func (p gcpProvider) GetStacks() ([]*types.Stack, error) {
 			for _, networkInterface := range gcpInstance.NetworkInterfaces {
 				if network, ok := networksBySelfLink[networkInterface.Network]; ok {
 					networkName = network.Name
-					firewallName = firewallsByNetwork[network.SelfLink].Name
+					if firewall, ok := firewallsByNetwork[network.SelfLink]; ok {
+						firewallName = firewall.Name
+					}
 					for _, subnet := range network.Subnetworks {
 						subnetParts := strings.Split(subnet, "/")
 						subnetNames = append(subnetNames, subnetParts[len(subnetParts)-1])
