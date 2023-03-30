@@ -38,13 +38,13 @@ func TestGetRunningInstances(t *testing.T) {
 	ec2Clients := map[string]ec2Client{"region": mockEc2Client{operationChannel: make(chan string, 10)}}
 	ctClients := map[string]cloudTrailClient{"region": mockCtClient{}}
 
-	instances, _ := getInstances(ec2Clients, ctClients)
+	instances, _ := getInstances(types.AWS, ec2Clients, ctClients)
 
 	assert.Equal(t, 1, len(instances))
 }
 
 func TestGetAccesses(t *testing.T) {
-	accesses, _ := getAccesses(mockIamClient{})
+	accesses, _ := getAccesses(types.AWS, mockIamClient{})
 
 	assert.Equal(t, 1, len(accesses))
 }
@@ -71,7 +71,7 @@ func TestDeleteVolumes(t *testing.T) {
 		defer close(region1Chan)
 		defer close(region2Chan)
 
-		deleteVolumes(clients, volumes)
+		deleteVolumes(types.AWS, clients, volumes)
 	}()
 
 	assert.Equal(t, "disk-id-1", <-region1Chan)
@@ -94,7 +94,7 @@ func TestDeleteImages(t *testing.T) {
 		defer close(region1Chan)
 		defer close(region2Chan)
 
-		deleteImages(clients, images)
+		deleteImages(types.AWS, clients, images)
 	}()
 
 	assert.Equal(t, "ami-id-1", <-region1Chan)
@@ -105,13 +105,13 @@ func TestNewInstanceWithName(t *testing.T) {
 	ec2Instance := newTestInstance()
 	ec2Instance.Tags = []*ec2.Tag{{Key: &(&types.S{S: "Name"}).S, Value: &(&types.S{S: "name"}).S}}
 
-	instance := newInstance(ec2Instance)
+	instance := newInstance(types.AWS, ec2Instance)
 
 	assert.Equal(t, "name", instance.Name)
 }
 
 func TestNewInstanceMissingName(t *testing.T) {
-	instance := newInstance(newTestInstance())
+	instance := newInstance(types.AWS, newTestInstance())
 
 	assert.Equal(t, "ID", instance.Name)
 }
@@ -156,7 +156,7 @@ func TestNewStackOwner(t *testing.T) {
 	cfStack.SetStackName("name")
 	cfStack.SetTags([]*cloudformation.Tag{&ownerTag})
 
-	stack := newStack(&cfStack, "us-west-1")
+	stack := newStack(types.AWS, &cfStack, "us-west-1")
 
 	assert.Equal(t, "validOwner", stack.Owner)
 }
@@ -287,7 +287,7 @@ func TestGetNativeStacks(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		stacks, err := getNativeStacks(ec2Clients, elbClients, cwClients, []*types.Stack{})
+		stacks, err := getNativeStacks(types.AWS, ec2Clients, elbClients, cwClients, []*types.Stack{})
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(stacks))
 		stack = stacks[0]

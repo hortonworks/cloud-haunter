@@ -185,13 +185,13 @@ func (p awsProvider) GetAccountName() string {
 func (p awsProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[AWS] Fetching instances")
 	ec2Clients, ctClients := p.getEc2AndCTClientsByRegion()
-	return getInstances(ec2Clients, ctClients)
+	return getInstances(p.GetCloudType(), ec2Clients, ctClients)
 }
 
 func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	log.Debug("[AWS] Fetching CloudFormation stacks")
 	cfClients := p.getCFClientsByRegion()
-	cfStacks, cfError := getCFStacks(cfClients)
+	cfStacks, cfError := getCFStacks(p.GetCloudType(), cfClients)
 	if cfError != nil {
 		return nil, cfError
 	}
@@ -199,7 +199,7 @@ func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
-	nativeStacks, nativeError := getNativeStacks(ec2Clients, elbClients, cloudWatchClients, cfStacks)
+	nativeStacks, nativeError := getNativeStacks(p.GetCloudType(), ec2Clients, elbClients, cloudWatchClients, cfStacks)
 	if nativeError != nil {
 		return nil, nativeError
 	}
@@ -214,13 +214,13 @@ func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 		rdsClients[k] = p.rdsClients[k]
 		ctClients[k] = p.cloudTrailClient[k]
 	}
-	return getDatabases(rdsClients, ctClients)
+	return getDatabases(p.GetCloudType(), rdsClients, ctClients)
 }
 
 func (p awsProvider) GetDisks() ([]*types.Disk, error) {
 	log.Debug("[AWS] Fetch volumes")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return getDisks(ec2Clients)
+	return getDisks(p.GetCloudType(), ec2Clients)
 }
 
 func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[string]cloudTrailClient) {
@@ -282,25 +282,25 @@ func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
 	log.Debug("[AWS] Delete volumes")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return deleteVolumes(ec2Clients, volumes.Get(types.AWS))
+	return deleteVolumes(p.GetCloudType(), ec2Clients, volumes.Get(types.AWS))
 }
 
 func (p awsProvider) GetImages() ([]*types.Image, error) {
 	log.Debug("[AWS] Fetch images")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return getImages(ec2Clients)
+	return getImages(p.GetCloudType(), ec2Clients)
 }
 
 func (p awsProvider) DeleteImages(images *types.ImageContainer) []error {
 	log.Debug("[AWS] Delete images")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return deleteImages(ec2Clients, images.Get(types.AWS))
+	return deleteImages(p.GetCloudType(), ec2Clients, images.Get(p.GetCloudType()))
 }
 
 func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 	log.Debug("[AWS] Stopping instances")
 	regionInstances := map[string][]*types.Instance{}
-	for _, instance := range instances.Get(types.AWS) {
+	for _, instance := range instances.Get(p.GetCloudType()) {
 		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance)
 	}
 	log.Debugf("[AWS] Stopping instances: %v", regionInstances)
@@ -415,7 +415,7 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
 	log.Debug("[AWS] Stopping databases")
 	regionDatabases := map[string][]*types.Database{}
-	for _, database := range databases.Get(types.AWS) {
+	for _, database := range databases.Get(p.GetCloudType()) {
 		regionDatabases[database.Region] = append(regionDatabases[database.Region], database)
 	}
 	log.Debugf("[AWS] Stopping databases: %v", regionDatabases)
@@ -802,10 +802,10 @@ func deleteLoadBalancer(elbClient elbClient, stackName string, elbArn string, re
 	return err
 }
 
-func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []error {
+func deleteVolumes(cloudType types.CloudType, ec2Clients map[string]ec2Client, volumes []*types.Disk) []error {
 	regionVolumes := map[string][]*types.Disk{}
 	for _, vol := range volumes {
-		if vol.CloudType == types.AWS {
+		if vol.CloudType == cloudType {
 			regionVolumes[vol.Region] = append(regionVolumes[vol.Region], vol)
 		}
 	}
@@ -828,7 +828,7 @@ func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []err
 					if vol.State == types.InUse {
 						log.Infof("[AWS] Volume %s:%s is in-use, trying to detach", vol.Name, vol.ID)
 						if _, detachError = ec2Client.DetachVolume(&ec2.DetachVolumeInput{VolumeId: &vol.ID}); detachError == nil {
-							detachError = waitForVolumeUnusedState(ec2Client, vol)
+							detachError = waitForVolumeUnusedState(cloudType, ec2Client, vol)
 						}
 					}
 
@@ -857,14 +857,14 @@ func deleteVolumes(ec2Clients map[string]ec2Client, volumes []*types.Disk) []err
 	return errs
 }
 
-func waitForVolumeUnusedState(ec2Client ec2Client, vol *types.Disk) error {
+func waitForVolumeUnusedState(cloudType types.CloudType, ec2Client ec2Client, vol *types.Disk) error {
 	log.Infof("[AWS] Waiting for Volume %s:%s 'available' state...", vol.Name, vol.ID)
 	//Polling state max 10 times with 1 sec interval
 	var counter int = 0
-	d, e := getDisk(ec2Client, vol.ID)
+	d, e := getDisk(cloudType, ec2Client, vol.ID)
 	for e == nil && d.State != types.Unused && counter < 10 {
 		time.Sleep(1 * time.Second)
-		d, e = getDisk(ec2Client, vol.ID)
+		d, e = getDisk(cloudType, ec2Client, vol.ID)
 		counter++
 	}
 	if e != nil {
@@ -877,10 +877,10 @@ func waitForVolumeUnusedState(ec2Client ec2Client, vol *types.Disk) error {
 	return nil
 }
 
-func deleteImages(ec2Clients map[string]ec2Client, images []*types.Image) []error {
+func deleteImages(cloudType types.CloudType, ec2Clients map[string]ec2Client, images []*types.Image) []error {
 	regionImages := map[string][]*types.Image{}
 	for _, image := range images {
-		if image.CloudType == types.AWS {
+		if image.CloudType == cloudType {
 			regionImages[image.Region] = append(regionImages[image.Region], image)
 		}
 	}
@@ -927,20 +927,20 @@ func deleteImages(ec2Clients map[string]ec2Client, images []*types.Image) []erro
 
 func (p awsProvider) GetAccesses() ([]*types.Access, error) {
 	log.Debug("[AWS] Fetching users")
-	return getAccesses(p.iamClient)
+	return getAccesses(p.GetCloudType(), p.iamClient)
 }
 
 func (p awsProvider) GetAlerts() ([]*types.Alert, error) {
 	log.Debug("[AWS] Fetch alerts")
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return getAlerts(cloudWatchClients, ec2Clients)
+	return getAlerts(p.GetCloudType(), cloudWatchClients, ec2Clients)
 }
 
 func (p awsProvider) DeleteAlerts(alertContainer *types.AlertContainer) []error {
 	log.Debug("[AWS] Delete alerts")
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
-	return deleteAlerts(cloudWatchClients, alertContainer.Get(types.AWS))
+	return deleteAlerts(cloudWatchClients, alertContainer.Get(p.GetCloudType()))
 }
 
 func (p awsProvider) GetStorages() ([]*types.Storage, error) {
@@ -949,6 +949,14 @@ func (p awsProvider) GetStorages() ([]*types.Storage, error) {
 
 func (p awsProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
 	return []error{errors.New("[AWS] Cleanup storages is not supported yet")}
+}
+
+func (p awsProvider) GetCloudType() types.CloudType {
+	if p.govCloud {
+		return types.AWS_GOV
+	} else {
+		return types.AWS
+	}
 }
 
 type ec2Client interface {
@@ -1006,7 +1014,7 @@ type cloudWatchClient interface {
 	DeleteAlarms(input *cloudwatch.DeleteAlarmsInput) (*cloudwatch.DeleteAlarmsOutput, error)
 }
 
-func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
+func getInstances(cloudType types.CloudType, ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
 	instChan := make(chan *types.Instance, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
@@ -1026,7 +1034,7 @@ func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]
 				log.Debugf("[AWS] Processing instances (%d): [%s] in region: %s", len(instanceResult.Reservations), instanceResult.Reservations, region)
 				for _, res := range instanceResult.Reservations {
 					for _, inst := range res.Instances {
-						i := newInstance(inst)
+						i := newInstance(cloudType, inst)
 						if len(i.Owner) == 0 && i.State == types.Running {
 							log.Debugf("[AWS] instance %s does not have an %s tag, check CloudTrail logs", i.Name, ctx.OwnerLabel)
 							if iamUser := getIAMUserFromCloudTrail(*inst.InstanceId, cloudTrailClient); iamUser != nil {
@@ -1058,7 +1066,7 @@ func getInstances(ec2Clients map[string]ec2Client, cloudTrailClients map[string]
 	return instances, nil
 }
 
-func getCFStacks(cfClients map[string]cfClient) ([]*types.Stack, error) {
+func getCFStacks(cloudType types.CloudType, cfClients map[string]cfClient) ([]*types.Stack, error) {
 	cfChan := make(chan *types.Stack, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(cfClients))
@@ -1081,7 +1089,7 @@ func getCFStacks(cfClients map[string]cfClient) ([]*types.Stack, error) {
 				}
 				log.Debugf("[AWS] Processing stacks (%d) in region: %s: [%s]", len(stackResult.Stacks), region, stackResult.Stacks)
 				for _, s := range stackResult.Stacks {
-					stack := newStack(s, region)
+					stack := newStack(cloudType, s, region)
 					cfChan <- stack
 				}
 				if stackResult.NextToken != nil {
@@ -1123,7 +1131,7 @@ type AwsNativeStack struct {
 	Tags           types.Tags
 }
 
-func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, cfStacks []*types.Stack) ([]*types.Stack, error) {
+func getNativeStacks(cloudType types.CloudType, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, cfStacks []*types.Stack) ([]*types.Stack, error) {
 	stackChan := make(chan AwsNativeStack, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
@@ -1247,7 +1255,7 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 
 			nativeStacks := map[string]*AwsNativeStack{}
 			for _, awsInstance := range awsInstances {
-				instance := newInstance(awsInstance)
+				instance := newInstance(cloudType, awsInstance)
 				if _, ok := instance.Tags[CF_TAG]; ok {
 					log.Debugf("[AWS] Skipping instance %s in region %s for native stack assembly, as it has a CF tag", instance.ID, region)
 					continue
@@ -1382,7 +1390,7 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 			ID:        awsStack.ID,
 			Name:      awsStack.ID,
 			Created:   awsStack.Created,
-			CloudType: types.AWS,
+			CloudType: cloudType,
 			Tags:      awsStack.Tags,
 			Owner:     awsStack.Owner,
 			Region:    awsStack.Region,
@@ -1401,7 +1409,7 @@ func getNativeStacks(ec2Clients map[string]ec2Client, elbClients map[string]elbC
 	return stacks, nil
 }
 
-func getImages(ec2Clients map[string]ec2Client) ([]*types.Image, error) {
+func getImages(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*types.Image, error) {
 	imgChan := make(chan *types.Image)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
@@ -1418,7 +1426,7 @@ func getImages(ec2Clients map[string]ec2Client) ([]*types.Image, error) {
 			}
 			log.Debugf("[AWS] Processing images (%d): [%s] in region: %s", len(result.Images), result.Images, region)
 			for _, img := range result.Images {
-				imgChan <- newImage(img, region)
+				imgChan <- newImage(cloudType, img, region)
 			}
 
 		}(r, c)
@@ -1437,7 +1445,7 @@ func getImages(ec2Clients map[string]ec2Client) ([]*types.Image, error) {
 	return images, nil
 }
 
-func getDisk(ec2Client ec2Client, volumeId string) (*types.Disk, error) {
+func getDisk(cloudType types.CloudType, ec2Client ec2Client, volumeId string) (*types.Disk, error) {
 	result, err := ec2Client.DescribeVolumes(&ec2.DescribeVolumesInput{VolumeIds: []*string{&volumeId}})
 	if err != nil {
 		log.Errorf("[AWS] Failed to fetch the volume, err: %s", err)
@@ -1448,11 +1456,11 @@ func getDisk(ec2Client ec2Client, volumeId string) (*types.Disk, error) {
 	if len(result.Volumes) == 0 {
 		return nil, errors.New(fmt.Sprintf("Volume not found with id '%s'", volumeId))
 	}
-	return newDisk(result.Volumes[0]), nil
+	return newDisk(cloudType, result.Volumes[0]), nil
 
 }
 
-func getDisks(ec2Clients map[string]ec2Client) ([]*types.Disk, error) {
+func getDisks(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*types.Disk, error) {
 	diskChan := make(chan *types.Disk)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
@@ -1469,7 +1477,7 @@ func getDisks(ec2Clients map[string]ec2Client) ([]*types.Disk, error) {
 			}
 			log.Debugf("[AWS] Processing volumes (%d): [%s] in region: %s", len(result.Volumes), result.Volumes, region)
 			for _, vol := range result.Volumes {
-				diskChan <- newDisk(vol)
+				diskChan <- newDisk(cloudType, vol)
 			}
 
 		}(r, c)
@@ -1518,7 +1526,7 @@ func getIAMUserFromCloudTrail(resourceID string, cloudTrailClient cloudTrailClie
 	return nil
 }
 
-func getAccesses(iamClient iamClient) ([]*types.Access, error) {
+func getAccesses(cloudType types.CloudType, iamClient iamClient) ([]*types.Access, error) {
 	users, err := iamClient.ListUsers(&iam.ListUsersInput{MaxItems: &(&types.I64{I: 1000}).I})
 	if err != nil {
 		return nil, err
@@ -1544,7 +1552,7 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 				continue
 			}
 			accesses = append(accesses, &types.Access{
-				CloudType: types.AWS,
+				CloudType: cloudType,
 				Name:      name,
 				Owner:     *akm.UserName,
 				Created:   getCreated(akm.CreateDate),
@@ -1555,7 +1563,7 @@ func getAccesses(iamClient iamClient) ([]*types.Access, error) {
 	return accesses, nil
 }
 
-func getAlerts(cloudWatchClients map[string]cloudWatchClient, ec2Clients map[string]ec2Client) ([]*types.Alert, error) {
+func getAlerts(cloudType types.CloudType, cloudWatchClients map[string]cloudWatchClient, ec2Clients map[string]ec2Client) ([]*types.Alert, error) {
 	alertChan := make(chan *types.Alert)
 	wg := sync.WaitGroup{}
 	wg.Add(len(cloudWatchClients))
@@ -1577,7 +1585,7 @@ func getAlerts(cloudWatchClients map[string]cloudWatchClient, ec2Clients map[str
 						ID:        *a.AlarmArn,
 						Name:      *a.AlarmName,
 						Created:   *a.AlarmConfigurationUpdatedTimestamp,
-						CloudType: types.AWS,
+						CloudType: cloudType,
 						Owner:     "",
 						Region:    region,
 						State:     getAlarmState(*a),
@@ -1687,7 +1695,7 @@ func deleteAlerts(cloudWatchClients map[string]cloudWatchClient, alerts []*types
 	return errors
 }
 
-func getDatabases(rdsClients map[string]rdsClient, cloudTrailClients map[string]cloudTrailClient) ([]*types.Database, error) {
+func getDatabases(cloudType types.CloudType, rdsClients map[string]rdsClient, cloudTrailClients map[string]cloudTrailClient) ([]*types.Database, error) {
 	dbChan := make(chan *types.Database)
 	wg := sync.WaitGroup{}
 	wg.Add(len(rdsClients))
@@ -1711,7 +1719,7 @@ func getDatabases(rdsClients map[string]rdsClient, cloudTrailClients map[string]
 				if err != nil {
 					log.Debugf("[AWS] Cannot list tags for DB: %s", *db.DBName)
 				}
-				d := newDatabase(*db, tags)
+				d := newDatabase(cloudType, *db, tags)
 				if d.State == types.Running && len(d.Owner) == 0 {
 					log.Debugf("[AWS] Check CloudTrail for database: %s", d.Name)
 					if iamUser := getIAMUserFromCloudTrail(d.Name, cloudTrailClient); iamUser != nil {
@@ -1884,7 +1892,7 @@ func newSession(configure func(*aws.Config)) (*session.Session, error) {
 	return session.NewSession(&config)
 }
 
-func newInstance(inst *ec2.Instance) *types.Instance {
+func newInstance(cloudType types.CloudType, inst *ec2.Instance) *types.Instance {
 	tags := getEc2Tags(inst.Tags)
 	var name string
 	if n, ok := tags["Name"]; ok {
@@ -1900,7 +1908,7 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 		ID:           *inst.InstanceId,
 		Name:         name,
 		Created:      getCreated(inst.LaunchTime),
-		CloudType:    types.AWS,
+		CloudType:    cloudType,
 		Tags:         tags,
 		Owner:        tags[ctx.OwnerLabel],
 		Region:       getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
@@ -1910,13 +1918,13 @@ func newInstance(inst *ec2.Instance) *types.Instance {
 	}
 }
 
-func newStack(stack *cloudformation.Stack, region string) *types.Stack {
+func newStack(cloudType types.CloudType, stack *cloudformation.Stack, region string) *types.Stack {
 	tags := getCFTags(stack.Tags)
 	return &types.Stack{
 		ID:        *stack.StackId,
 		Name:      *stack.StackName,
 		Created:   getCreated(stack.CreationTime),
-		CloudType: types.AWS,
+		CloudType: cloudType,
 		Tags:      tags,
 		Owner:     tags[ctx.OwnerLabel],
 		Region:    region,
@@ -1965,7 +1973,7 @@ func getCFState(stack *cloudformation.Stack) types.State {
 	return types.Running
 }
 
-func newDisk(volume *ec2.Volume) *types.Disk {
+func newDisk(cloudType types.CloudType, volume *ec2.Volume) *types.Disk {
 	tags := getEc2Tags(volume.Tags)
 	var name string
 	if n, ok := tags["Name"]; ok {
@@ -1977,7 +1985,7 @@ func newDisk(volume *ec2.Volume) *types.Disk {
 		ID:        *volume.VolumeId,
 		Name:      name,
 		State:     getVolumeState(volume),
-		CloudType: types.AWS,
+		CloudType: cloudType,
 		Region:    getRegionFromAvailabilityZone(volume.AvailabilityZone),
 		Created:   getCreated(volume.CreateTime),
 		Size:      *volume.Size,
@@ -1987,7 +1995,7 @@ func newDisk(volume *ec2.Volume) *types.Disk {
 	}
 }
 
-func newImage(image *ec2.Image, region string) *types.Image {
+func newImage(cloudType types.CloudType, image *ec2.Image, region string) *types.Image {
 	createdAt, err := utils.ConvertTimeLayout("2006-01-02T15:04:05.000Z", *image.CreationDate)
 	if err != nil {
 		log.Debugf("Failed to parse time: %s for image: %s", *image.CreationDate, *image.ImageId)
@@ -1997,14 +2005,14 @@ func newImage(image *ec2.Image, region string) *types.Image {
 	return &types.Image{
 		ID:        *image.ImageId,
 		Name:      *image.Name,
-		CloudType: types.AWS,
+		CloudType: cloudType,
 		Region:    region,
 		Created:   createdAt,
 		Tags:      getEc2Tags(image.Tags),
 	}
 }
 
-func newDatabase(rds rds.DBInstance, tagList *rds.ListTagsForResourceOutput) *types.Database {
+func newDatabase(cloudType types.CloudType, rds rds.DBInstance, tagList *rds.ListTagsForResourceOutput) *types.Database {
 	tags := getRdsTags(tagList)
 	return &types.Database{
 		ID:           *rds.DbiResourceId,
@@ -2015,7 +2023,7 @@ func newDatabase(rds rds.DBInstance, tagList *rds.ListTagsForResourceOutput) *ty
 		State:        getDatabaseState(rds),
 		Owner:        tags[ctx.OwnerLabel],
 		Tags:         tags,
-		CloudType:    types.AWS,
+		CloudType:    cloudType,
 	}
 }
 
