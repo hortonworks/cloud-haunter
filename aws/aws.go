@@ -276,13 +276,13 @@ func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
 	elbClients := p.getElbClientsByRegion()
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
-	return deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, cloudWatchClients, stacks.Get(types.AWS))
+	return deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, cloudWatchClients, stacks.Get(p.GetCloudType()))
 }
 
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
 	log.Debug("[AWS] Delete volumes")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return deleteVolumes(p.GetCloudType(), ec2Clients, volumes.Get(types.AWS))
+	return deleteVolumes(p.GetCloudType(), ec2Clients, volumes.Get(p.GetCloudType()))
 }
 
 func (p awsProvider) GetImages() ([]*types.Image, error) {
