@@ -36,6 +36,7 @@ const (
 	TYPE_NATIVE = "Native"
 	TYPE_CF     = "CloudFormation"
 	CF_TAG      = "aws:cloudformation:stack-id"
+	MAX_RETRIES = 5
 
 	METADATA_TYPE            = "type"
 	METADATA_LOAD_BALANCERS  = "loadBalancers"
@@ -1885,7 +1886,11 @@ func newSession(configure func(*aws.Config)) (*session.Session, error) {
 		Transport: NewThrottledTransport(rateLimiter, &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		})}
-	config := aws.Config{HTTPClient: httpClient}
+	maxRetries := MAX_RETRIES
+	config := aws.Config{
+		HTTPClient: httpClient,
+		MaxRetries: &maxRetries,
+	}
 	if configure != nil {
 		configure(&config)
 	}
