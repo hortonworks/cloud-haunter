@@ -84,7 +84,7 @@ mod-tidy:
 	@docker run --rm ${USER_NS} -v "${PWD}":/go/src/$(PKG_BASE) -w /go/src/$(PKG_BASE) -e GO111MODULE=on golang:$(GO_VERSION) make _mod-tidy
 
 _mod-tidy:
-	go mod tidy -v
+	go mod tidy -compat=$(GO_VERSION) -v
 	go mod vendor
 
 release: cleanup build

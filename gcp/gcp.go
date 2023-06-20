@@ -717,7 +717,7 @@ func (p gcpProvider) StopInstances(instances *types.InstanceContainer) []error {
 				zone := instance.Metadata["zone"]
 				log.Infof("[GCP] Sending request to stop instance in zone %s : %s", zone, instance.Name)
 
-				if _, err := p.computeClient.Instances.Stop(p.projectID, zone, instance.Name).Do(); err != nil {
+				if _, err := p.computeClient.Instances.Stop(p.projectID, zone, instance.Name).DiscardLocalSsd(true).Do(); err != nil {
 					errChan <- err
 				}
 			}
@@ -1068,7 +1068,7 @@ func (p gcpProvider) getDatabases(aggregator *sqladmin.InstancesListCall) ([]*ty
 	for _, databaseInstance := range gDatabaseList.Items {
 		instanceName := databaseInstance.Name
 
-		listOperationCall := p.sqlClient.Operations.List(p.projectID, instanceName)
+		listOperationCall := p.sqlClient.Operations.List(p.projectID).Instance(instanceName)
 		creationTimeStamp, err := getDatabaseInstanceCreationTimeStamp(listOperationCall, instanceName)
 		if err != nil {
 			log.Errorf("[GCP] Failed to get the creation timestamp of the DB: %s, err: %s", instanceName, err.Error())
