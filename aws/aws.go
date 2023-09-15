@@ -568,9 +568,14 @@ func deleteNativeStack(ec2Client ec2Client, elbClient elbClient, cloudWatchClien
 		go func(loadBalancerArn string) {
 			defer wg.Done()
 
-			err := deleteLoadBalancer(elbClient, stack.ID, loadBalancerArn, region)
+			elbExists, err := disableElbDeleteProtection(elbClient, stack.ID, loadBalancerArn, region)
 			if err != nil {
 				errChan <- err
+			} else if elbExists {
+				err := deleteLoadBalancer(elbClient, stack.ID, loadBalancerArn, region)
+				if err != nil {
+					errChan <- err
+				}
 			}
 		}(lb)
 	}
@@ -643,7 +648,7 @@ func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, 
 		case "AWS::RDS::DBInstance":
 			if *stackResource.ResourceStatus != cloudformation.ResourceStatusDeleteComplete {
 				var dbExists bool
-				dbExists, resourceErr = disableDeleteProtection(rdsClient, stack.Name, *stackResource.PhysicalResourceId, region)
+				dbExists, resourceErr = disableDbDeleteProtection(rdsClient, stack.Name, *stackResource.PhysicalResourceId, region)
 				if !dbExists {
 					retainResources = append(retainResources, stackResource.LogicalResourceId)
 				}
@@ -651,7 +656,15 @@ func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, 
 		case "AWS::EC2::VPC":
 			resourceErr = deleteVpcWithDependencies(ec2Client, stack.Name, *stackResource.PhysicalResourceId, region)
 		case "AWS::ElasticLoadBalancingV2::LoadBalancer":
-			resourceErr = deleteLoadBalancer(elbClient, stack.Name, *stackResource.PhysicalResourceId, region)
+			if *stackResource.ResourceStatus != cloudformation.ResourceStatusDeleteComplete {
+				var elbExists bool
+				elbExists, resourceErr = disableElbDeleteProtection(elbClient, stack.Name, *stackResource.PhysicalResourceId, region)
+				if !elbExists {
+					retainResources = append(retainResources, stackResource.LogicalResourceId)
+				} else if resourceErr == nil {
+					resourceErr = deleteLoadBalancer(elbClient, stack.Name, *stackResource.PhysicalResourceId, region)
+				}
+			}
 		}
 
 		if resourceErr != nil {
@@ -685,22 +698,20 @@ func deleteCfStack(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, 
 	return nil
 }
 
-func disableDeleteProtection(rdsClient rdsClient, stackName string, dbInstanceId string, region string) (bool, error) {
+func disableDbDeleteProtection(rdsClient rdsClient, stackName string, dbInstanceId string, region string) (dbExists bool, err error) {
 	log.Infof("[AWS] Disabling DeletionProtection for DB instance: %s in stack: %s, region: %s", dbInstanceId, stackName, region)
-	dbExists := true
 
-	_, err := rdsClient.ModifyDBInstance(&rds.ModifyDBInstanceInput{
+	_, err = rdsClient.ModifyDBInstance(&rds.ModifyDBInstanceInput{
 		DBInstanceIdentifier: &dbInstanceId,
 		DeletionProtection:   aws.Bool(false),
 	})
 	if err != nil {
-		dbExists = false
-		if strings.Contains(err.Error(), "DB instance not found") {
-			return dbExists, nil
-		}
 		log.Errorf("[AWS] Failed to disable DeletionProtection on db instance: %s in stack: %s, err: %s", dbInstanceId, stackName, err)
+		if strings.Contains(err.Error(), "DB instance not found") {
+			return false, nil
+		}
 	}
-	return dbExists, err
+	return true, err
 }
 
 /**
@@ -789,6 +800,25 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 	}
 
 	return nil
+}
+
+func disableElbDeleteProtection(elbClient elbClient, stackName string, elbArn string, region string) (elbExists bool, err error) {
+	log.Infof("[AWS] Disabling DeletionProtection for ELB: %s in stack: %s, region: %s", elbArn, stackName, region)
+
+	deletionProtection := &elb.LoadBalancerAttribute{}
+	deletionProtection.SetKey("deletion_protection.enabled")
+	deletionProtection.SetValue("false")
+	_, err = elbClient.ModifyLoadBalancerAttributes(&elb.ModifyLoadBalancerAttributesInput{
+		LoadBalancerArn: aws.String(elbArn),
+		Attributes:      []*elb.LoadBalancerAttribute{deletionProtection},
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to disable DeletionProtection on ELB: %s in stack: %s, err: %s", elbArn, stackName, err)
+		if strings.Contains(err.Error(), "ELB not found") {
+			return false, nil
+		}
+	}
+	return true, err
 }
 
 func deleteLoadBalancer(elbClient elbClient, stackName string, elbArn string, region string) error {
@@ -1008,6 +1038,7 @@ type elbClient interface {
 	DescribeLoadBalancers(input *elb.DescribeLoadBalancersInput) (*elb.DescribeLoadBalancersOutput, error)
 	DescribeTags(input *elb.DescribeTagsInput) (*elb.DescribeTagsOutput, error)
 	DeleteLoadBalancer(input *elb.DeleteLoadBalancerInput) (*elb.DeleteLoadBalancerOutput, error)
+	ModifyLoadBalancerAttributes(input *elb.ModifyLoadBalancerAttributesInput) (*elb.ModifyLoadBalancerAttributesOutput, error)
 }
 
 type cloudWatchClient interface {
