@@ -206,6 +206,7 @@ func TestRemoveCfStack(t *testing.T) {
 	assert.Equal(t, "DescribeSecurityGroups", <-operationChannel)
 	assert.Equal(t, "DeleteSecurityGroup:custom-group-id", <-operationChannel)
 	assert.Equal(t, "DeleteVpc", <-operationChannel)
+	assert.Equal(t, "ModifyLoadBalancerAttributes:elb-arn", <-operationChannel)
 	assert.Equal(t, "DeleteLoadBalancer:elb-arn", <-operationChannel)
 	assert.Equal(t, "DeleteStack", <-operationChannel)
 	assert.Equal(t, "WaitUntilStackDeleteComplete", <-operationChannel)
@@ -260,10 +261,12 @@ func TestRemoveNativeStack(t *testing.T) {
 		asyncOperations = append(asyncOperations, op)
 	}
 
-	assert.Equal(t, 6, len(asyncOperations))
+	assert.Equal(t, 8, len(asyncOperations))
 	assert.Contains(t, asyncOperations, "DeleteVolume:vol")
 	assert.Contains(t, asyncOperations, "DeleteSecurityGroup:sg")
+	assert.Contains(t, asyncOperations, "ModifyLoadBalancerAttributes:lb-1")
 	assert.Contains(t, asyncOperations, "DeleteLoadBalancer:lb-1")
+	assert.Contains(t, asyncOperations, "ModifyLoadBalancerAttributes:lb-2")
 	assert.Contains(t, asyncOperations, "DeleteLoadBalancer:lb-2")
 	assert.Contains(t, asyncOperations, "ReleaseAddress:ip")
 	assert.Contains(t, asyncOperations, "DeleteAlarms:alarm")
@@ -637,6 +640,11 @@ func (t mockElbClient) DescribeTags(input *elb.DescribeTagsInput) (*elb.Describe
 
 func (t mockElbClient) DeleteLoadBalancer(input *elb.DeleteLoadBalancerInput) (*elb.DeleteLoadBalancerOutput, error) {
 	t.operationChannel <- "DeleteLoadBalancer:" + *input.LoadBalancerArn
+	return nil, nil
+}
+
+func (t mockElbClient) ModifyLoadBalancerAttributes(input *elb.ModifyLoadBalancerAttributesInput) (*elb.ModifyLoadBalancerAttributesOutput, error) {
+	t.operationChannel <- "ModifyLoadBalancerAttributes:" + *input.LoadBalancerArn
 	return nil, nil
 }
 
