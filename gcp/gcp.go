@@ -952,6 +952,7 @@ func newInstance(inst *compute.Instance) *types.Instance {
 		Region:       getRegionFromZoneURL(&inst.Zone),
 		InstanceType: inst.MachineType[strings.LastIndex(inst.MachineType, "/")+1:],
 		State:        getInstanceState(inst),
+		IpAddress:    inst.NetworkInterfaces[0].NetworkIP,
 	}
 }
 

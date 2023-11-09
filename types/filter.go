@@ -33,6 +33,9 @@ const (
 
 	// ExclusiveFilter filter type that will filter the matching entries from the filter's exclusive configuration
 	ExclusiveFilter = FilterConfigType("exclusive")
+
+	// HttpUrlFilter filters the items based on the response of an HTTP endpoint
+	HttpUrlFilter = FilterType("httpurl")
 )
 
 // FilterConfigType inclusive or exclusive filter type
