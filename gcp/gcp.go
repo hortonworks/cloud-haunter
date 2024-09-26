@@ -971,14 +971,15 @@ func newInstance(inst *compute.Instance) *types.Instance {
 // }
 
 // Possible values:
-//   "PROVISIONING"
-//   "RUNNING"
-//   "STAGING"
-//   "STOPPED"
-//   "STOPPING"
-//   "SUSPENDED"
-//   "SUSPENDING"
-//   "TERMINATED"
+//
+//	"PROVISIONING"
+//	"RUNNING"
+//	"STAGING"
+//	"STOPPED"
+//	"STOPPING"
+//	"SUSPENDED"
+//	"SUSPENDING"
+//	"TERMINATED"
 func getInstanceState(instance *compute.Instance) types.State {
 	switch instance.Status {
 	case "PROVISIONING", "RUNNING", "STAGING":
@@ -1126,12 +1127,12 @@ func getDatabaseInstanceCreationTimeStamp(opService *sqladmin.OperationsListCall
 	return time.Time{}, errors.New(fmt.Sprintf("[GCP] Failed to get the CREATE operation of the DB instance: %s", dbName))
 }
 
-//Possible values:
-//CREATING: Disk is provisioning.
-//RESTORING: Source data is being copied into the disk.
-//FAILED: Disk creation failed.
-//READY: Disk is ready for use.
-//DELETING: Disk is deleting.
+// Possible values:
+// CREATING: Disk is provisioning.
+// RESTORING: Source data is being copied into the disk.
+// FAILED: Disk creation failed.
+// READY: Disk is ready for use.
+// DELETING: Disk is deleting.
 func getDiskStatus(gDisk *compute.Disk) types.State {
 	switch gDisk.Status {
 	case "CREATING", "RESTORING", "STAGING", "READY", "FAILED":
@@ -1147,13 +1148,13 @@ func getDiskStatus(gDisk *compute.Disk) types.State {
 	}
 }
 
-//SQL_INSTANCE_STATE_UNSPECIFIED	The state of the instance is unknown.
-//RUNNABLE	The instance is running.
-//SUSPENDED	The instance is currently offline, but it may run again in the future.
-//PENDING_DELETE	The instance is being deleted.
-//PENDING_CREATE	The instance is being created.
-//MAINTENANCE	The instance is down for maintenance.
-//FAILED	The instance failed to be created.
+// SQL_INSTANCE_STATE_UNSPECIFIED	The state of the instance is unknown.
+// RUNNABLE	The instance is running.
+// SUSPENDED	The instance is currently offline, but it may run again in the future.
+// PENDING_DELETE	The instance is being deleted.
+// PENDING_CREATE	The instance is being created.
+// MAINTENANCE	The instance is down for maintenance.
+// FAILED	The instance failed to be created.
 func getDatabaseInstanceStatus(instance *sqladmin.DatabaseInstance) types.State {
 	switch instance.State {
 	case "RUNNABLE":

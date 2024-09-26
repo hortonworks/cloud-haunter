@@ -266,8 +266,62 @@ func (p awsProvider) getCloudWatchClientsByRegion() map[string]cloudWatchClient 
 	return cwClients
 }
 
-func (p awsProvider) TerminateInstances(*types.InstanceContainer) []error {
-	return []error{errors.New("[AWS] Termination is not supported")}
+func (p awsProvider) TerminateInstances(instances *types.InstanceContainer) []error {
+	log.Debug("[AWS] Terminating instances")
+	regionInstances := map[string][]string{}
+	for _, instance := range instances.Get(p.GetCloudType()) {
+		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance.ID)
+	}
+	log.Debugf("[AWS] Terminating instances: %v", regionInstances)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(regionInstances))
+	errChan := make(chan error)
+
+	for r, i := range regionInstances {
+		go func(region string, instanceIds []string) {
+			defer wg.Done()
+
+			ec2Client := p.ec2Clients[region]
+
+			for i := 0; i < len(instanceIds); i += ctx.AwsBulkOperationSize {
+				log.Infof("[AWS] Round %d for terminate operation in region %s", (i/ctx.AwsBulkOperationSize)+1, region)
+				arrayEnd := i + ctx.AwsBulkOperationSize
+				if ctx.AwsBulkOperationSize > len(instanceIds[i:]) {
+					arrayEnd = i + len(instanceIds[i:])
+				}
+
+				instanceIdsChunk := instanceIds[i:arrayEnd]
+
+				_, err := ec2Client.TerminateInstances(&ec2.TerminateInstancesInput{
+					InstanceIds: aws.StringSlice(instanceIdsChunk),
+				})
+				if err != nil {
+					log.Errorf("[AWS] Failed to terminate instances: %v, err: %s", instanceIdsChunk, err)
+					errChan <- err
+				}
+
+				err = ec2Client.WaitUntilInstanceTerminated(&ec2.DescribeInstancesInput{
+					InstanceIds: aws.StringSlice(instanceIdsChunk),
+				})
+				if err != nil {
+					log.Errorf("[AWS] Failed to wait for terminated instances: %v, err: %s", instanceIdsChunk, err)
+					errChan <- err
+				}
+			}
+		}(r, i)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
@@ -1971,17 +2025,18 @@ func newStack(cloudType types.CloudType, stack *cloudformation.Stack, region str
 
 // The low byte represents the state. The high byte is an opaque internal value
 // and should be ignored.
-//    * 0 : pending
 //
-//    * 16 : running
+//   - 0 : pending
 //
-//    * 32 : shutting-down
+//   - 16 : running
 //
-//    * 48 : terminated
+//   - 32 : shutting-down
 //
-//    * 64 : stopping
+//   - 48 : terminated
 //
-//    * 80 : stopped
+//   - 64 : stopping
+//
+//   - 80 : stopped
 func getInstanceState(instance *ec2.Instance) types.State {
 	if instance.State == nil {
 		return types.Unknown

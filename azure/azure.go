@@ -692,13 +692,15 @@ func getScaleSetInstanceState(view compute.VirtualMachineScaleSetVMInstanceView)
 }
 
 // Possible values:
-//   "PowerState/deallocated"
-//   "PowerState/deallocating"
-//   "PowerState/running"
-//   "PowerState/starting"
-//   "PowerState/stopped"
-//   "PowerState/stopping"
-//   "PowerState/unknown"
+//
+//	"PowerState/deallocated"
+//	"PowerState/deallocating"
+//	"PowerState/running"
+//	"PowerState/starting"
+//	"PowerState/stopped"
+//	"PowerState/stopping"
+//	"PowerState/unknown"
+//
 // The assumption is that the status without time is the currently active status
 func convertViewStatusToState(actualStatus compute.InstanceViewStatus) types.State {
 	switch *actualStatus.Code {
