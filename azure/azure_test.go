@@ -2,13 +2,15 @@ package azure
 
 import (
 	"context"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"testing"
 	"time"
 
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/hortonworks/cloud-haunter/types"
 
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,11 +25,14 @@ func TestProviderInit(t *testing.T) {
 		return autorest.NullAuthorizer{}, nil
 	}
 
-	provider.init("AZURE_SUBSCRIPTION_ID", authorizer)
+	credentialProvider := func(*azidentity.EnvironmentCredentialOptions) (*azidentity.EnvironmentCredential, error) {
+		return &azidentity.EnvironmentCredential{}, nil
+	}
+
+	provider.init("AZURE_SUBSCRIPTION_ID", credentialProvider, authorizer)
 
 	assert.Equal(t, "AZURE_SUBSCRIPTION_ID", provider.subscriptionID)
 	assert.NotNil(t, provider.vmClient)
-	assert.NotNil(t, provider.vmClient.Authorizer)
 }
 
 func Test_givenTimestampIsInTags_whenGetCreationTimeFromTags_thenReturnsConvertedTimestamp(t *testing.T) {
@@ -104,17 +109,17 @@ func TestGetImageResourceGroupAndName(t *testing.T) {
 var deleteRgChan = make(chan string)
 var deleteNameChan = make(chan string)
 
-func (ic imagesClient) Delete(ctx context.Context, resourceGroupName string, imageName string) (f compute.ImagesDeleteFuture, e error) {
+func (ic imagesClient) BeginDelete(ctx context.Context, resourceGroupName string, imageName string, options *armcompute.ImagesClientBeginDeleteOptions) (*runtime.Poller[armcompute.ImagesClientDeleteResponse], error) {
 	deleteRgChan <- resourceGroupName
 	deleteNameChan <- imageName
-	return
+	return nil, nil
 }
 
 func TestDeleteImages(t *testing.T) {
 	imagesToDelete := []azureImage{
 		{&types.Image{CloudType: types.AZURE, ID: "https://hwxaustraliaeast.blob.core.windows.net/images/cb-hdp--1801311614.vhd", Region: "Australia East"}, "hwxaustraliaeast", "cb-hdp--1801311614.vhd"},
 	}
-	existingImages := []compute.Image{
+	existingImages := []armcompute.Image{
 		{
 			ID:       &(&types.S{S: "/subscriptions/<sub_id>/resourceGroups/hwxaustraliaeast/providers/Microsoft.Compute/Image/cb-hdp--1801311614.vhd"}).S,
 			Name:     &(&types.S{S: "different name"}).S,

@@ -74,3 +74,7 @@ func (i Instance) GetType() string {
 func (i Instance) GetTags() Tags {
 	return i.Tags
 }
+
+func (i Instance) String() string {
+	return i.Name
+}
