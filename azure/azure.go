@@ -8,7 +8,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
-	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2015-11-01/subscriptions"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-04-01/storage"
 
 	"net/url"
@@ -43,7 +43,7 @@ type azureProvider struct {
 	imageClient            *armcompute.ImagesClient
 	rgClient               *armresources.ResourceGroupsClient
 	dbClient               *armpostgresqlflexibleservers.ServersClient
-	subscriptionClient     subscriptions.Client
+	subscriptionClient     *armsubscription.SubscriptionsClient
 	storageAccountClient   storage.AccountsClient
 	storageContainerClient storage.BlobContainersClient
 	// resClient      resources.Client
@@ -74,8 +74,6 @@ func (p *azureProvider) init(subscriptionID string,
 	authorization, err := authorizer()
 
 	p.subscriptionID = subscriptionID
-	p.subscriptionClient = subscriptions.NewClient()
-	p.subscriptionClient.Authorizer = authorization
 	p.storageAccountClient = storage.NewAccountsClient(subscriptionID)
 	p.storageAccountClient.Authorizer = authorization
 	p.storageContainerClient = storage.NewBlobContainersClient(subscriptionID)
@@ -104,11 +102,14 @@ func (p *azureProvider) init(subscriptionID string,
 	if p.dbClient, err = armpostgresqlflexibleservers.NewServersClient(subscriptionID, credential, nil); err != nil {
 		return err
 	}
+	if p.subscriptionClient, err = armsubscription.NewSubscriptionsClient(credential, nil); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (p azureProvider) GetAccountName() string {
-	if result, err := p.subscriptionClient.Get(context.Background(), p.subscriptionID); err != nil {
+	if result, err := p.subscriptionClient.Get(context.Background(), p.subscriptionID, nil); err != nil {
 		log.Errorf("[AZURE] Failed to retrieve subscription info, err: %s", err.Error())
 	} else {
 		displayName := result.DisplayName
