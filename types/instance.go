@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"bytes"
+	"time"
+)
 
 type InstanceContainer struct {
 	instances []*Instance
@@ -14,6 +17,14 @@ func (c *InstanceContainer) Get(cloudType CloudType) []*Instance {
 		}
 	}
 	return items
+}
+
+func (c *InstanceContainer) String() string {
+	var result bytes.Buffer
+	for _, instance := range c.instances {
+		result.WriteString(instance.Name + " ")
+	}
+	return result.String()
 }
 
 func NewInstanceContainer(imstances []*Instance) *InstanceContainer {

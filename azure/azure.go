@@ -307,40 +307,49 @@ type azureImage struct {
 	name          string
 }
 
-func (p azureProvider) TerminateInstances(*types.InstanceContainer) []error {
-	return []error{errors.New("[AZURE] Termination is not supported")}
-	//rgClient = resources.NewGroupsClient(subscriptionId)
-	//	rgClient.Authorizer = authorization
-	//	resClient = resources.NewClient(subscriptionId)
-	//	resClient.Authorizer = authorization
-	//instances := make([]*types.Instance, 0)
-	//groups, err := rgClient.List(ctx.Background(), "", nil)
-	//if err != nil {
-	//	log.Errorf("[AZURE] Failed to fetch the existing resource groups, err: %s", err.Error())
-	//	return nil, err
-	//}
-	//typesToCollect =: map[string]bool{"Microsoft.Compute/virtualMachines": true}
-	//for _, g := range groups.Values() {
-	//	resources, err := resClient.ListByResourceGroup(ctx.Background(), *g.Name, "", "", nil)
-	//	if err != nil {
-	//		log.Warn("[AZURE] Failed to fetch the resources for %s, err: %s", *g.Name, err.Error())
-	//		continue
-	//	}
-	//	for _, r := range resources.Values() {
-	//		if _, ok := typesToCollect[*r.Type]; ok {
-	//			if _, ok := r.Tags["Owner"]; !ok {
-	//				instances = append(instances, &types.Instance{
-	//					Name:      *r.Name,
-	//					Id:        *r.ID,
-	//					CloudType: types.AZURE,
-	//					Tags:      utils.ConvertTags(r.Tags),
-	//				})
-	//			}
-	//		}
-	//	}
-	//}
-	//
-	//return instances, nil
+func (p azureProvider) TerminateInstances(instanceContainer *types.InstanceContainer) []error {
+	log.Debugf("[AZURE] Terminating instances")
+
+	instances := instanceContainer.Get(types.AZURE)
+	wg := sync.WaitGroup{}
+	wg.Add(len(instances))
+	errChan := make(chan error)
+	sem := make(chan bool, 5)
+
+	for _, instance := range instances {
+		go func(instance types.Instance) {
+			sem <- true
+			defer func() {
+				defer wg.Done()
+				<-sem
+			}()
+
+			if ctx.DryRun {
+				log.Infof("[AZURE] Dry-run set, instance is not terminated: %s", instance.Name)
+			} else {
+				log.Infof("[AZURE] Terminating instance %s", instance.Name)
+				_, err := p.vmClient.BeginDelete(context.Background(), instance.Metadata[ResourceGroupName], instance.Name, nil)
+				if err != nil {
+					log.Errorf("[AZURE] Failed to terminate instance %s, err: %s", instance.Name, err.Error())
+					errChan <- err
+				} else {
+					log.Debugf("[AZURE] Instance stopped: %s", instance.Name)
+				}
+			}
+
+		}(*instance)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var ers []error
+	for err := range errChan {
+		ers = append(ers, err)
+	}
+	return ers
 }
 
 func (p azureProvider) TerminateStacks(stacks *types.StackContainer) []error {
