@@ -64,7 +64,7 @@ test:
 
 _build: build-darwin build-linux
 
-build: _check test _build
+build: format _check test _build
 
 cleanup:
 	rm -rf release && mkdir release

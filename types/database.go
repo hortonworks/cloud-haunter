@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"bytes"
+	"time"
+)
 
 type DatabaseContainer struct {
 	databases []*Database
@@ -14,6 +17,14 @@ func (c *DatabaseContainer) Get(cloudType CloudType) []*Database {
 		}
 	}
 	return items
+}
+
+func (d *DatabaseContainer) String() string {
+	var result bytes.Buffer
+	for _, db := range d.databases {
+		result.WriteString(db.Name + " ")
+	}
+	return result.String()
 }
 
 func NewDatabaseContainer(databases []*Database) *DatabaseContainer {
@@ -66,4 +77,8 @@ func (d Database) GetType() string {
 
 func (d Database) GetTags() Tags {
 	return d.Tags
+}
+
+func (d Database) String() string {
+	return d.Name
 }
