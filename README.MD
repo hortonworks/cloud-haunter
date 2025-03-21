@@ -39,7 +39,7 @@ Cloud Haunter (ch) supports the three major cloud providers.
  * terminate stacks [AWS, AZURE, GCP]
  * terminate disks [AWS, GCP]
  * terminate images [AWS, AZURE, GCP]
- * cleanup storages [AZURE]
+ * cleanup storages [AWS, AZURE]
 
 ## Prerequisites
 ---
