@@ -791,6 +791,43 @@ func (p gcpProvider) GetDatabases() ([]*types.Database, error) {
 	return p.getDatabases(aggregator)
 }
 
+func (p gcpProvider) DeleteDatabases(databases *types.DatabaseContainer) []error {
+	gcpDatabases := databases.Get(types.GCP)
+	log.Debugf("[GCP] Deleting databases: %v", gcpDatabases)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(gcpDatabases))
+	errChan := make(chan error)
+
+	for _, database := range gcpDatabases {
+
+		go func(database *types.Database) {
+			defer wg.Done()
+
+			if ctx.DryRun {
+				log.Infof("[GCP] Dry-run set, db is not deleted: %s", database.Name)
+			} else {
+				err := p.doAndPollSqlCall(p.sqlClient.Instances.Delete(p.projectID, database.Name))
+				if err != nil {
+					log.Errorf("[GCP] Failed to delete db %s, err: %s", database.Name, err)
+					errChan <- err
+				}
+			}
+		}(database)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
 type instancesListAggregator interface {
 	Do(...googleapi.CallOption) (*compute.InstanceAggregatedList, error)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v4"
@@ -479,6 +480,10 @@ func (p azureProvider) GetDatabases() ([]*types.Database, error) {
 	}
 
 	return databases, nil
+}
+
+func (p azureProvider) DeleteDatabases(databases *types.DatabaseContainer) []error {
+	return []error{errors.New("[AZURE] Deleting databases is not supported yet")}
 }
 
 func (p azureProvider) GetAlerts() ([]*types.Alert, error) {
