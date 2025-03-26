@@ -218,6 +218,10 @@ func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 	return getDatabases(p.GetCloudType(), rdsClients, ctClients)
 }
 
+func (p awsProvider) DeleteDatabases(databases *types.DatabaseContainer) []error {
+	return []error{errors.New("[AWS] Deleting databases is not supported yet")}
+}
+
 func (p awsProvider) GetDisks() ([]*types.Disk, error) {
 	log.Debug("[AWS] Fetch volumes")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()

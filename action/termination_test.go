@@ -47,6 +47,10 @@ func (p *mockProvider) GetDatabases() ([]*types.Database, error) {
 	return nil, nil
 }
 
+func (p *mockProvider) DeleteDatabases(databases *types.DatabaseContainer) []error {
+	return nil
+}
+
 func (p *mockProvider) GetDisks() ([]*types.Disk, error) {
 	return nil, nil
 }

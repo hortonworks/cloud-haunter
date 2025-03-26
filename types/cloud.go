@@ -35,6 +35,7 @@ type CloudProvider interface {
 	DeleteAlerts(*AlertContainer) []error
 	GetAccesses() ([]*Access, error)
 	GetDatabases() ([]*Database, error)
+	DeleteDatabases(*DatabaseContainer) []error
 	GetDisks() ([]*Disk, error)
 	DeleteDisks(*DiskContainer) []error
 	GetImages() ([]*Image, error)
