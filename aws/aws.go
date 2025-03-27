@@ -27,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
+	"github.com/aws/aws-sdk-go/service/s3"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
@@ -45,6 +46,7 @@ const (
 	METADATA_SECURITY_GROUPS = "securityGroups"
 	METADATA_ELASTIC_IPS     = "elasticIps"
 	METADATA_ALARMS          = "alarms"
+	DEFAULT_REGION           = "us-east-1"
 )
 
 var provider = awsProvider{}
@@ -59,6 +61,7 @@ type awsProvider struct {
 	rdsClients           map[string]*rds.RDS
 	elbClients           map[string]*elb.ELBV2
 	cloudWatchClients    map[string]*cloudwatch.CloudWatch
+	s3Clients            map[string]*s3.S3
 	iamClient            *iam.IAM
 	govCloud             bool
 }
@@ -106,6 +109,7 @@ func (p *awsProvider) init(getRegions func() ([]string, error), govCloud bool) e
 	}
 
 	p.ec2Clients = map[string]*ec2.EC2{}
+	p.s3Clients = map[string]*s3.S3{}
 	p.autoScalingClients = map[string]*autoscaling.AutoScaling{}
 	p.rdsClients = map[string]*rds.RDS{}
 	p.elbClients = map[string]*elb.ELBV2{}
@@ -119,6 +123,12 @@ func (p *awsProvider) init(getRegions func() ([]string, error), govCloud bool) e
 			panic(fmt.Sprintf("[AWS] Failed to create EC2 client in region %s, err: %s", region, err.Error()))
 		} else {
 			p.ec2Clients[region] = client
+		}
+
+		if client, err := newS3Client(region); err != nil {
+			panic(fmt.Sprintf("[AWS] Failed to create S3 client in region %s, err: %s", region, err.Error()))
+		} else {
+			p.s3Clients[region] = client
 		}
 
 		if client, err := newAutoscalingClient(region); err != nil {
@@ -268,6 +278,14 @@ func (p awsProvider) getCloudWatchClientsByRegion() map[string]cloudWatchClient 
 		cwClients[k] = p.cloudWatchClients[k]
 	}
 	return cwClients
+}
+
+func (p awsProvider) getCloudS3ClientsByRegion() map[string]s3Client {
+	s3Clients := map[string]s3Client{}
+	for k := range p.s3Clients {
+		s3Clients[k] = p.s3Clients[k]
+	}
+	return s3Clients
 }
 
 func (p awsProvider) TerminateInstances(instances *types.InstanceContainer) []error {
@@ -1033,11 +1051,152 @@ func (p awsProvider) DeleteAlerts(alertContainer *types.AlertContainer) []error 
 }
 
 func (p awsProvider) GetStorages() ([]*types.Storage, error) {
-	return nil, errors.New("[AWS] Getting storages is not supported yet")
+	log.Debug("[AWS] Get storages")
+	s3Clients := p.getCloudS3ClientsByRegion()
+	return getStorages(s3Clients)
+}
+
+func getStorages(s3Clients map[string]s3Client) ([]*types.Storage, error) {
+	storages := []*types.Storage{}
+	input := &s3.ListBucketsInput{}
+	listBucketsOutput, listBucketsErr := s3Clients[DEFAULT_REGION].(s3Client).ListBuckets(input)
+	if listBucketsErr != nil {
+		log.Errorf("[AWS] Failed to fetch S3 buckets: %s", listBucketsErr)
+		return nil, listBucketsErr
+	} else {
+		for _, bucket := range listBucketsOutput.Buckets {
+			locationInput := &s3.GetBucketLocationInput{
+				Bucket: bucket.Name,
+			}
+			locationOutput, locationErr := s3Clients[DEFAULT_REGION].(s3Client).GetBucketLocation(locationInput)
+			if locationErr != nil {
+				log.Errorf("[AWS] Failed to fetch the location for S3 bucket: %s", locationErr)
+				return nil, locationErr
+			}
+			var bucketLocation string
+			if locationOutput.LocationConstraint == nil {
+				bucketLocation = DEFAULT_REGION
+			} else {
+				bucketLocation = *locationOutput.LocationConstraint
+			}
+
+			storage := &types.Storage{
+				Name:      *bucket.Name,
+				Created:   *bucket.CreationDate,
+				CloudType: types.AWS,
+				Region:    bucketLocation,
+			}
+			storages = append(storages, storage)
+		}
+	}
+	return storages, nil
 }
 
 func (p awsProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
-	return []error{errors.New("[AWS] Cleanup storages is not supported yet")}
+	log.Debug("[AWS] Cleanup storages")
+	s3Clients := p.getCloudS3ClientsByRegion()
+	return cleanupStorages(s3Clients, storageContainer, retentionDays)
+}
+
+func cleanupStorages(s3Clients map[string]s3Client, storageContainer *types.StorageContainer, retentionDays int) []error {
+	retentionTime := time.Now().AddDate(0, 0, -retentionDays)
+	storages := storageContainer.Get(types.AWS)
+	bucketsByRegion := map[string][]*types.Storage{}
+	for _, storage := range storages {
+		bucketsByRegion[storage.Region] = append(bucketsByRegion[storage.Region], storage)
+	}
+
+	errChan := make(chan error)
+	wg := sync.WaitGroup{}
+	wg.Add(len(bucketsByRegion))
+
+	for r, b := range bucketsByRegion {
+		go func(s3Client s3Client, region string, bucketsInRegion []*types.Storage) {
+			defer wg.Done()
+			for i := 0; i < len(bucketsInRegion); i += 1 {
+				var bucketName = bucketsInRegion[i].Name
+				var cleanedUpStorage int64
+
+				listObjectsInput := &s3.ListObjectsV2Input{
+					Bucket: &bucketName,
+				}
+				var objects []*s3.Object
+				for {
+					listObjectsOutput, listObjectsErr := s3Client.ListObjectsV2(listObjectsInput)
+					if listObjectsErr != nil {
+						log.Errorf("[AWS] Failed to list objects of the bucket: %s", listObjectsErr)
+						errChan <- listObjectsErr
+					}
+
+					objects = append(objects, listObjectsOutput.Contents...)
+
+					if *listObjectsOutput.IsTruncated {
+						listObjectsInput.ContinuationToken = listObjectsOutput.NextContinuationToken
+					} else {
+						break
+					}
+				}
+				for _, object := range objects {
+					if object.LastModified.Before(retentionTime) {
+						if ctx.DryRun {
+							log.Infof("[AWS] Dry-run set, file '%s' in S3 bucket '%s' will not be deleted", *object.Key, bucketName)
+						} else {
+							log.Infof("[AWS] File '%s' in S3 bucket '%s' will be deleted because it is older than %s.", *object.Key, bucketName, retentionTime)
+
+							deleteObjectInput := &s3.DeleteObjectInput{
+								Bucket: &bucketName,
+								Key:    object.Key,
+							}
+
+							_, deleteObjectErr := s3Client.DeleteObject(deleteObjectInput)
+
+							if deleteObjectErr != nil {
+								log.Errorf("[AWS] Failed to delete object: '%s'", deleteObjectErr)
+								errChan <- deleteObjectErr
+							} else {
+								log.Infof("[AWS] Deleted object: '%s'", *object.Key)
+								cleanedUpStorage += *object.Size
+							}
+						}
+					}
+				}
+
+				log.Infof("[AWS] Cleaned up %s worth of files in S3 bucket %s", utils.GetHumanReadableFileSize(cleanedUpStorage), bucketName)
+
+				if bucketsInRegion[i].Created.Before(retentionTime) {
+					if ctx.DryRun {
+						log.Infof("[AWS] Dry-run set, S3 bucket will not be deleted: %s", bucketName)
+					} else {
+						log.Infof("[AWS] Trying to delete S3 bucket '%s' because it is older than %s.", bucketName, retentionTime)
+						deleteInput := &s3.DeleteBucketInput{
+							Bucket: &bucketName,
+						}
+
+						_, deleteErr := s3Client.DeleteBucket(deleteInput)
+
+						if deleteErr != nil {
+							log.Errorf("[AWS] Failed to delete S3 bucket: '%s'", deleteErr)
+							errChan <- deleteErr
+						} else {
+							log.Infof("[AWS] S3 bucket deleted successfully: '%s'", bucketName)
+						}
+					}
+				}
+			}
+		}(s3Clients[r], r, b)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errors []error
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+
+	return errors
 }
 
 func (p awsProvider) GetCloudType() types.CloudType {
@@ -1102,6 +1261,15 @@ type elbClient interface {
 type cloudWatchClient interface {
 	DescribeAlarms(input *cloudwatch.DescribeAlarmsInput) (*cloudwatch.DescribeAlarmsOutput, error)
 	DeleteAlarms(input *cloudwatch.DeleteAlarmsInput) (*cloudwatch.DeleteAlarmsOutput, error)
+}
+
+type s3Client interface {
+	DeleteBucket(input *s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error)
+	ListBuckets(input *s3.ListBucketsInput) (*s3.ListBucketsOutput, error)
+	GetBucketTagging(input *s3.GetBucketTaggingInput) (*s3.GetBucketTaggingOutput, error)
+	GetBucketLocation(input *s3.GetBucketLocationInput) (*s3.GetBucketLocationOutput, error)
+	ListObjectsV2(input *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, error)
+	DeleteObject(input *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error)
 }
 
 func getInstances(cloudType types.CloudType, ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
@@ -1903,6 +2071,16 @@ func newEc2Client(region string) (*ec2.EC2, error) {
 		return nil, err
 	}
 	return ec2.New(awsSession), nil
+}
+
+func newS3Client(region string) (*s3.S3, error) {
+	awsSession, err := newSession(func(config *aws.Config) {
+		config.Region = &region
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s3.New(awsSession), nil
 }
 
 func newAutoscalingClient(region string) (*autoscaling.AutoScaling, error) {
