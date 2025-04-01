@@ -291,6 +291,10 @@ type GcpStack struct {
 	Tags            types.Tags
 }
 
+func (p gcpProvider) GetResources() ([]*types.Resource, error) {
+	return nil, errors.New("[GCP] Getting resources is not supported yet")
+}
+
 func (p gcpProvider) getNetworksBySelfLink() (map[string]*compute.Network, error) {
 	networkListCall := p.computeClient.Networks.List(p.projectID)
 	if ctx.ResourceDescription != "" {
@@ -624,6 +628,10 @@ func getResourceList(resources string) []string {
 		return strings.Split(resources, ",")
 	}
 	return []string{}
+}
+
+func (p gcpProvider) TerminateResources(container *types.ResourceContainer) []error {
+	return []error{errors.New("[GCP] Terminate resources is not supported yet")}
 }
 
 type SqlCall interface {

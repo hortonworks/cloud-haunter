@@ -44,4 +44,6 @@ type CloudProvider interface {
 	GetAlerts() ([]*Alert, error)
 	GetStorages() ([]*Storage, error)
 	CleanupStorages(storageContainer *StorageContainer, retentionDays int) []error
+	GetResources() ([]*Resource, error)
+	TerminateResources(*ResourceContainer) []error
 }

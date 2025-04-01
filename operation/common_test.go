@@ -132,3 +132,11 @@ func (p dummyProvider) GetStorages() ([]*types.Storage, error) {
 func (p dummyProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
 	return nil
 }
+
+func (p dummyProvider) GetResources() ([]*types.Resource, error) {
+	return nil, nil
+}
+
+func (p dummyProvider) TerminateResources(*types.ResourceContainer) []error {
+	return nil
+}

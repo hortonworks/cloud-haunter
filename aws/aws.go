@@ -217,6 +217,76 @@ func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	return append(cfStacks, nativeStacks...), nil
 }
 
+func (p awsProvider) GetResources() ([]*types.Resource, error) {
+	log.Debug("[AWS] Fetching Resources")
+	elbClients := p.getElbClientsByRegion()
+	return getLoadBalancers(p.GetCloudType(), elbClients)
+}
+
+func getLoadBalancers(cloudType types.CloudType, elbClients map[string]elbClient) ([]*types.Resource, error) {
+	log.Debug("[AWS] Fetching load balancers")
+	lbChan := make(chan *types.Resource, 5)
+	wg := sync.WaitGroup{}
+	wg.Add(len(elbClients))
+
+	for r, c := range elbClients {
+		log.Debugf("[AWS] Fetching load balancers from region: %s", r)
+		go func(region string, client elbClient) {
+			defer wg.Done()
+			elbRequest := &elb.DescribeLoadBalancersInput{}
+			for {
+				loadBalancersOutput, loadBalancersErr := client.DescribeLoadBalancers(elbRequest)
+				if loadBalancersErr != nil {
+					log.Errorf("[AWS] Failed to fetch load balancers in region %s, err: %s", region, loadBalancersErr)
+					return
+				} else {
+					for _, loadBalancer := range loadBalancersOutput.LoadBalancers {
+						tagsResponse, tagsErr := client.DescribeTags(&elb.DescribeTagsInput{ResourceArns: []*string{loadBalancer.LoadBalancerArn}})
+						if tagsErr != nil {
+							log.Errorf("[AWS] Failed to fetch tags of load balancer %s in region %s", *loadBalancer.LoadBalancerName, region)
+							continue
+						}
+						tags := make(map[string]string)
+						for _, tagDescription := range tagsResponse.TagDescriptions {
+							for _, tag := range tagDescription.Tags {
+								tags[*tag.Key] = *tag.Value
+							}
+						}
+						newLoadBalancer := &types.Resource{
+							ID:           *loadBalancer.LoadBalancerArn,
+							Name:         *loadBalancer.LoadBalancerName,
+							Created:      *loadBalancer.CreatedTime,
+							CloudType:    cloudType,
+							Region:       region,
+							Tags:         tags,
+							Owner:        tags[ctx.OwnerLabel],
+							ResourceType: types.LoadBalancer,
+						}
+						lbChan <- newLoadBalancer
+					}
+				}
+				if loadBalancersOutput.NextMarker != nil {
+					elbRequest.SetMarker(*loadBalancersOutput.NextMarker)
+				} else {
+					break
+				}
+			}
+		}(r, c)
+	}
+
+	go func() {
+		wg.Wait()
+		close(lbChan)
+	}()
+
+	var loadBalancers []*types.Resource
+	for lb := range lbChan {
+		loadBalancers = append(loadBalancers, lb)
+	}
+
+	return loadBalancers, nil
+}
+
 func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 	log.Debug("[AWS] Fetch databases")
 	rdsClients := map[string]rdsClient{}
@@ -354,6 +424,58 @@ func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	elbClients := p.getElbClientsByRegion()
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
 	return deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, cloudWatchClients, stacks.Get(p.GetCloudType()))
+}
+
+func (p awsProvider) TerminateResources(resources *types.ResourceContainer) []error {
+	log.Debug("[AWS] Delete resources")
+	elbClients := p.getElbClientsByRegion()
+	return deleteLoadBalancers(elbClients, resources.Get(p.GetCloudType()))
+}
+
+func deleteLoadBalancers(elbClients map[string]elbClient, resources []*types.Resource) []error {
+	regionLoadBalancers := map[string][]*types.Resource{}
+	for _, resource := range resources {
+		if resource.ResourceType == types.LoadBalancer {
+			regionLoadBalancers[resource.Region] = append(regionLoadBalancers[resource.Region], resource)
+		}
+	}
+
+	wg := sync.WaitGroup{}
+	errChan := make(chan error)
+	wg.Add(len(regionLoadBalancers))
+
+	for r, lb := range regionLoadBalancers {
+		go func(region string, elbClient elbClient, loadBalancers []*types.Resource) {
+			defer wg.Done()
+			for _, loadBalancer := range loadBalancers {
+				region := loadBalancer.Region
+				if ctx.DryRun {
+					log.Infof("[AWS] Dry-run set, load balancer not deleted: %s in region: %s", loadBalancer.Name, region)
+				} else {
+					elbExists, err := disableElbDeleteProtection(elbClients[region], "N/A", loadBalancer.ID, region)
+					if err != nil {
+						errChan <- err
+					} else if elbExists {
+						err := deleteLoadBalancer(elbClients[region], "N/A", loadBalancer.ID, region)
+						if err != nil {
+							errChan <- err
+						}
+					}
+				}
+			}
+		}(r, elbClients[r], lb)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
