@@ -27,6 +27,9 @@ const (
 
 	// Storages operation to return all storages (S3, storage account..)
 	Storages = OpType("getStorages")
+
+	// Resources operation to return all resources (Load balancer, ...)
+	Resources = OpType("getResources")
 )
 
 // OpType type of the operation

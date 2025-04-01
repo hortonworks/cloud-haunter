@@ -35,6 +35,11 @@ func (p *mockProvider) StopInstances(*types.InstanceContainer) []error {
 	return nil
 }
 
+func (p *mockProvider) TerminateResources(*types.ResourceContainer) []error {
+	p.calls++
+	return nil
+}
+
 func (p mockProvider) StopDatabases(_ *types.DatabaseContainer) (e []error) {
 	return
 }
@@ -64,6 +69,10 @@ func (p *mockProvider) GetImages() ([]*types.Image, error) {
 }
 
 func (p *mockProvider) GetStacks() ([]*types.Stack, error) {
+	return nil, nil
+}
+
+func (p *mockProvider) GetResources() ([]*types.Resource, error) {
 	return nil, nil
 }
 

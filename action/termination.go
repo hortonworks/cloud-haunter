@@ -50,6 +50,8 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 					errors = deleteAlerts(provider, cloudItems)
 				case types.Database:
 					errors = deleteDatabases(provider, cloudItems)
+				case types.Resource:
+					errors = terminateResources(provider, cloudItems)
 				default:
 					panic(fmt.Sprintf("[TERMINATION] Operation on type %T is not allowed", t))
 				}
@@ -118,4 +120,13 @@ func deleteDatabases(provider types.CloudProvider, items []*types.CloudItem) []e
 		databases = append(databases, &database)
 	}
 	return provider.DeleteDatabases(types.NewDatabaseContainer(databases))
+}
+
+func terminateResources(provider types.CloudProvider, items []*types.CloudItem) []error {
+	var resources []*types.Resource
+	for _, item := range items {
+		resource := (*item).GetItem().(types.Resource)
+		resources = append(resources, &resource)
+	}
+	return provider.TerminateResources(types.NewResourceContainer(resources))
 }

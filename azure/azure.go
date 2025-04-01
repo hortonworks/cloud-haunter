@@ -141,6 +141,10 @@ func (p azureProvider) GetStacks() ([]*types.Stack, error) {
 	return stacks, nil
 }
 
+func (p azureProvider) GetResources() ([]*types.Resource, error) {
+	return nil, errors.New("[AZURE] Cleanup storages is not supported yet")
+}
+
 func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[AZURE] Fetching instances")
 
@@ -378,6 +382,10 @@ func (p azureProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	}
 
 	return errs
+}
+
+func (p azureProvider) TerminateResources(*types.ResourceContainer) []error {
+	return []error{errors.New("[AZURE] Terminate resources is not supported yet")}
 }
 
 func (p azureProvider) StopInstances(instances *types.InstanceContainer) []error {
