@@ -483,7 +483,40 @@ func (p azureProvider) GetDatabases() ([]*types.Database, error) {
 }
 
 func (p azureProvider) DeleteDatabases(databases *types.DatabaseContainer) []error {
-	return []error{errors.New("[AZURE] Deleting databases is not supported yet")}
+	azureDatabases := databases.Get(types.AZURE)
+	log.Debugf("[AZURE] Delete databases: %v", databases)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(azureDatabases))
+	errChan := make(chan error)
+
+	for _, database := range azureDatabases {
+
+		go func(database *types.Database) {
+			defer wg.Done()
+
+			if ctx.DryRun {
+				log.Infof("[AZURE] Dry-run set, database is not deleted: %s", database.Name)
+			} else {
+				_, err := p.dbClient.BeginDelete(context.Background(), database.Metadata[ResourceGroupName], database.Name, nil)
+				if err != nil {
+					log.Errorf("[AZURE] Failed to delete database: %s", database.Name)
+					errChan <- err
+				}
+			}
+		}(database)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 func (p azureProvider) GetAlerts() ([]*types.Alert, error) {
