@@ -299,7 +299,41 @@ func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 }
 
 func (p awsProvider) DeleteDatabases(databases *types.DatabaseContainer) []error {
-	return []error{errors.New("[AWS] Deleting databases is not supported yet")}
+	log.Debug("[AWS] Deleting databases")
+	regionDatabases := map[string][]*types.Database{}
+	for _, database := range databases.Get(p.GetCloudType()) {
+		regionDatabases[database.Region] = append(regionDatabases[database.Region], database)
+	}
+	log.Debugf("[AWS] Deleting databases: %v", regionDatabases)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(regionDatabases))
+	errChan := make(chan error)
+
+	for r, db := range regionDatabases {
+		go func(region string, databases []*types.Database) {
+			defer wg.Done()
+			for _, db := range databases {
+				log.Infof("[AWS] Delete database: %s", db.Name)
+				if _, err := p.rdsClients[region].DeleteDBInstance(&rds.DeleteDBInstanceInput{
+					DBInstanceIdentifier: &db.Name,
+				}); err != nil {
+					errChan <- err
+				}
+			}
+		}(r, db)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 func (p awsProvider) GetDisks() ([]*types.Disk, error) {
