@@ -314,11 +314,15 @@ func (p awsProvider) DeleteDatabases(databases *types.DatabaseContainer) []error
 		go func(region string, databases []*types.Database) {
 			defer wg.Done()
 			for _, db := range databases {
-				log.Infof("[AWS] Delete database: %s", db.Name)
-				if _, err := p.rdsClients[region].DeleteDBInstance(&rds.DeleteDBInstanceInput{
-					DBInstanceIdentifier: &db.Name,
-				}); err != nil {
-					errChan <- err
+				if ctx.DryRun {
+					log.Infof("[AWS] Dry-run set, database is not deleted: %s", db.Name)
+				} else {
+					log.Infof("[AWS] Delete database: %s", db.Name)
+					if _, err := p.rdsClients[region].DeleteDBInstance(&rds.DeleteDBInstanceInput{
+						DBInstanceIdentifier: &db.Name,
+					}); err != nil {
+						errChan <- err
+					}
 				}
 			}
 		}(r, db)
