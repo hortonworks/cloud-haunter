@@ -220,7 +220,134 @@ func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 func (p awsProvider) GetResources() ([]*types.Resource, error) {
 	log.Debug("[AWS] Fetching Resources")
 	elbClients := p.getElbClientsByRegion()
-	return getLoadBalancers(p.GetCloudType(), elbClients)
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	vpcs, vpcsErr := getVpcs(p.GetCloudType(), ec2Clients)
+	if vpcsErr != nil {
+		return nil, vpcsErr
+	}
+	subnets, subnetsErr := getSubnets(p.GetCloudType(), ec2Clients)
+	if subnetsErr != nil {
+		return nil, subnetsErr
+	}
+	lbs, lbsErr := getLoadBalancers(p.GetCloudType(), elbClients)
+	if lbsErr != nil {
+		return nil, lbsErr
+	}
+	resources := append(append(vpcs, subnets...), lbs...)
+	return resources, nil
+}
+
+func getVpcs(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*types.Resource, error) {
+	log.Debug("[AWS] Fetching VPCs")
+	vpcChan := make(chan *types.Resource, 5)
+	wg := sync.WaitGroup{}
+	wg.Add(len(ec2Clients))
+
+	for r, c := range ec2Clients {
+		log.Debugf("[AWS] Fetching VPCs from region: %s", r)
+		go func(region string, client ec2Client) {
+			defer wg.Done()
+			ec2Request := &ec2.DescribeVpcsInput{}
+			for {
+				vpcsOutput, vpcsErr := client.DescribeVpcs(ec2Request)
+				if vpcsErr != nil {
+					log.Errorf("[AWS] Failed to fetch VPCs in region %s, err: %s", region, vpcsErr)
+					return
+				} else {
+					for _, vpc := range vpcsOutput.Vpcs {
+						tags := make(map[string]string)
+						for _, tag := range vpc.Tags {
+							tags[*tag.Key] = *tag.Value
+						}
+
+						newVpc := &types.Resource{
+							ID:           *vpc.VpcId,
+							Name:         tags["Name"],
+							CloudType:    cloudType,
+							Region:       region,
+							Tags:         tags,
+							Owner:        tags[ctx.OwnerLabel],
+							ResourceType: types.Vpc,
+						}
+						vpcChan <- newVpc
+					}
+				}
+				if vpcsOutput.NextToken != nil {
+					ec2Request.SetNextToken(*vpcsOutput.NextToken)
+				} else {
+					break
+				}
+			}
+		}(r, c)
+	}
+
+	go func() {
+		wg.Wait()
+		close(vpcChan)
+	}()
+
+	var vpcs []*types.Resource
+	for vpc := range vpcChan {
+		vpcs = append(vpcs, vpc)
+	}
+
+	return vpcs, nil
+}
+
+func getSubnets(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*types.Resource, error) {
+	log.Debug("[AWS] Fetching subnets")
+	subnetChan := make(chan *types.Resource, 5)
+	wg := sync.WaitGroup{}
+	wg.Add(len(ec2Clients))
+
+	for r, c := range ec2Clients {
+		log.Debugf("[AWS] Fetching subnets from region: %s", r)
+		go func(region string, client ec2Client) {
+			defer wg.Done()
+			ec2Request := &ec2.DescribeSubnetsInput{}
+			for {
+				subnetsOutput, subnetsErr := client.DescribeSubnets(ec2Request)
+				if subnetsErr != nil {
+					log.Errorf("[AWS] Failed to fetch subnets in region %s, err: %s", region, subnetsErr)
+					return
+				} else {
+					for _, subnet := range subnetsOutput.Subnets {
+						tags := make(map[string]string)
+						for _, tag := range subnet.Tags {
+							tags[*tag.Key] = *tag.Value
+						}
+						newSubnet := &types.Resource{
+							ID:           *subnet.SubnetId,
+							Name:         tags["Name"],
+							CloudType:    cloudType,
+							Region:       region,
+							Tags:         tags,
+							Owner:        tags[ctx.OwnerLabel],
+							ResourceType: types.Subnet,
+						}
+						subnetChan <- newSubnet
+					}
+				}
+				if subnetsOutput.NextToken != nil {
+					ec2Request.SetNextToken(*subnetsOutput.NextToken)
+				} else {
+					break
+				}
+			}
+		}(r, c)
+	}
+
+	go func() {
+		wg.Wait()
+		close(subnetChan)
+	}()
+
+	var subnets []*types.Resource
+	for subnet := range subnetChan {
+		subnets = append(subnets, subnet)
+	}
+
+	return subnets, nil
 }
 
 func getLoadBalancers(cloudType types.CloudType, elbClients map[string]elbClient) ([]*types.Resource, error) {
@@ -467,7 +594,99 @@ func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 func (p awsProvider) TerminateResources(resources *types.ResourceContainer) []error {
 	log.Debug("[AWS] Delete resources")
 	elbClients := p.getElbClientsByRegion()
-	return deleteLoadBalancers(elbClients, resources.Get(p.GetCloudType()))
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	deleteVpcsErr := deleteVpcs(ec2Clients, resources.Get(p.GetCloudType()))
+	deleteSubnetsErr := deleteSubnets(ec2Clients, resources.Get(p.GetCloudType()))
+	deleteLoadBalancersErr := deleteLoadBalancers(elbClients, resources.Get(p.GetCloudType()))
+	return append(append(deleteVpcsErr, deleteSubnetsErr...), deleteLoadBalancersErr...)
+}
+
+func deleteVpcs(ec2Clients map[string]ec2Client, resources []*types.Resource) []error {
+	regionVpcs := map[string][]*types.Resource{}
+	for _, resource := range resources {
+		if resource.ResourceType == types.Vpc {
+			regionVpcs[resource.Region] = append(regionVpcs[resource.Region], resource)
+		}
+	}
+
+	wg := sync.WaitGroup{}
+	errChan := make(chan error)
+	wg.Add(len(regionVpcs))
+
+	for r, v := range regionVpcs {
+		go func(region string, ec2Client ec2Client, vpcs []*types.Resource) {
+			defer wg.Done()
+			for _, vpc := range vpcs {
+				if ctx.DryRun {
+					log.Infof("[AWS] Dry-run set, VPC not deleted: %s in region: %s", vpc.ID, region)
+				} else {
+					_, err := ec2Client.DeleteVpc(&ec2.DeleteVpcInput{
+						VpcId: &vpc.ID,
+					})
+					if err != nil {
+						errChan <- err
+					} else {
+						log.Infof("[AWS] Deleting VPC: %s, region: %s", vpc.ID, region)
+					}
+				}
+			}
+		}(r, ec2Clients[r], v)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
+func deleteSubnets(ec2Clients map[string]ec2Client, resources []*types.Resource) []error {
+	regionSubnets := map[string][]*types.Resource{}
+	for _, resource := range resources {
+		if resource.ResourceType == types.Subnet {
+			regionSubnets[resource.Region] = append(regionSubnets[resource.Region], resource)
+		}
+	}
+
+	wg := sync.WaitGroup{}
+	errChan := make(chan error)
+	wg.Add(len(regionSubnets))
+
+	for r, s := range regionSubnets {
+		go func(region string, ec2Client ec2Client, subnets []*types.Resource) {
+			defer wg.Done()
+			for _, subnet := range subnets {
+				if ctx.DryRun {
+					log.Infof("[AWS] Dry-run set, subnet not deleted: %s in region: %s", subnet.ID, region)
+				} else {
+					_, deleteErr := ec2Client.DeleteSubnet(&ec2.DeleteSubnetInput{
+						SubnetId: &subnet.ID,
+					})
+					if deleteErr != nil {
+						errChan <- deleteErr
+					} else {
+						log.Infof("[AWS] Deleting subnet: %s, region: %s", subnet.ID, region)
+					}
+				}
+			}
+		}(r, ec2Clients[r], s)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs
 }
 
 func deleteLoadBalancers(elbClients map[string]elbClient, resources []*types.Resource) []error {
@@ -486,17 +705,18 @@ func deleteLoadBalancers(elbClients map[string]elbClient, resources []*types.Res
 		go func(region string, elbClient elbClient, loadBalancers []*types.Resource) {
 			defer wg.Done()
 			for _, loadBalancer := range loadBalancers {
-				region := loadBalancer.Region
 				if ctx.DryRun {
 					log.Infof("[AWS] Dry-run set, load balancer not deleted: %s in region: %s", loadBalancer.Name, region)
 				} else {
-					elbExists, err := disableElbDeleteProtection(elbClients[region], "N/A", loadBalancer.ID, region)
-					if err != nil {
-						errChan <- err
+					elbExists, elbExistsErr := disableElbDeleteProtection(elbClient, "N/A", loadBalancer.ID, region)
+					if elbExistsErr != nil {
+						errChan <- elbExistsErr
 					} else if elbExists {
-						err := deleteLoadBalancer(elbClients[region], "N/A", loadBalancer.ID, region)
-						if err != nil {
-							errChan <- err
+						deleteErr := deleteLoadBalancer(elbClient, "N/A", loadBalancer.ID, region)
+						if deleteErr != nil {
+							errChan <- deleteErr
+						} else {
+							log.Infof("[AWS] Deleting load balancer: %s, region: %s", loadBalancer.ID, region)
 						}
 					}
 				}
@@ -1375,6 +1595,7 @@ type ec2Client interface {
 	DescribeImages(input *ec2.DescribeImagesInput) (*ec2.DescribeImagesOutput, error)
 	DeregisterImage(input *ec2.DeregisterImageInput) (*ec2.DeregisterImageOutput, error)
 	DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error)
+	DescribeVpcs(input *ec2.DescribeVpcsInput) (*ec2.DescribeVpcsOutput, error)
 	DescribeVpcEndpoints(input *ec2.DescribeVpcEndpointsInput) (*ec2.DescribeVpcEndpointsOutput, error)
 	DeleteVpcEndpoints(input *ec2.DeleteVpcEndpointsInput) (*ec2.DeleteVpcEndpointsOutput, error)
 	DeleteVpc(input *ec2.DeleteVpcInput) (*ec2.DeleteVpcOutput, error)
