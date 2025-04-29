@@ -1954,7 +1954,13 @@ func getNativeStacks(cloudType types.CloudType, ec2Clients map[string]ec2Client,
 				}
 
 				if instance.State != nativeStack.State {
-					nativeStack.State = types.Unknown
+					if instance.State == types.Running && nativeStack.State == types.Stopped {
+						nativeStack.State = types.Running
+					} else if instance.State == types.Stopped && nativeStack.State == types.Running {
+						nativeStack.State = types.Running
+					} else {
+						nativeStack.State = types.Unknown
+					}
 				}
 
 				if instance.Created.Before(nativeStack.Created) {
