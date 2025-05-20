@@ -11,7 +11,6 @@ func (rt ResourceType) String() string {
 const (
 	LoadBalancer = ResourceType("LoadBalancer")
 	Vpc          = ResourceType("Vpc")
-	Subnet       = ResourceType("Subnet")
 )
 
 type ResourceContainer struct {

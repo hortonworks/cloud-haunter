@@ -225,15 +225,11 @@ func (p awsProvider) GetResources() ([]*types.Resource, error) {
 	if vpcsErr != nil {
 		return nil, vpcsErr
 	}
-	subnets, subnetsErr := getSubnets(p.GetCloudType(), ec2Clients)
-	if subnetsErr != nil {
-		return nil, subnetsErr
-	}
 	lbs, lbsErr := getLoadBalancers(p.GetCloudType(), elbClients)
 	if lbsErr != nil {
 		return nil, lbsErr
 	}
-	resources := append(append(vpcs, subnets...), lbs...)
+	resources := append(vpcs, lbs...)
 	return resources, nil
 }
 
@@ -292,62 +288,6 @@ func getVpcs(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*typ
 	}
 
 	return vpcs, nil
-}
-
-func getSubnets(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*types.Resource, error) {
-	log.Debug("[AWS] Fetching subnets")
-	subnetChan := make(chan *types.Resource, 5)
-	wg := sync.WaitGroup{}
-	wg.Add(len(ec2Clients))
-
-	for r, c := range ec2Clients {
-		log.Debugf("[AWS] Fetching subnets from region: %s", r)
-		go func(region string, client ec2Client) {
-			defer wg.Done()
-			ec2Request := &ec2.DescribeSubnetsInput{}
-			for {
-				subnetsOutput, subnetsErr := client.DescribeSubnets(ec2Request)
-				if subnetsErr != nil {
-					log.Errorf("[AWS] Failed to fetch subnets in region %s, err: %s", region, subnetsErr)
-					return
-				} else {
-					for _, subnet := range subnetsOutput.Subnets {
-						tags := make(map[string]string)
-						for _, tag := range subnet.Tags {
-							tags[*tag.Key] = *tag.Value
-						}
-						newSubnet := &types.Resource{
-							ID:           *subnet.SubnetId,
-							Name:         tags["Name"],
-							CloudType:    cloudType,
-							Region:       region,
-							Tags:         tags,
-							Owner:        tags[ctx.OwnerLabel],
-							ResourceType: types.Subnet,
-						}
-						subnetChan <- newSubnet
-					}
-				}
-				if subnetsOutput.NextToken != nil {
-					ec2Request.SetNextToken(*subnetsOutput.NextToken)
-				} else {
-					break
-				}
-			}
-		}(r, c)
-	}
-
-	go func() {
-		wg.Wait()
-		close(subnetChan)
-	}()
-
-	var subnets []*types.Resource
-	for subnet := range subnetChan {
-		subnets = append(subnets, subnet)
-	}
-
-	return subnets, nil
 }
 
 func getLoadBalancers(cloudType types.CloudType, elbClients map[string]elbClient) ([]*types.Resource, error) {
@@ -596,9 +536,8 @@ func (p awsProvider) TerminateResources(resources *types.ResourceContainer) []er
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
 	deleteVpcsErr := deleteVpcs(ec2Clients, resources.Get(p.GetCloudType()))
-	deleteSubnetsErr := deleteSubnets(ec2Clients, resources.Get(p.GetCloudType()))
 	deleteLoadBalancersErr := deleteLoadBalancers(elbClients, resources.Get(p.GetCloudType()))
-	return append(append(deleteVpcsErr, deleteSubnetsErr...), deleteLoadBalancersErr...)
+	return append(deleteVpcsErr, deleteLoadBalancersErr...)
 }
 
 func deleteVpcs(ec2Clients map[string]ec2Client, resources []*types.Resource) []error {
@@ -620,61 +559,13 @@ func deleteVpcs(ec2Clients map[string]ec2Client, resources []*types.Resource) []
 				if ctx.DryRun {
 					log.Infof("[AWS] Dry-run set, VPC not deleted: %s in region: %s", vpc.ID, region)
 				} else {
-					_, err := ec2Client.DeleteVpc(&ec2.DeleteVpcInput{
-						VpcId: &vpc.ID,
-					})
+					err := deleteVpcWithDependencies(ec2Client, "N/A", vpc.ID, region)
 					if err != nil {
 						errChan <- err
-					} else {
-						log.Infof("[AWS] Deleting VPC: %s, region: %s", vpc.ID, region)
 					}
 				}
 			}
 		}(r, ec2Clients[r], v)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	var errs []error
-	for err := range errChan {
-		errs = append(errs, err)
-	}
-	return errs
-}
-
-func deleteSubnets(ec2Clients map[string]ec2Client, resources []*types.Resource) []error {
-	regionSubnets := map[string][]*types.Resource{}
-	for _, resource := range resources {
-		if resource.ResourceType == types.Subnet {
-			regionSubnets[resource.Region] = append(regionSubnets[resource.Region], resource)
-		}
-	}
-
-	wg := sync.WaitGroup{}
-	errChan := make(chan error)
-	wg.Add(len(regionSubnets))
-
-	for r, s := range regionSubnets {
-		go func(region string, ec2Client ec2Client, subnets []*types.Resource) {
-			defer wg.Done()
-			for _, subnet := range subnets {
-				if ctx.DryRun {
-					log.Infof("[AWS] Dry-run set, subnet not deleted: %s in region: %s", subnet.ID, region)
-				} else {
-					_, deleteErr := ec2Client.DeleteSubnet(&ec2.DeleteSubnetInput{
-						SubnetId: &subnet.ID,
-					})
-					if deleteErr != nil {
-						errChan <- deleteErr
-					} else {
-						log.Infof("[AWS] Deleting subnet: %s, region: %s", subnet.ID, region)
-					}
-				}
-			}
-		}(r, ec2Clients[r], s)
 	}
 
 	go func() {
@@ -1203,6 +1094,78 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 		}
 	}
 
+	log.Infof("[AWS] Deleting internet gateways of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
+
+	attachmentVpcIdFilter := &ec2.Filter{}
+	attachmentVpcIdFilter.SetName("attachment.vpc-id")
+	attachmentVpcIdFilter.SetValues([]*string{&vpcId})
+	igws, err := ec2Client.DescribeInternetGateways(&ec2.DescribeInternetGatewaysInput{
+		Filters: []*ec2.Filter{attachmentVpcIdFilter},
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to list internet gateways of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
+		return err
+	}
+
+	for _, igw := range igws.InternetGateways {
+		_, err = ec2Client.DetachInternetGateway(&ec2.DetachInternetGatewayInput{
+			InternetGatewayId: igw.InternetGatewayId,
+			VpcId:             &vpcId,
+		})
+		if err != nil {
+			log.Errorf("[AWS] Failed to detach internet gateway: %s in stack: %s, err: %s", *igw.InternetGatewayId, stackName, err)
+			return err
+		}
+
+		_, err = ec2Client.DeleteInternetGateway(&ec2.DeleteInternetGatewayInput{
+			InternetGatewayId: igw.InternetGatewayId,
+		})
+		if err != nil {
+			log.Errorf("[AWS] Failed to delete internet gateway: %s in stack: %s, err: %s", *igw.InternetGatewayId, stackName, err)
+			return err
+		}
+	}
+
+	log.Infof("[AWS] Deleting route tables of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
+
+	rts, err := ec2Client.DescribeRouteTables(&ec2.DescribeRouteTablesInput{
+		Filters: []*ec2.Filter{vpcIdFilter},
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to list route tables of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
+		return err
+	}
+
+	for _, rt := range rts.RouteTables {
+		isMain := false
+		for _, assoc := range rt.Associations {
+			if assoc.Main != nil && *assoc.Main {
+				isMain = true
+				break
+			}
+		}
+		if !isMain {
+			for _, assoc := range rt.Associations {
+				if assoc.RouteTableAssociationId != nil && (assoc.Main == nil || !*assoc.Main) {
+					_, err := ec2Client.DisassociateRouteTable(&ec2.DisassociateRouteTableInput{
+						AssociationId: assoc.RouteTableAssociationId,
+					})
+					if err != nil {
+						log.Errorf("[AWS] Failed to disassociate route table: %s in stack: %s, err: %s", *rt.RouteTableId, stackName, err)
+						return err
+					}
+				}
+			}
+			_, err := ec2Client.DeleteRouteTable(&ec2.DeleteRouteTableInput{
+				RouteTableId: rt.RouteTableId,
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to delete route table: %s in stack: %s, err: %s", *rt.RouteTableId, stackName, err)
+				return err
+			}
+		}
+	}
+
 	log.Infof("[AWS] Deleting subnets of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
 
 	subnets, err := ec2Client.DescribeSubnets(&ec2.DescribeSubnetsInput{
@@ -1219,6 +1182,26 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 		if err != nil {
 			log.Errorf("[AWS] Failed to delete subnet: %s in stack: %s, err: %s", *subnet.SubnetId, stackName, err)
 			return err
+		}
+	}
+
+	acls, err := ec2Client.DescribeNetworkAcls(&ec2.DescribeNetworkAclsInput{
+		Filters: []*ec2.Filter{vpcIdFilter},
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to list network ACLs of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
+		return err
+	}
+
+	for _, acl := range acls.NetworkAcls {
+		if !*acl.IsDefault {
+			_, err := ec2Client.DeleteNetworkAcl(&ec2.DeleteNetworkAclInput{
+				NetworkAclId: acl.NetworkAclId,
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to delete network ACL: %s in stack: %s, err: %s", *acl.NetworkAclId, stackName, err)
+				return err
+			}
 		}
 	}
 
@@ -1601,8 +1584,16 @@ type ec2Client interface {
 	DeleteVpc(input *ec2.DeleteVpcInput) (*ec2.DeleteVpcOutput, error)
 	DescribeSubnets(input *ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error)
 	DeleteSubnet(input *ec2.DeleteSubnetInput) (*ec2.DeleteSubnetOutput, error)
+	DescribeInternetGateways(input *ec2.DescribeInternetGatewaysInput) (*ec2.DescribeInternetGatewaysOutput, error)
+	DetachInternetGateway(input *ec2.DetachInternetGatewayInput) (*ec2.DetachInternetGatewayOutput, error)
+	DeleteInternetGateway(input *ec2.DeleteInternetGatewayInput) (*ec2.DeleteInternetGatewayOutput, error)
+	DescribeRouteTables(input *ec2.DescribeRouteTablesInput) (*ec2.DescribeRouteTablesOutput, error)
+	DeleteRouteTable(input *ec2.DeleteRouteTableInput) (*ec2.DeleteRouteTableOutput, error)
+	DescribeNetworkAcls(input *ec2.DescribeNetworkAclsInput) (*ec2.DescribeNetworkAclsOutput, error)
+	DeleteNetworkAcl(input *ec2.DeleteNetworkAclInput) (*ec2.DeleteNetworkAclOutput, error)
 	DescribeSecurityGroups(input *ec2.DescribeSecurityGroupsInput) (*ec2.DescribeSecurityGroupsOutput, error)
 	DeleteSecurityGroup(input *ec2.DeleteSecurityGroupInput) (*ec2.DeleteSecurityGroupOutput, error)
+	DisassociateRouteTable(input *ec2.DisassociateRouteTableInput) (*ec2.DisassociateRouteTableOutput, error)
 	TerminateInstances(input *ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error)
 	WaitUntilInstanceTerminated(input *ec2.DescribeInstancesInput) error
 	DescribeAddresses(input *ec2.DescribeAddressesInput) (*ec2.DescribeAddressesOutput, error)
@@ -2732,6 +2723,14 @@ func getAlarmState(alarm cloudwatch.MetricAlarm) types.State {
 func getEc2Tags(ec2Tags []*ec2.Tag) types.Tags {
 	tags := make(types.Tags, 0)
 	for _, t := range ec2Tags {
+		tags[*t.Key] = *t.Value
+	}
+	return tags
+}
+
+func getElbTags(elbTags []*elb.Tag) types.Tags {
+	tags := make(types.Tags, 0)
+	for _, t := range elbTags {
 		tags[*t.Key] = *t.Value
 	}
 	return tags

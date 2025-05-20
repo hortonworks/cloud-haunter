@@ -161,6 +161,139 @@ func TestNewStackOwner(t *testing.T) {
 	assert.Equal(t, "validOwner", stack.Owner)
 }
 
+func TestGetVpcs(t *testing.T) {
+	operationChannel := make(chan string)
+
+	ec2Clients := map[string]ec2Client{
+		"eu-central-1": mockEc2Client{operationChannel: operationChannel},
+	}
+
+	var resource *types.Resource
+
+	go func() {
+		defer close(operationChannel)
+
+		resources, err := getVpcs(types.AWS, ec2Clients)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(resources))
+		resource = resources[0]
+	}()
+
+	for range operationChannel {
+		// ignore
+	}
+
+	assert.Equal(t, "test-vpc-id", resource.ID)
+	assert.Equal(t, "test-vpc", resource.Name)
+	assert.Equal(t, types.AWS, resource.CloudType)
+	assert.Equal(t, getEc2Tags(getVpcTags()), resource.Tags)
+	assert.Equal(t, OWNER, resource.Owner)
+	assert.Equal(t, "eu-central-1", resource.Region)
+	assert.Equal(t, types.Vpc, resource.ResourceType)
+}
+
+func TestDeleteVpcs(t *testing.T) {
+	operationChannel := make(chan string)
+
+	ec2Clients := map[string]ec2Client{
+		"eu-central-1": mockEc2Client{operationChannel: operationChannel},
+	}
+	vpcs := []*types.Resource{
+		{
+			ID:           "test-vpc-id",
+			Name:         "test-vpc-name",
+			Tags:         getEc2Tags(getVpcTags()),
+			Owner:        OWNER,
+			CloudType:    types.AWS,
+			Region:       "eu-central-1",
+			ResourceType: types.Vpc,
+		},
+	}
+
+	go func() {
+		defer close(operationChannel)
+
+		deleteVpcs(ec2Clients, vpcs)
+	}()
+
+	assert.Equal(t, "DescribeVpcEndpoints", <-operationChannel)
+	assert.Equal(t, "DeleteVpcEndpoints:vpc-endpoint-id-1,vpc-endpoint-id-2", <-operationChannel)
+	assert.Equal(t, "DescribeInternetGateways", <-operationChannel)
+	assert.Equal(t, "DetachInternetGateway:igw1", <-operationChannel)
+	assert.Equal(t, "DeleteInternetGateway:igw1", <-operationChannel)
+	assert.Equal(t, "DescribeRouteTables", <-operationChannel)
+	assert.Equal(t, "DeleteRouteTable:routeTable1", <-operationChannel)
+	assert.Equal(t, "DescribeSubnets", <-operationChannel)
+	assert.Equal(t, "DeleteSubnet:subnet-id-1", <-operationChannel)
+	assert.Equal(t, "DeleteSubnet:subnet-id-2", <-operationChannel)
+	assert.Equal(t, "DescribeNetworkAcls", <-operationChannel)
+	assert.Equal(t, "DeleteNetworkAcl:networkAcl1", <-operationChannel)
+	assert.Equal(t, "DescribeSecurityGroups", <-operationChannel)
+	assert.Equal(t, "DeleteSecurityGroup:custom-group-id", <-operationChannel)
+	assert.Equal(t, "DeleteVpc:test-vpc-id", <-operationChannel)
+}
+
+func TestGetLoadBalancers(t *testing.T) {
+	operationChannel := make(chan string)
+
+	elbClients := map[string]elbClient{
+		"eu-central-1": mockElbClient{operationChannel: operationChannel},
+	}
+
+	var resource *types.Resource
+
+	go func() {
+		defer close(operationChannel)
+
+		resources, err := getLoadBalancers(types.AWS, elbClients)
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(resources))
+		resource = resources[0]
+	}()
+
+	for range operationChannel {
+		// ignore
+	}
+
+	assert.Equal(t, "lb-1", resource.ID)
+	assert.Equal(t, "lb-1-name", resource.Name)
+	assert.Equal(t, NOW, resource.Created)
+	assert.Equal(t, types.AWS, resource.CloudType)
+	assert.Equal(t, getElbTags(getResourceGroupedElbTags()), resource.Tags)
+	assert.Equal(t, OWNER, resource.Owner)
+	assert.Equal(t, "eu-central-1", resource.Region)
+	assert.Equal(t, types.LoadBalancer, resource.ResourceType)
+}
+
+func TestDeleteLoadBalancers(t *testing.T) {
+	operationChannel := make(chan string)
+
+	elbClients := map[string]elbClient{
+		"eu-central-1": mockElbClient{operationChannel: operationChannel},
+	}
+	lbs := []*types.Resource{
+		{
+			ID:           "lb-1",
+			Name:         "lb-1-name",
+			Created:      NOW,
+			Tags:         getElbTags(getResourceGroupedElbTags()),
+			Owner:        OWNER,
+			CloudType:    types.AWS,
+			Region:       "eu-central-1",
+			ResourceType: types.LoadBalancer,
+		},
+	}
+
+	go func() {
+		defer close(operationChannel)
+
+		deleteLoadBalancers(elbClients, lbs)
+	}()
+
+	assert.Equal(t, "ModifyLoadBalancerAttributes:lb-1", <-operationChannel)
+	assert.Equal(t, "DeleteLoadBalancer:lb-1", <-operationChannel)
+}
+
 func TestRemoveCfStack(t *testing.T) {
 	operationChannel := make(chan string)
 
@@ -200,12 +333,19 @@ func TestRemoveCfStack(t *testing.T) {
 	assert.Equal(t, "ModifyDBInstance", <-operationChannel)
 	assert.Equal(t, "DescribeVpcEndpoints", <-operationChannel)
 	assert.Equal(t, "DeleteVpcEndpoints:vpc-endpoint-id-1,vpc-endpoint-id-2", <-operationChannel)
+	assert.Equal(t, "DescribeInternetGateways", <-operationChannel)
+	assert.Equal(t, "DetachInternetGateway:igw1", <-operationChannel)
+	assert.Equal(t, "DeleteInternetGateway:igw1", <-operationChannel)
+	assert.Equal(t, "DescribeRouteTables", <-operationChannel)
+	assert.Equal(t, "DeleteRouteTable:routeTable1", <-operationChannel)
 	assert.Equal(t, "DescribeSubnets", <-operationChannel)
 	assert.Equal(t, "DeleteSubnet:subnet-id-1", <-operationChannel)
 	assert.Equal(t, "DeleteSubnet:subnet-id-2", <-operationChannel)
+	assert.Equal(t, "DescribeNetworkAcls", <-operationChannel)
+	assert.Equal(t, "DeleteNetworkAcl:networkAcl1", <-operationChannel)
 	assert.Equal(t, "DescribeSecurityGroups", <-operationChannel)
 	assert.Equal(t, "DeleteSecurityGroup:custom-group-id", <-operationChannel)
-	assert.Equal(t, "DeleteVpc", <-operationChannel)
+	assert.Equal(t, "DeleteVpc:vpc-id", <-operationChannel)
 	assert.Equal(t, "ModifyLoadBalancerAttributes:elb-arn", <-operationChannel)
 	assert.Equal(t, "DeleteLoadBalancer:elb-arn", <-operationChannel)
 	assert.Equal(t, "DeleteStack", <-operationChannel)
@@ -364,15 +504,66 @@ func (t mockEc2Client) DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVo
 	return nil, nil
 }
 
+func (t mockEc2Client) DetachInternetGateway(input *ec2.DetachInternetGatewayInput) (*ec2.DetachInternetGatewayOutput, error) {
+	t.operationChannel <- "DetachInternetGateway:" + *input.InternetGatewayId
+	return nil, nil
+}
+
 func (t mockEc2Client) DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error) {
 	t.operationChannel <- "DetachVolume"
 	return nil, nil
+}
+
+func (t mockEc2Client) DescribeVpcs(input *ec2.DescribeVpcsInput) (*ec2.DescribeVpcsOutput, error) {
+	t.operationChannel <- "DescribeVpcs"
+	return &ec2.DescribeVpcsOutput{
+		Vpcs: []*ec2.Vpc{
+			{
+				VpcId: aws.String("test-vpc-id"),
+				Tags:  getVpcTags(),
+			},
+		},
+	}, nil
 }
 
 func (t mockEc2Client) DeregisterImage(input *ec2.DeregisterImageInput) (*ec2.DeregisterImageOutput, error) {
 	t.operationChannel <- "DeregisterImage"
 	t.deregisterImagesChannel <- *input.ImageId
 	return nil, nil
+}
+
+func (t mockEc2Client) DescribeInternetGateways(input *ec2.DescribeInternetGatewaysInput) (*ec2.DescribeInternetGatewaysOutput, error) {
+	t.operationChannel <- "DescribeInternetGateways"
+	return &ec2.DescribeInternetGatewaysOutput{
+		InternetGateways: []*ec2.InternetGateway{
+			{
+				InternetGatewayId: &(&types.S{S: "igw1"}).S,
+			},
+		},
+	}, nil
+}
+
+func (t mockEc2Client) DescribeNetworkAcls(input *ec2.DescribeNetworkAclsInput) (*ec2.DescribeNetworkAclsOutput, error) {
+	t.operationChannel <- "DescribeNetworkAcls"
+	return &ec2.DescribeNetworkAclsOutput{
+		NetworkAcls: []*ec2.NetworkAcl{
+			{
+				NetworkAclId: &(&types.S{S: "networkAcl1"}).S,
+				IsDefault:    aws.Bool(false),
+			},
+		},
+	}, nil
+}
+
+func (t mockEc2Client) DescribeRouteTables(input *ec2.DescribeRouteTablesInput) (*ec2.DescribeRouteTablesOutput, error) {
+	t.operationChannel <- "DescribeRouteTables"
+	return &ec2.DescribeRouteTablesOutput{
+		RouteTables: []*ec2.RouteTable{
+			{
+				RouteTableId: &(&types.S{S: "routeTable1"}).S,
+			},
+		},
+	}, nil
 }
 
 func (t mockEc2Client) DescribeVpcEndpoints(input *ec2.DescribeVpcEndpointsInput) (*ec2.DescribeVpcEndpointsOutput, error) {
@@ -399,7 +590,22 @@ func (t mockEc2Client) DeleteVpcEndpoints(input *ec2.DeleteVpcEndpointsInput) (*
 }
 
 func (t mockEc2Client) DeleteVpc(input *ec2.DeleteVpcInput) (*ec2.DeleteVpcOutput, error) {
-	t.operationChannel <- "DeleteVpc"
+	t.operationChannel <- "DeleteVpc:" + *input.VpcId
+	return nil, nil
+}
+
+func (t mockEc2Client) DeleteInternetGateway(input *ec2.DeleteInternetGatewayInput) (*ec2.DeleteInternetGatewayOutput, error) {
+	t.operationChannel <- "DeleteInternetGateway:" + *input.InternetGatewayId
+	return nil, nil
+}
+
+func (t mockEc2Client) DeleteNetworkAcl(input *ec2.DeleteNetworkAclInput) (*ec2.DeleteNetworkAclOutput, error) {
+	t.operationChannel <- "DeleteNetworkAcl:" + *input.NetworkAclId
+	return nil, nil
+}
+
+func (t mockEc2Client) DeleteRouteTable(input *ec2.DeleteRouteTableInput) (*ec2.DeleteRouteTableOutput, error) {
+	t.operationChannel <- "DeleteRouteTable:" + *input.RouteTableId
 	return nil, nil
 }
 
@@ -442,6 +648,11 @@ func (t mockEc2Client) DescribeSecurityGroups(input *ec2.DescribeSecurityGroupsI
 
 func (t mockEc2Client) DeleteSecurityGroup(input *ec2.DeleteSecurityGroupInput) (*ec2.DeleteSecurityGroupOutput, error) {
 	t.operationChannel <- "DeleteSecurityGroup:" + *input.GroupId
+	return nil, nil
+}
+
+func (t mockEc2Client) DisassociateRouteTable(input *ec2.DisassociateRouteTableInput) (*ec2.DisassociateRouteTableOutput, error) {
+	t.operationChannel <- "DisassociateRouteTable:" + *input.AssociationId
 	return nil, nil
 }
 
@@ -620,7 +831,9 @@ func (t mockElbClient) DescribeLoadBalancers(input *elb.DescribeLoadBalancersInp
 	return &elb.DescribeLoadBalancersOutput{
 		LoadBalancers: []*elb.LoadBalancer{
 			{
-				LoadBalancerArn: aws.String("lb-1"),
+				LoadBalancerArn:  aws.String("lb-1"),
+				LoadBalancerName: aws.String("lb-1-name"),
+				CreatedTime:      &NOW,
 			},
 		},
 	}, nil
@@ -680,6 +893,10 @@ func getResourceGroupedElbTags() []*elb.Tag {
 			Key:   aws.String(ctx.ResourceGroupingLabel),
 			Value: aws.String(RESOURCE_GROUPING_TAG_VALUE),
 		},
+		{
+			Key:   aws.String(ctx.OwnerLabel),
+			Value: aws.String(OWNER),
+		},
 	}
 }
 
@@ -692,6 +909,23 @@ func getResourceGroupedEc2Tags() []*ec2.Tag {
 		{
 			Key:   aws.String(ctx.OwnerLabel),
 			Value: aws.String(OWNER),
+		},
+	}
+}
+
+func getVpcTags() []*ec2.Tag {
+	return []*ec2.Tag{
+		{
+			Key:   aws.String(ctx.ResourceGroupingLabel),
+			Value: aws.String(RESOURCE_GROUPING_TAG_VALUE),
+		},
+		{
+			Key:   aws.String(ctx.OwnerLabel),
+			Value: aws.String(OWNER),
+		},
+		{
+			Key:   aws.String("Name"),
+			Value: aws.String("test-vpc"),
 		},
 	}
 }
