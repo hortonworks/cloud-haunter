@@ -535,8 +535,8 @@ func (p awsProvider) TerminateResources(resources *types.ResourceContainer) []er
 	log.Debug("[AWS] Delete resources")
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	deleteLoadBalancersErr := deleteLoadBalancers(elbClients, ec2Clients, resources.Get(p.GetCloudType()))
 	deleteVpcsErr := deleteVpcs(ec2Clients, resources.Get(p.GetCloudType()))
-	deleteLoadBalancersErr := deleteLoadBalancers(elbClients, resources.Get(p.GetCloudType()))
 	return append(deleteVpcsErr, deleteLoadBalancersErr...)
 }
 
@@ -580,7 +580,7 @@ func deleteVpcs(ec2Clients map[string]ec2Client, resources []*types.Resource) []
 	return errs
 }
 
-func deleteLoadBalancers(elbClients map[string]elbClient, resources []*types.Resource) []error {
+func deleteLoadBalancers(elbClients map[string]elbClient, ec2Clients map[string]ec2Client, resources []*types.Resource) []error {
 	regionLoadBalancers := map[string][]*types.Resource{}
 	for _, resource := range resources {
 		if resource.ResourceType == types.LoadBalancer {
@@ -593,7 +593,7 @@ func deleteLoadBalancers(elbClients map[string]elbClient, resources []*types.Res
 	wg.Add(len(regionLoadBalancers))
 
 	for r, lb := range regionLoadBalancers {
-		go func(region string, elbClient elbClient, loadBalancers []*types.Resource) {
+		go func(region string, elbClient elbClient, ec2Client ec2Client, loadBalancers []*types.Resource) {
 			defer wg.Done()
 			for _, loadBalancer := range loadBalancers {
 				if ctx.DryRun {
@@ -603,6 +603,23 @@ func deleteLoadBalancers(elbClients map[string]elbClient, resources []*types.Res
 					if elbExistsErr != nil {
 						errChan <- elbExistsErr
 					} else if elbExists {
+						log.Infof("[AWS] Deleting endpoint services of load balancer: %s in region: %s", loadBalancer.ID, region)
+						endpointServices, err := ec2Client.DescribeVpcEndpointServiceConfigurations(&ec2.DescribeVpcEndpointServiceConfigurationsInput{})
+						if err != nil {
+							log.Errorf("[AWS] Failed to list endpoint services of load balancer: %s, err: %s", loadBalancer.ID, err)
+							errChan <- err
+						}
+						for _, endpointService := range endpointServices.ServiceConfigurations {
+							if containsID(endpointService.NetworkLoadBalancerArns, &loadBalancer.ID) {
+								_, err = ec2Client.DeleteVpcEndpointServiceConfigurations(&ec2.DeleteVpcEndpointServiceConfigurationsInput{
+									ServiceIds: []*string{endpointService.ServiceId},
+								})
+								if err != nil {
+									log.Errorf("[AWS] Failed to delete endpoint service: %s, err: %s", *endpointService.ServiceId, err)
+									errChan <- err
+								}
+							}
+						}
 						deleteErr := deleteLoadBalancer(elbClient, "N/A", loadBalancer.ID, region)
 						if deleteErr != nil {
 							errChan <- deleteErr
@@ -612,7 +629,7 @@ func deleteLoadBalancers(elbClients map[string]elbClient, resources []*types.Res
 					}
 				}
 			}
-		}(r, elbClients[r], lb)
+		}(r, elbClients[r], ec2Clients[r], lb)
 	}
 
 	go func() {
@@ -711,7 +728,7 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 					for _, inst := range instanceChunk {
 						if inst.Ephemeral {
 							// could be that the instance is already removed due to failed suspend API call
-							if containsInstanceID(instanceIDs, &inst.ID) {
+							if containsID(instanceIDs, &inst.ID) {
 								log.Infof("[AWS] Spot instance will be terminated: %s:%s", inst.ID, instIDNames[inst.ID])
 								spotInstanceIDs = append(spotInstanceIDs, &inst.ID)
 								instanceIDs = removeInstance(instanceIDs, &inst.ID)
@@ -1094,6 +1111,56 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 		}
 	}
 
+	log.Infof("[AWS] Deleting NAT gateways of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
+
+	natGateways, err := ec2Client.DescribeNatGateways(&ec2.DescribeNatGatewaysInput{
+		Filter: []*ec2.Filter{vpcIdFilter},
+	})
+
+	if err != nil {
+		log.Errorf("[AWS] Failed to list NAT gateways of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
+		return err
+	}
+	for _, natGateway := range natGateways.NatGateways {
+		_, err = ec2Client.DeleteNatGateway(&ec2.DeleteNatGatewayInput{
+			NatGatewayId: natGateway.NatGatewayId,
+		})
+		if err != nil {
+			log.Errorf("[AWS] Failed to delete NAT gateway: %s in stack: %s, err: %s", *natGateway.NatGatewayId, stackName, err)
+			return err
+		}
+	}
+
+	log.Infof("[AWS] Deleting network interface IDs of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
+
+	networkInterfaceIds, err := ec2Client.DescribeNetworkInterfaces(&ec2.DescribeNetworkInterfacesInput{
+		Filters: []*ec2.Filter{vpcIdFilter},
+	})
+
+	if err != nil {
+		log.Errorf("[AWS] Failed to list network interface IDs of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
+		return err
+	}
+	for _, eni := range networkInterfaceIds.NetworkInterfaces {
+		if eni.Attachment != nil && eni.Attachment.AttachmentId != nil {
+			_, err = ec2Client.DetachNetworkInterface(&ec2.DetachNetworkInterfaceInput{
+				AttachmentId: eni.Attachment.AttachmentId,
+				Force:        aws.Bool(true),
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to detach network interface ID: %s in stack: %s, err: %s", *eni.NetworkInterfaceId, stackName, err)
+				return err
+			}
+		}
+		_, err = ec2Client.DeleteNetworkInterface(&ec2.DeleteNetworkInterfaceInput{
+			NetworkInterfaceId: eni.NetworkInterfaceId,
+		})
+		if err != nil {
+			log.Errorf("[AWS] Failed to delete network interface ID: %s in stack: %s, err: %s", *eni.NetworkInterfaceId, stackName, err)
+			return err
+		}
+	}
+
 	log.Infof("[AWS] Deleting internet gateways of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
 
 	attachmentVpcIdFilter := &ec2.Filter{}
@@ -1122,6 +1189,26 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 		})
 		if err != nil {
 			log.Errorf("[AWS] Failed to delete internet gateway: %s in stack: %s, err: %s", *igw.InternetGatewayId, stackName, err)
+			return err
+		}
+	}
+
+	log.Infof("[AWS] Deleting egress-only internet gateways of VPC: %s in stack: %s, region: %s", vpcId, stackName, region)
+
+	eigws, err := ec2Client.DescribeEgressOnlyInternetGateways(&ec2.DescribeEgressOnlyInternetGatewaysInput{
+		Filters: []*ec2.Filter{attachmentVpcIdFilter},
+	})
+	if err != nil {
+		log.Errorf("[AWS] Failed to list egress-only internet gateways of VPC: %s in stack: %s, err: %s", vpcId, stackName, err)
+		return err
+	}
+
+	for _, eigw := range eigws.EgressOnlyInternetGateways {
+		_, err = ec2Client.DeleteEgressOnlyInternetGateway(&ec2.DeleteEgressOnlyInternetGatewayInput{
+			EgressOnlyInternetGatewayId: eigw.EgressOnlyInternetGatewayId,
+		})
+		if err != nil {
+			log.Errorf("[AWS] Failed to delete egress-only internet gateway: %s in stack: %s, err: %s", *eigw.EgressOnlyInternetGatewayId, stackName, err)
 			return err
 		}
 	}
@@ -1215,8 +1302,29 @@ func deleteVpcWithDependencies(ec2Client ec2Client, stackName string, vpcId stri
 		return err
 	}
 	for _, securityGroup := range securityGroups.SecurityGroups {
+		if len(securityGroup.IpPermissions) > 0 {
+			_, err := ec2Client.RevokeSecurityGroupIngress(&ec2.RevokeSecurityGroupIngressInput{
+				GroupId:       securityGroup.GroupId,
+				IpPermissions: securityGroup.IpPermissions,
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to revoke ingress rules for security group: %s in stack: %s, err: %s", *securityGroup.GroupId, stackName, err)
+				return err
+			}
+		}
+		if len(securityGroup.IpPermissionsEgress) > 0 {
+			_, err := ec2Client.RevokeSecurityGroupEgress(&ec2.RevokeSecurityGroupEgressInput{
+				GroupId:       securityGroup.GroupId,
+				IpPermissions: securityGroup.IpPermissionsEgress,
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to revoke egress rules for security group: %s in stack: %s, err: %s", *securityGroup.GroupId, stackName, err)
+				return err
+			}
+		}
+	}
+	for _, securityGroup := range securityGroups.SecurityGroups {
 		if *securityGroup.GroupName == "default" {
-			// the default subnet can not be deleted
 			continue
 		}
 		_, err = ec2Client.DeleteSecurityGroup(&ec2.DeleteSecurityGroupInput{
@@ -1580,17 +1688,26 @@ type ec2Client interface {
 	DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error)
 	DescribeVpcs(input *ec2.DescribeVpcsInput) (*ec2.DescribeVpcsOutput, error)
 	DescribeVpcEndpoints(input *ec2.DescribeVpcEndpointsInput) (*ec2.DescribeVpcEndpointsOutput, error)
+	DescribeVpcEndpointServiceConfigurations(input *ec2.DescribeVpcEndpointServiceConfigurationsInput) (*ec2.DescribeVpcEndpointServiceConfigurationsOutput, error)
 	DeleteVpcEndpoints(input *ec2.DeleteVpcEndpointsInput) (*ec2.DeleteVpcEndpointsOutput, error)
+	DeleteVpcEndpointServiceConfigurations(input *ec2.DeleteVpcEndpointServiceConfigurationsInput) (*ec2.DeleteVpcEndpointServiceConfigurationsOutput, error)
 	DeleteVpc(input *ec2.DeleteVpcInput) (*ec2.DeleteVpcOutput, error)
 	DescribeSubnets(input *ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error)
 	DeleteSubnet(input *ec2.DeleteSubnetInput) (*ec2.DeleteSubnetOutput, error)
 	DescribeInternetGateways(input *ec2.DescribeInternetGatewaysInput) (*ec2.DescribeInternetGatewaysOutput, error)
+	DescribeEgressOnlyInternetGateways(input *ec2.DescribeEgressOnlyInternetGatewaysInput) (*ec2.DescribeEgressOnlyInternetGatewaysOutput, error)
+	DescribeNatGateways(input *ec2.DescribeNatGatewaysInput) (*ec2.DescribeNatGatewaysOutput, error)
+	DescribeNetworkInterfaces(input *ec2.DescribeNetworkInterfacesInput) (*ec2.DescribeNetworkInterfacesOutput, error)
 	DetachInternetGateway(input *ec2.DetachInternetGatewayInput) (*ec2.DetachInternetGatewayOutput, error)
+	DetachNetworkInterface(input *ec2.DetachNetworkInterfaceInput) (*ec2.DetachNetworkInterfaceOutput, error)
 	DeleteInternetGateway(input *ec2.DeleteInternetGatewayInput) (*ec2.DeleteInternetGatewayOutput, error)
+	DeleteEgressOnlyInternetGateway(input *ec2.DeleteEgressOnlyInternetGatewayInput) (*ec2.DeleteEgressOnlyInternetGatewayOutput, error)
 	DescribeRouteTables(input *ec2.DescribeRouteTablesInput) (*ec2.DescribeRouteTablesOutput, error)
 	DeleteRouteTable(input *ec2.DeleteRouteTableInput) (*ec2.DeleteRouteTableOutput, error)
+	DeleteNatGateway(input *ec2.DeleteNatGatewayInput) (*ec2.DeleteNatGatewayOutput, error)
 	DescribeNetworkAcls(input *ec2.DescribeNetworkAclsInput) (*ec2.DescribeNetworkAclsOutput, error)
 	DeleteNetworkAcl(input *ec2.DeleteNetworkAclInput) (*ec2.DeleteNetworkAclOutput, error)
+	DeleteNetworkInterface(input *ec2.DeleteNetworkInterfaceInput) (*ec2.DeleteNetworkInterfaceOutput, error)
 	DescribeSecurityGroups(input *ec2.DescribeSecurityGroupsInput) (*ec2.DescribeSecurityGroupsOutput, error)
 	DeleteSecurityGroup(input *ec2.DeleteSecurityGroupInput) (*ec2.DeleteSecurityGroupOutput, error)
 	DisassociateRouteTable(input *ec2.DisassociateRouteTableInput) (*ec2.DisassociateRouteTableOutput, error)
@@ -1598,6 +1715,8 @@ type ec2Client interface {
 	WaitUntilInstanceTerminated(input *ec2.DescribeInstancesInput) error
 	DescribeAddresses(input *ec2.DescribeAddressesInput) (*ec2.DescribeAddressesOutput, error)
 	ReleaseAddress(input *ec2.ReleaseAddressInput) (*ec2.ReleaseAddressOutput, error)
+	RevokeSecurityGroupIngress(input *ec2.RevokeSecurityGroupIngressInput) (*ec2.RevokeSecurityGroupIngressOutput, error)
+	RevokeSecurityGroupEgress(input *ec2.RevokeSecurityGroupEgressInput) (*ec2.RevokeSecurityGroupEgressOutput, error)
 }
 
 type cfClient interface {
@@ -2412,7 +2531,7 @@ func removeInstance(originalIDs []*string, instanceID *string) (instanceIDs []*s
 	return
 }
 
-func containsInstanceID(instanceIDs []*string, instanceID *string) bool {
+func containsID(instanceIDs []*string, instanceID *string) bool {
 	found := false
 	for _, ID := range instanceIDs {
 		if *ID == *instanceID {

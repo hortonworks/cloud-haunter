@@ -218,9 +218,15 @@ func TestDeleteVpcs(t *testing.T) {
 
 	assert.Equal(t, "DescribeVpcEndpoints", <-operationChannel)
 	assert.Equal(t, "DeleteVpcEndpoints:vpc-endpoint-id-1,vpc-endpoint-id-2", <-operationChannel)
+	assert.Equal(t, "DescribeNatGateways", <-operationChannel)
+	assert.Equal(t, "DeleteNatGateway:ngw-id-1", <-operationChannel)
+	assert.Equal(t, "DescribeNetworkInterfaces", <-operationChannel)
+	assert.Equal(t, "DeleteNetworkInterface:eni-id-1", <-operationChannel)
 	assert.Equal(t, "DescribeInternetGateways", <-operationChannel)
 	assert.Equal(t, "DetachInternetGateway:igw1", <-operationChannel)
 	assert.Equal(t, "DeleteInternetGateway:igw1", <-operationChannel)
+	assert.Equal(t, "DescribeEgressOnlyInternetGateways", <-operationChannel)
+	assert.Equal(t, "DeleteEgressOnlyInternetGateway:eigw-id-1", <-operationChannel)
 	assert.Equal(t, "DescribeRouteTables", <-operationChannel)
 	assert.Equal(t, "DeleteRouteTable:routeTable1", <-operationChannel)
 	assert.Equal(t, "DescribeSubnets", <-operationChannel)
@@ -271,6 +277,9 @@ func TestDeleteLoadBalancers(t *testing.T) {
 	elbClients := map[string]elbClient{
 		"eu-central-1": mockElbClient{operationChannel: operationChannel},
 	}
+	ec2Clients := map[string]ec2Client{
+		"eu-central-1": mockEc2Client{operationChannel: operationChannel},
+	}
 	lbs := []*types.Resource{
 		{
 			ID:           "lb-1",
@@ -287,10 +296,12 @@ func TestDeleteLoadBalancers(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		deleteLoadBalancers(elbClients, lbs)
+		deleteLoadBalancers(elbClients, ec2Clients, lbs)
 	}()
 
 	assert.Equal(t, "ModifyLoadBalancerAttributes:lb-1", <-operationChannel)
+	assert.Equal(t, "DescribeVpcEndpointServiceConfigurations", <-operationChannel)
+	assert.Equal(t, "DeleteVpcEndpointServiceConfigurations:service-id-1", <-operationChannel)
 	assert.Equal(t, "DeleteLoadBalancer:lb-1", <-operationChannel)
 }
 
@@ -333,9 +344,15 @@ func TestRemoveCfStack(t *testing.T) {
 	assert.Equal(t, "ModifyDBInstance", <-operationChannel)
 	assert.Equal(t, "DescribeVpcEndpoints", <-operationChannel)
 	assert.Equal(t, "DeleteVpcEndpoints:vpc-endpoint-id-1,vpc-endpoint-id-2", <-operationChannel)
+	assert.Equal(t, "DescribeNatGateways", <-operationChannel)
+	assert.Equal(t, "DeleteNatGateway:ngw-id-1", <-operationChannel)
+	assert.Equal(t, "DescribeNetworkInterfaces", <-operationChannel)
+	assert.Equal(t, "DeleteNetworkInterface:eni-id-1", <-operationChannel)
 	assert.Equal(t, "DescribeInternetGateways", <-operationChannel)
 	assert.Equal(t, "DetachInternetGateway:igw1", <-operationChannel)
 	assert.Equal(t, "DeleteInternetGateway:igw1", <-operationChannel)
+	assert.Equal(t, "DescribeEgressOnlyInternetGateways", <-operationChannel)
+	assert.Equal(t, "DeleteEgressOnlyInternetGateway:eigw-id-1", <-operationChannel)
 	assert.Equal(t, "DescribeRouteTables", <-operationChannel)
 	assert.Equal(t, "DeleteRouteTable:routeTable1", <-operationChannel)
 	assert.Equal(t, "DescribeSubnets", <-operationChannel)
@@ -509,6 +526,21 @@ func (t mockEc2Client) DetachInternetGateway(input *ec2.DetachInternetGatewayInp
 	return nil, nil
 }
 
+func (t mockEc2Client) DetachNetworkInterface(input *ec2.DetachNetworkInterfaceInput) (*ec2.DetachNetworkInterfaceOutput, error) {
+	t.operationChannel <- "DetachNetworkInterface:" + *input.AttachmentId
+	return nil, nil
+}
+
+func (t mockEc2Client) RevokeSecurityGroupEgress(input *ec2.RevokeSecurityGroupEgressInput) (*ec2.RevokeSecurityGroupEgressOutput, error) {
+	t.operationChannel <- "RevokeSecurityGroupEgress:" + *input.GroupId
+	return nil, nil
+}
+
+func (t mockEc2Client) RevokeSecurityGroupIngress(input *ec2.RevokeSecurityGroupIngressInput) (*ec2.RevokeSecurityGroupIngressOutput, error) {
+	t.operationChannel <- "RevokeSecurityGroupIngress:" + *input.GroupId
+	return nil, nil
+}
+
 func (t mockEc2Client) DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error) {
 	t.operationChannel <- "DetachVolume"
 	return nil, nil
@@ -599,6 +631,30 @@ func (t mockEc2Client) DeleteInternetGateway(input *ec2.DeleteInternetGatewayInp
 	return nil, nil
 }
 
+func (t mockEc2Client) DeleteEgressOnlyInternetGateway(input *ec2.DeleteEgressOnlyInternetGatewayInput) (*ec2.DeleteEgressOnlyInternetGatewayOutput, error) {
+	t.operationChannel <- "DeleteEgressOnlyInternetGateway:" + *input.EgressOnlyInternetGatewayId
+	return nil, nil
+}
+
+func (t mockEc2Client) DeleteNatGateway(input *ec2.DeleteNatGatewayInput) (*ec2.DeleteNatGatewayOutput, error) {
+	t.operationChannel <- "DeleteNatGateway:" + *input.NatGatewayId
+	return nil, nil
+}
+
+func (t mockEc2Client) DeleteNetworkInterface(input *ec2.DeleteNetworkInterfaceInput) (*ec2.DeleteNetworkInterfaceOutput, error) {
+	t.operationChannel <- "DeleteNetworkInterface:" + *input.NetworkInterfaceId
+	return nil, nil
+}
+
+func (t mockEc2Client) DeleteVpcEndpointServiceConfigurations(input *ec2.DeleteVpcEndpointServiceConfigurationsInput) (*ec2.DeleteVpcEndpointServiceConfigurationsOutput, error) {
+	ids := []string{}
+	for _, id := range input.ServiceIds {
+		ids = append(ids, *id)
+	}
+	t.operationChannel <- "DeleteVpcEndpointServiceConfigurations:" + strings.Join(ids, ",")
+	return nil, nil
+}
+
 func (t mockEc2Client) DeleteNetworkAcl(input *ec2.DeleteNetworkAclInput) (*ec2.DeleteNetworkAclOutput, error) {
 	t.operationChannel <- "DeleteNetworkAcl:" + *input.NetworkAclId
 	return nil, nil
@@ -618,6 +674,51 @@ func (t mockEc2Client) DescribeSubnets(input *ec2.DescribeSubnetsInput) (*ec2.De
 			},
 			{
 				SubnetId: &(&types.S{S: "subnet-id-2"}).S,
+			},
+		},
+	}, nil
+}
+
+func (t mockEc2Client) DescribeEgressOnlyInternetGateways(input *ec2.DescribeEgressOnlyInternetGatewaysInput) (*ec2.DescribeEgressOnlyInternetGatewaysOutput, error) {
+	t.operationChannel <- "DescribeEgressOnlyInternetGateways"
+	return &ec2.DescribeEgressOnlyInternetGatewaysOutput{
+		EgressOnlyInternetGateways: []*ec2.EgressOnlyInternetGateway{
+			{
+				EgressOnlyInternetGatewayId: &(&types.S{S: "eigw-id-1"}).S,
+			},
+		},
+	}, nil
+}
+
+func (t mockEc2Client) DescribeNatGateways(input *ec2.DescribeNatGatewaysInput) (*ec2.DescribeNatGatewaysOutput, error) {
+	t.operationChannel <- "DescribeNatGateways"
+	return &ec2.DescribeNatGatewaysOutput{
+		NatGateways: []*ec2.NatGateway{
+			{
+				NatGatewayId: &(&types.S{S: "ngw-id-1"}).S,
+			},
+		},
+	}, nil
+}
+
+func (t mockEc2Client) DescribeNetworkInterfaces(input *ec2.DescribeNetworkInterfacesInput) (*ec2.DescribeNetworkInterfacesOutput, error) {
+	t.operationChannel <- "DescribeNetworkInterfaces"
+	return &ec2.DescribeNetworkInterfacesOutput{
+		NetworkInterfaces: []*ec2.NetworkInterface{
+			{
+				NetworkInterfaceId: &(&types.S{S: "eni-id-1"}).S,
+			},
+		},
+	}, nil
+}
+
+func (t mockEc2Client) DescribeVpcEndpointServiceConfigurations(input *ec2.DescribeVpcEndpointServiceConfigurationsInput) (*ec2.DescribeVpcEndpointServiceConfigurationsOutput, error) {
+	t.operationChannel <- "DescribeVpcEndpointServiceConfigurations"
+	return &ec2.DescribeVpcEndpointServiceConfigurationsOutput{
+		ServiceConfigurations: []*ec2.ServiceConfiguration{
+			{
+				ServiceId:               &(&types.S{S: "service-id-1"}).S,
+				NetworkLoadBalancerArns: []*string{&(&types.S{S: "lb-1"}).S},
 			},
 		},
 	}, nil
