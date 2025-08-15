@@ -63,6 +63,11 @@ func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
 				log.Debugf("[LONGRUNNING] Filter alert, because it's in used state: %s", item.GetName())
 				return false
 			}
+		case types.Resource:
+			if item.GetItem().(types.Resource).ResourceType == types.Vpc {
+				log.Debugf("[LONGRUNNING] Do not filter resource, because VPC has no 'Created' property: %s", item.GetName())
+				return true
+			}
 		default:
 			log.Fatalf("[LONGRUNNING] Filter does not apply for cloud item: %s", item.GetName())
 			return true
