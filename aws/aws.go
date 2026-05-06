@@ -1821,13 +1821,6 @@ func getCFStacks(cloudType types.CloudType, cfClients map[string]cfClient) ([]*t
 	wg.Add(len(cfClients))
 
 	for r, c := range cfClients {
-
-		// CB-32728 Remove the me-south-1 region from CloudHaunter
-		if strings.EqualFold(r, "me-south-1") {
-			log.Debugf("[AWS] Skipping CloudFormation fetch from region: %s", r)
-			continue
-		}
-
 		log.Debugf("[AWS] Fetching CloudFormation from: %s", r)
 		go func(region string, cfClient cfClient) {
 			defer wg.Done()
@@ -2514,6 +2507,11 @@ func getRegions(ec2Client ec2Client) ([]string, error) {
 	log.Debugf("[AWS] Processing regions (%d): [%s]", len(regionResult.Regions), regionResult.Regions)
 	regions := make([]string, 0)
 	for _, region := range regionResult.Regions {
+		// CB-32728 Remove the me-south-1 region
+		if strings.EqualFold(*region.RegionName, "me-south-1") {
+			log.Infof("[AWS] Skipping CloudFormation fetch from region: %s", *region.RegionName)
+			continue
+		}
 		regions = append(regions, *region.RegionName)
 	}
 	log.Infof("[AWS] Available regions: %v", regions)
