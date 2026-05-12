@@ -221,6 +221,7 @@ func (p awsProvider) GetResources() ([]*types.Resource, error) {
 	log.Debug("[AWS] Fetching Resources")
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+
 	vpcs, vpcsErr := getVpcs(p.GetCloudType(), ec2Clients)
 	if vpcsErr != nil {
 		return nil, vpcsErr
@@ -417,6 +418,10 @@ func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[str
 	ec2Clients := map[string]ec2Client{}
 	ctClients := map[string]cloudTrailClient{}
 	for k := range p.ec2Clients {
+		if strings.EqualFold(k, "me-south-1") {
+			continue
+		}
+
 		ec2Clients[k] = p.ec2Clients[k]
 		ctClients[k] = p.cloudTrailClient[k]
 	}
