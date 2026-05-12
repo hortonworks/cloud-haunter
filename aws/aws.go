@@ -417,8 +417,10 @@ func (p awsProvider) GetDisks() ([]*types.Disk, error) {
 func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[string]cloudTrailClient) {
 	ec2Clients := map[string]ec2Client{}
 	ctClients := map[string]cloudTrailClient{}
+	log.Infoln("debug: ", ec2Clients)
 	for k := range p.ec2Clients {
 		if strings.EqualFold(k, "me-south-1") {
+			log.Infof("[AWS] Skipping CloudFormation fetch from region: %s", k)
 			continue
 		}
 
@@ -439,6 +441,10 @@ func (p awsProvider) getElbClientsByRegion() map[string]elbClient {
 func (p awsProvider) getCFClientsByRegion() map[string]cfClient {
 	cfClients := map[string]cfClient{}
 	for k := range p.cloudFormationClient {
+		if strings.EqualFold(k, "me-south-1") {
+			log.Infof("PK-test, me-south-1 skip")
+			continue
+		}
 		cfClients[k] = p.cloudFormationClient[k]
 	}
 	return cfClients

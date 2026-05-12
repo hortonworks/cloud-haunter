@@ -12,7 +12,7 @@ declare -a Platforms=("Linux" "Darwin")
 for platform in ${Platforms[@]}; do
   if [ -d "./build/$platform" ]; then
     echo "Compressing the ${platform} relevant binary ..."
-    tar -zcf "release/${NAME}_${VERSION}_${platform}_${ARCH}.tgz" -C build/$platform $BINARY
+    gtar -zcf "release/${NAME}_${VERSION}_${platform}_${ARCH}.tgz" -C build/$platform $BINARY
   fi
 done
 
