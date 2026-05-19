@@ -419,11 +419,6 @@ func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[str
 	ctClients := map[string]cloudTrailClient{}
 	log.Infoln("debug: ", ec2Clients)
 	for k := range p.ec2Clients {
-		if strings.EqualFold(k, "me-south-1") {
-			log.Infof("[AWS] Skipping CloudFormation fetch from region: %s", k)
-			continue
-		}
-
 		ec2Clients[k] = p.ec2Clients[k]
 		ctClients[k] = p.cloudTrailClient[k]
 	}
