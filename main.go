@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/hortonworks/cloud-haunter/utils"
 
@@ -38,8 +39,12 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose")
 	ignoreLabelDisabled := flag.Bool("i", false, "disable ignore label")
 	exactMatchOwner := flag.Bool("e", false, "exact match owner")
+	workaroundAWsIgnoreStack := flag.Bool("awsignore", false, "AWS stack ignore workaround")
+	excludedAwsRegions := flag.String("excludeAwsRegion", "", "comma separated list of AWS regions to exclude")
 
 	flag.Parse()
+
+	parseRegionsStr(*excludedAwsRegions)
 
 	if *help {
 		printHelp()
@@ -53,6 +58,7 @@ func main() {
 	}
 	ctx.IgnoreLabelDisabled = *ignoreLabelDisabled
 	ctx.ExactMatchOwner = *exactMatchOwner
+	ctx.WorkaroundAwsIgnoreStack = *workaroundAWsIgnoreStack
 
 	if filterConfigLoc != nil && len(*filterConfigLoc) != 0 {
 		var err error
@@ -119,6 +125,7 @@ func main() {
 		items = filter.Execute(items)
 	}
 	action.Execute(*op, filterNames, items)
+	println("All operations completed.")
 }
 
 // should be kept in sync with README.md
@@ -181,4 +188,11 @@ func getSortedActions() []string {
 	}
 	sort.Strings(actions)
 	return actions
+}
+
+func parseRegionsStr(regionsStr string) {
+	regionList := strings.Split(regionsStr, ",")
+	for _, item := range regionList {
+		ctx.AwsExcludedRegions[strings.ToLower(item)] = true
+	}
 }
