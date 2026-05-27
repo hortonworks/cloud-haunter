@@ -125,6 +125,7 @@ func main() {
 		items = filter.Execute(items)
 	}
 	action.Execute(*op, filterNames, items)
+	println("All operations completed.")
 }
 
 // should be kept in sync with README.md
