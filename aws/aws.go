@@ -436,10 +436,6 @@ func (p awsProvider) getElbClientsByRegion() map[string]elbClient {
 func (p awsProvider) getCFClientsByRegion() map[string]cfClient {
 	cfClients := map[string]cfClient{}
 	for k := range p.cloudFormationClient {
-		if strings.EqualFold(k, "me-south-1") {
-			log.Infof("PK-test, me-south-1 skip")
-			continue
-		}
 		cfClients[k] = p.cloudFormationClient[k]
 	}
 	return cfClients
@@ -1845,11 +1841,14 @@ func getCFStacks(cloudType types.CloudType, cfClients map[string]cfClient) ([]*t
 				log.Debugf("[AWS] Processing stacks (%d) in region: %s: [%s]", len(stackResult.Stacks), region, stackResult.Stacks)
 				for _, s := range stackResult.Stacks {
 					stack := newStack(cloudType, s, region)
-					//cfChan <- stack
-					if !strings.HasPrefix(stack.Name, "StackSet-") {
-						cfChan <- stack
+					if ctx.WorkaroundAwsIgnoreStack {
+						if !strings.HasPrefix(stack.Name, "StackSet-") {
+							cfChan <- stack
+						} else {
+							log.Infof("Ignoring stackset %s", stack.Name)
+						}
 					} else {
-						log.Infof("Ignoring stackset %s", stack.Name)
+						cfChan <- stack
 					}
 				}
 				if stackResult.NextToken != nil {
@@ -2519,7 +2518,7 @@ func getRegions(ec2Client ec2Client) ([]string, error) {
 	regions := make([]string, 0)
 	for _, region := range regionResult.Regions {
 		// CB-32728 Remove the me-south-1 region
-		if strings.EqualFold(*region.RegionName, "me-south-1") {
+		if ctx.AwsExcludedRegions[strings.ToLower(*region.RegionName)] {
 			log.Infof("[AWS] Skipping CloudFormation fetch from region: %s", *region.RegionName)
 			continue
 		}
