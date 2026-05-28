@@ -65,7 +65,7 @@ release-docker:
 gitPush:
 	@if ! git diff-index --quiet HEAD Makefile; then\
 		git add Makefile;\
-		git commit -m "Increase image catalog cli version";\
+		git commit -m "Increase cloud haunter version";\
 		git push origin HEAD:$(GIT_BRANCH);\
 	else \
 		echo No changes Makefile, no git push needed.;\
