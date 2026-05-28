@@ -59,7 +59,7 @@ release:
 
 release-docker:	@USER_NS='-u$(shell id -u $(whoami)):$(shell id -g $(whoami))'
 release-docker:
-	sleep 60 ## wait for docker service on jenkins slave
+	sleep 30 ## wait for docker service on jenkins slave
 	docker run --rm ${USER_NS} -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter -e VERSION=${VERSION} -e GITHUB_TOKEN=${GITHUB_TOKEN} -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} -e GO111MODULE=on golang:1.17 make deps release
 
 gitPush:
