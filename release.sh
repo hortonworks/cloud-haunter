@@ -1,8 +1,6 @@
 #! /bin/bash
 set -ex
 
-ls -lah
-
 NAME=$(basename `git rev-parse --show-toplevel`)
 ARCH=$(uname -m)
 
