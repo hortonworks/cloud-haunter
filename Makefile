@@ -56,7 +56,7 @@ install: build ## Installs OS specific binary into: /usr/local/bin
 
 release: 
 	make build
-	# ./release.sh
+	./release.sh
 
 release-docker:	@USER_NS='-u$(shell id -u $(whoami)):$(shell id -g $(whoami))'
 release-docker:
