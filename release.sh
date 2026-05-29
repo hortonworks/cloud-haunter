@@ -4,6 +4,8 @@ set -ex
 echo $PWD
 ls -lah
 git config --global --add safe.directory '*'
+git config list
+git config list --global
 
 NAME=$(basename `git rev-parse --show-toplevel`)
 ARCH=$(uname -m)
