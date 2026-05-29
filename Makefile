@@ -10,6 +10,7 @@ LDFLAGS=-w -s -X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.B
 
 GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.git/*")
 GIT_BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
+GOLANG_DOCKER=docker pull quay.io/projectquay/golang
 
 deps:
 ifeq ($(shell uname),Linux)
@@ -49,7 +50,7 @@ build-linux:
 
 build-docker:
 	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
-	docker run --rm ${USER_NS} -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter -e VERSION=${VERSION} golang:$(GO_VERSION) make build
+	docker run --rm ${USER_NS} -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter -e VERSION=${VERSION} $(GOLANG_DOCKER):$(GO_VERSION) make build
 
 install: build ## Installs OS specific binary into: /usr/local/bin
 	install build/$(shell uname -s)/$(BINARY) /usr/local/bin
@@ -61,7 +62,14 @@ release:
 release-docker:
 	@USER_NS='-u$(shell id -u $(whoami)):$(shell id -g $(whoami))'
 	sleep 30 ## wait for docker service on jenkins slave
-	docker run --rm ${USER_NS} -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter -e VERSION=${VERSION} -e GITHUB_TOKEN=${GITHUB_TOKEN} -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} -e GO111MODULE=on golang:$(GO_VERSION) make deps release
+	docker run --rm ${USER_NS} \
+	-v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter \
+	-w /go/src/github.com/hortonworks/cloud-haunter \
+	-e VERSION=${VERSION} -e GITHUB_TOKEN=${GITHUB_TOKEN} \
+	-e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+	-e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+	-e GO111MODULE=on \
+	$(GOLANG_DOCKER):$(GO_VERSION) make deps release
 
 gitPush:
 	@if ! git diff-index --quiet HEAD Makefile; then\
@@ -73,7 +81,7 @@ gitPush:
 	fi
 
 mod-tidy:
-	@docker run --rm -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter golang:$(GO_VERSION) make _mod-tidy
+	@docker run --rm -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter $(GOLANG_DOCKER):$(GO_VERSION) make _mod-tidy
 
 _mod-tidy:
 	GO111MODULE=on go mod tidy -v
