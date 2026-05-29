@@ -1,11 +1,6 @@
 #! /bin/bash
 set -ex
 
-echo $PWD
-ls -lah
-git config --global --add safe.directory '*'
-git --version
-
 NAME=$(basename `git rev-parse --show-toplevel`)
 ARCH=$(uname -m)
 
