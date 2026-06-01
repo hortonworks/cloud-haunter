@@ -10,7 +10,7 @@ LDFLAGS=-w -s -X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.B
 
 GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.git/*")
 GIT_BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
-GOLANG_DOCKER=docker pull quay.io/projectquay/golang
+GOLANG_DOCKER=quay.io/projectquay/golang
 
 deps:
 ifeq ($(shell uname),Linux)
