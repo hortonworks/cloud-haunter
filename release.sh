@@ -43,13 +43,13 @@ fi
 OUTPUT=$(gh release list | $GREP "^${VERSION}" | true)
 if [ -z "$OUTPUT" ]; then 
   
-  local gh_extra_flags=""
+  GH_EXTRA_FLAGS=""
   if [[ "$GH_PRE_RELEASE" == "true" ]]; then
-    gh_extra_flags="--prerelease"
+    GH_EXTRA_FLAGS="--prerelease"
   fi
 
   printf -v RELEASABLE_FILES './release/%s ' "${FILES[@]}"
-  gh release create "v${VERSION}" $RELEASABLE_FILES -t ${VERSION} -n "" $gh_extra_flags
+  gh release create "v${VERSION}" $RELEASABLE_FILES -t ${VERSION} -n "" $GH_EXTRA_FLAGS
 
   if [[ "$GH_PRE_RELEASE" != "true" ]]; then
     FILE_NAME="Makefile"
