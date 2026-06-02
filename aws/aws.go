@@ -2515,7 +2515,6 @@ func getRegions(ec2Client ec2Client) ([]string, error) {
 	log.Debugf("[AWS] Processing regions (%d): [%s]", len(regionResult.Regions), regionResult.Regions)
 	regions := make([]string, 0)
 	for _, region := range regionResult.Regions {
-		// CB-32728 Remove the me-south-1 region
 		if ctx.AwsExcludedRegions[strings.ToLower(*region.RegionName)] {
 			log.Infof("[AWS] Skipping CloudFormation fetch from region: %s", *region.RegionName)
 			continue

@@ -1,34 +1,69 @@
 #! /bin/bash
-set -x
+set -ex
+
+# Workaround for https://support.atlassian.com/bitbucket-cloud/kb/git-command-returns-fatal-error-detected-dubious-ownership/
+git config --global --add safe.directory '*'
 
 NAME=$(basename `git rev-parse --show-toplevel`)
 ARCH=$(uname -m)
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 rm -rf release
 mkdir release
 
+declare -a PLATFORMS=("Linux" "Darwin")
+declare -a FILES=()
+
 TAR=tar
 GREP=grep
+SED=sed
 # On OS X refer to the gnu utils, they can be installed using brew
 if [[ $OSTYPE =~ "darwin" ]]; then
   TAR=gtar
   GREP=ggrep
+  SED=gsed
 fi
 
-declare -a Platforms=("Linux" "Darwin")
-for platform in ${Platforms[@]}; do
-  if [ -d "./build/$platform" ]; then
-    echo "Compressing the ${platform} relevant binary ..."
-    $TAR -zcf "release/${NAME}_${VERSION}_${platform}_${ARCH}.tgz" -C build/$platform $BINARY
+for PLATFORM in ${PLATFORMS[@]}; do
+  if [ -d "./build/$PLATFORM" ]; then
+    echo "Compressing the ${PLATFORM} relevant binary ..."
+    FILE="${NAME}_${VERSION}_${PLATFORM}_${ARCH}.tgz"
+    LATEST_FILE="${NAME}_latest_${PLATFORM}_${ARCH}.tgz"
+    FILES+=("$FILE")
+    $TAR -zcf "release/${FILE}" -C build/$PLATFORM $BINARY
+    cp ./release/$FILE ./release/$LATEST_FILE
   fi
 done
 
-echo "Creating release v${VERSION} from branch $BRANCH ..."
-
-output=$(gh release list | $GREP ${VERSION})
-if [ -z "$output" ]; then 
-  gh release create "v${VERSION}" "./release/${NAME}_${VERSION}_Linux_${ARCH}.tgz" "./release/${NAME}_${VERSION}_Darwin_${ARCH}.tgz" -t ${VERSION} -n ""
+if (( ${#FILES[@]} )); then
+  echo "Creating release v${VERSION} ..."
 else
-  echo "The cli release ${VERSION} already exists on the github."
+  echo "No file found to release."
+  exit 0
+fi
+
+OUTPUT=$(gh release list | $GREP "^${VERSION}" | true)
+if [ -z "$OUTPUT" ]; then 
+  
+  GH_EXTRA_FLAGS=""
+  if [[ "$GH_PRE_RELEASE" == "true" ]]; then
+    GH_EXTRA_FLAGS="--prerelease"
+  fi
+
+  printf -v RELEASABLE_FILES './release/%s ' "${FILES[@]}"
+  gh release create "v${VERSION}" $RELEASABLE_FILES -t ${VERSION} -n "" $GH_EXTRA_FLAGS
+
+  if [[ "$GH_PRE_RELEASE" != "true" ]]; then
+    FILE_NAME="Makefile"
+    SEARCH=${VERSION}
+    REPLACE=${VERSION%.*}.$((${VERSION##*.}+1))
+
+    if [[ $SEARCH != "" && $REPLACE != "" ]]; then
+      echo "Increasing version from ${SEARCH} to ${REPLACE} in the ${FILE_NAME}"
+      SEARCH_TEXT="export VERSION=${SEARCH}"
+      REPLACE_TEXT="export VERSION=${REPLACE}"
+      $SED -i "s/$SEARCH_TEXT/$REPLACE_TEXT/" $FILE_NAME
+    fi
+  fi
+else
+  echo "The cli release v${VERSION} already exists on Github."
 fi
