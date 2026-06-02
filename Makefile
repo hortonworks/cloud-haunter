@@ -3,6 +3,11 @@ export BINARY=ch
 # This version refers to the next release version required,
 # which will be increased automatically by the dedicated release job
 export VERSION=0.5.73
+
+ifeq ($(GH_PRE_RELEASE),true)
+    VERSION := $(VERSION)-pre$(shell date +%s.%N)
+endif
+
 GO_VERSION?=$(shell cat go.mod | grep '^go' | awk '{print $$2}')
 PKG_BASE=github.com/hortonworks/cloud-haunter
 BUILD_TIME=$(shell date +%FT%T)
