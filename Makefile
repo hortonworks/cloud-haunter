@@ -54,7 +54,7 @@ formatcheck:
 	([ -z "$(shell gofmt -d $(GOFILES_NOVENDOR))" ]) || (echo "Source is unformatted"; exit 1)
 
 format:
-	@gofmt -w ${GOFILES_NOVENDOR}
+	@gofmt -s -w ${GOFILES_NOVENDOR}
 
 vet:
 	GO111MODULE=on go vet -mod=vendor ./...
@@ -108,10 +108,14 @@ gitPush:
 	fi
 
 mod-tidy:
-	@docker run --rm -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter $(GOLANG_CONTAINER):$(GO_VERSION) make _mod-tidy
+	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
+	@docker run --rm ${USER_NS} \
+	-v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter \
+	-w /go/src/github.com/hortonworks/cloud-haunter \
+	$(GOLANG_CONTAINER):$(GO_VERSION) make _mod-tidy
 
 _mod-tidy:
-	GO111MODULE=on go mod tidy -v
+	GO111MODULE=on go mod tidy -compat=$(GO_VERSION) -v
 	GO111MODULE=on go mod vendor
 
 .PHONY: build
