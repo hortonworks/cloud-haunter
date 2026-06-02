@@ -5,7 +5,7 @@ export BINARY=ch
 export VERSION=0.5.73
 
 ifeq ($(GH_PRE_RELEASE),true)
-	OLD_VER:=VERSION
+	OLD_VER:=$(VERSION)
     export VERSION=$(OLD_VER)-pre$(shell date +%s.%N)
 endif
 
@@ -52,7 +52,11 @@ build-linux:
 
 build-docker:
 	@#USER_NS='-u $(shell id -u $(whoami)):$(shell id -g $(whoami))'
-	docker run --rm ${USER_NS} -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter -e VERSION=${VERSION} $(GOLANG_DOCKER):$(GO_VERSION) make build
+	docker run --rm ${USER_NS} -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter \
+	-w /go/src/github.com/hortonworks/cloud-haunter \
+	-e VERSION=${VERSION} \
+	-e GH_PRE_RELEASE=${GH_PRE_RELEASE} \
+	$(GOLANG_DOCKER):$(GO_VERSION) make build
 
 install: build ## Installs OS specific binary into: /usr/local/bin
 	install build/$(shell uname -s)/$(BINARY) /usr/local/bin
@@ -71,6 +75,7 @@ release-docker:
 	-e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
 	-e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
 	-e GO111MODULE=on \
+	-e GH_PRE_RELEASE=${GH_PRE_RELEASE} \
 	$(GOLANG_DOCKER):$(GO_VERSION) make deps release
 
 gitPush:
