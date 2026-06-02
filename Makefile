@@ -2,11 +2,11 @@ export BINARY=ch
 
 # This version refers to the next release version required,
 # which will be increased automatically by the dedicated release job
-export VERSION=0.5.73
+export VERSION=0.5.72
 
 ifeq ($(GH_PRE_RELEASE),true)
 	OLD_VER:=$(VERSION)
-    export VERSION=$(OLD_VER)-pre$(shell date +%s.%N)
+    export VERSION=$(OLD_VER)-dev$(shell date +%s.%N)
 endif
 
 GO_VERSION?=$(shell cat go.mod | grep '^go' | awk '{print $$2}')
