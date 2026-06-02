@@ -118,4 +118,7 @@ _mod-tidy:
 	GO111MODULE=on go mod tidy -compat=$(GO_VERSION) -v
 	GO111MODULE=on go mod vendor
 
+download:
+	./download.sh
+
 .PHONY: build
