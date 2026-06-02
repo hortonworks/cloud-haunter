@@ -2,7 +2,7 @@ export BINARY=ch
 
 # This version refers to the next release version required,
 # which will be increased automatically by the dedicated release job
-export VERSION=0.5.72
+export VERSION=0.5.73
 
 ifeq ($(GH_PRE_RELEASE),true)
 	OLD_VER:=$(VERSION)
@@ -16,7 +16,7 @@ LDFLAGS=-w -s -X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.B
 
 GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.git/*")
 GIT_BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
-GOLANG_DOCKER=docker-private.infra.cloudera.com/cloudera_thirdparty/golang
+GOLANG_CONTAINER?=docker-private.infra.cloudera.com/cloudera_thirdparty/golang
 
 deps:
 ifeq ($(shell uname),Linux)
@@ -56,7 +56,7 @@ build-docker:
 	-w /go/src/github.com/hortonworks/cloud-haunter \
 	-e VERSION=${VERSION} \
 	-e GH_PRE_RELEASE=${GH_PRE_RELEASE} \
-	$(GOLANG_DOCKER):$(GO_VERSION) make build
+	$(GOLANG_CONTAINER):$(GO_VERSION) make build
 
 install: build ## Installs OS specific binary into: /usr/local/bin
 	install build/$(shell uname -s)/$(BINARY) /usr/local/bin
@@ -76,7 +76,7 @@ release-docker:
 	-e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
 	-e GO111MODULE=on \
 	-e GH_PRE_RELEASE=${GH_PRE_RELEASE} \
-	$(GOLANG_DOCKER):$(GO_VERSION) make deps release
+	$(GOLANG_CONTAINER):$(GO_VERSION) make deps release
 
 gitPush:
 	@if ! git diff-index --quiet HEAD Makefile; then\
@@ -88,7 +88,7 @@ gitPush:
 	fi
 
 mod-tidy:
-	@docker run --rm -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter $(GOLANG_DOCKER):$(GO_VERSION) make _mod-tidy
+	@docker run --rm -v "${PWD}":/go/src/github.com/hortonworks/cloud-haunter -w /go/src/github.com/hortonworks/cloud-haunter $(GOLANG_CONTAINER):$(GO_VERSION) make _mod-tidy
 
 _mod-tidy:
 	GO111MODULE=on go mod tidy -v
