@@ -14,6 +14,26 @@ PKG_BASE=github.com/hortonworks/cloud-haunter
 BUILD_TIME=$(shell date +%FT%T)
 LDFLAGS=-w -s -X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.BuildTime=${BUILD_TIME}
 
+ifdef IGNORE_LABEL
+LDFLAGS+= -X '$(PKG_BASE)/context.IgnoreLabel=$(IGNORE_LABEL)'
+endif
+
+ifdef OWNER_LABEL
+LDFLAGS+= -X '$(PKG_BASE)/context.OwnerLabel=$(OWNER_LABEL)'
+endif
+
+ifdef RESOURCE_GROUPING_LABEL
+LDFLAGS+= -X '$(PKG_BASE)/context.ResourceGroupingLabel=$(RESOURCE_GROUPING_LABEL)'
+endif
+
+ifdef RESOURCE_DESCRIPTION
+LDFLAGS+= -X '$(PKG_BASE)/context.ResourceDescription=$(RESOURCE_DESCRIPTION)'
+endif
+
+ifdef AZURE_CREATION_TIME_LABEL
+LDFLAGS+= -X '$(PKG_BASE)/context.AzureCreationTimeLabel=$(AZURE_CREATION_TIME_LABEL)'
+endif
+
 GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.git/*")
 GIT_BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 GOLANG_CONTAINER?=docker-private.infra.cloudera.com/cloudera_thirdparty/golang
