@@ -1,7 +1,7 @@
 #! /bin/bash
 set -ex
 
-# Handles https://support.atlassian.com/bitbucket-cloud/kb/git-command-returns-fatal-error-detected-dubious-ownership/
+# Workaround for https://support.atlassian.com/bitbucket-cloud/kb/git-command-returns-fatal-error-detected-dubious-ownership/
 git config --global --add safe.directory '*'
 
 NAME=$(basename `git rev-parse --show-toplevel`)
