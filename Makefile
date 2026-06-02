@@ -28,10 +28,6 @@ ifeq (, $(shell which gh))
 	apt update
 	apt -y install gh
 endif
-ifeq (, $(shell which aws))
-	apt-get update
-	apt-get -y install awscli
-endif
 endif
 
 formatcheck:
