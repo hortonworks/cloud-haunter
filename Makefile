@@ -2,7 +2,7 @@ export BINARY=ch
 
 # This version refers to the next release version required,
 # which will be increased automatically by the dedicated release job
-export VERSION=0.5.74
+export VERSION=0.5.73
 
 ifeq ($(GH_PRE_RELEASE),true)
 	OLD_VER:=$(VERSION)
