@@ -5,7 +5,8 @@ export BINARY=ch
 export VERSION=0.5.73
 
 ifeq ($(GH_PRE_RELEASE),true)
-    export VERSION=$(VERSION)-pre$(shell date +%s.%N)
+	OLD_VER:=VERSION
+    export VERSION=$(OLD_VER)-pre$(shell date +%s.%N)
 endif
 
 GO_VERSION?=$(shell cat go.mod | grep '^go' | awk '{print $$2}')
