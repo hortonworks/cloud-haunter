@@ -80,7 +80,6 @@ release-docker:
 
 gitPush:
 	@if ! git diff-index --quiet HEAD Makefile; then\
-		git checkout -b $(ORIGIN_BRANCH)
 		git add Makefile;\
 		git commit -m "Increase cloud haunter version";\
 		git push origin HEAD:$(GIT_BRANCH);\
