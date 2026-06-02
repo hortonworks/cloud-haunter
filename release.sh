@@ -2,7 +2,6 @@
 set -ex
 
 git config --global --add safe.directory '*'
-git --version
 
 NAME=$(basename `git rev-parse --show-toplevel`)
 ARCH=$(uname -m)
