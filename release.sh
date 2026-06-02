@@ -49,17 +49,19 @@ if [ -z "$OUTPUT" ]; then
   fi
 
   printf -v RELEASABLE_FILES './release/%s ' "${FILES[@]}"
-  gh release create "v${VERSION}" $RELEASABLE_FILES -t ${VERSION} -n "" ${gh_extra_flags}
+  gh release create "v${VERSION}" $RELEASABLE_FILES -t ${VERSION} -n "" $gh_extra_flags
 
-  FILE_NAME="Makefile"
-  SEARCH=${VERSION}
-  REPLACE=${VERSION%.*}.$((${VERSION##*.}+1))
+  if [[ "$GH_PRE_RELEASE" != "true" ]]; then
+    FILE_NAME="Makefile"
+    SEARCH=${VERSION}
+    REPLACE=${VERSION%.*}.$((${VERSION##*.}+1))
 
-  if [[ $SEARCH != "" && $REPLACE != "" ]]; then
-    echo "Increasing version from ${SEARCH} to ${REPLACE} in the ${FILE_NAME}"
-    SEARCH_TEXT="export VERSION=${SEARCH}"
-    REPLACE_TEXT="export VERSION=${REPLACE}"
-    $SED -i "s/$SEARCH_TEXT/$REPLACE_TEXT/" $FILE_NAME
+    if [[ $SEARCH != "" && $REPLACE != "" ]]; then
+      echo "Increasing version from ${SEARCH} to ${REPLACE} in the ${FILE_NAME}"
+      SEARCH_TEXT="export VERSION=${SEARCH}"
+      REPLACE_TEXT="export VERSION=${REPLACE}"
+      $SED -i "s/$SEARCH_TEXT/$REPLACE_TEXT/" $FILE_NAME
+    fi
   fi
 else
   echo "The cli release v${VERSION} already exists on Github."
