@@ -1839,15 +1839,7 @@ func getCFStacks(cloudType types.CloudType, cfClients map[string]cfClient) ([]*t
 				log.Debugf("[AWS] Processing stacks (%d) in region: %s: [%s]", len(stackResult.Stacks), region, stackResult.Stacks)
 				for _, s := range stackResult.Stacks {
 					stack := newStack(cloudType, s, region)
-					if ctx.WorkaroundAwsIgnoreStack {
-						if !strings.HasPrefix(stack.Name, "StackSet-") {
-							cfChan <- stack
-						} else {
-							log.Infof("Ignoring stackset %s", stack.Name)
-						}
-					} else {
-						cfChan <- stack
-					}
+					cfChan <- stack
 				}
 				if stackResult.NextToken != nil {
 					nextToken = *stackResult.NextToken

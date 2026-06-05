@@ -44,8 +44,6 @@ var IgnoreLabelDisabled = false
 // ExactMatchOwner is a global flag for 'exact match' or 'starts with' matching of owner
 var ExactMatchOwner = false
 
-var WorkaroundAwsIgnoreStack = false
-
 var AwsExcludedRegions = make(map[string]bool)
 
 // Operations contains all the available operations

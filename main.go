@@ -39,7 +39,6 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose")
 	ignoreLabelDisabled := flag.Bool("i", false, "disable ignore label")
 	exactMatchOwner := flag.Bool("e", false, "exact match owner")
-	workaroundAWsIgnoreStack := flag.Bool("awsignore", false, "AWS stack ignore workaround")
 	excludedAwsRegions := flag.String("excludeAwsRegion", "", "comma separated list of AWS regions to exclude")
 
 	flag.Parse()
@@ -58,7 +57,6 @@ func main() {
 	}
 	ctx.IgnoreLabelDisabled = *ignoreLabelDisabled
 	ctx.ExactMatchOwner = *exactMatchOwner
-	ctx.WorkaroundAwsIgnoreStack = *workaroundAWsIgnoreStack
 
 	if filterConfigLoc != nil && len(*filterConfigLoc) != 0 {
 		var err error
