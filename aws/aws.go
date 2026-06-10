@@ -458,6 +458,10 @@ func (p awsProvider) getCloudWatchClientsByRegion() map[string]cloudWatchClient 
 func (p awsProvider) getCloudS3ClientsByRegion() map[string]s3Client {
 	s3Clients := map[string]s3Client{}
 	for k := range p.s3Clients {
+		if ctx.AwsExcludedRegions[strings.ToLower(k)] {
+			log.Infof("[AWS] Skipping S3 region: %s", k)
+			continue
+		}
 		s3Clients[k] = p.s3Clients[k]
 	}
 	return s3Clients
