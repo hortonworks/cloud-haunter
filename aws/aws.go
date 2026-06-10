@@ -1580,6 +1580,7 @@ func cleanupStorages(s3Clients map[string]s3Client, storageContainer *types.Stor
 	storages := storageContainer.Get(types.AWS)
 	bucketsByRegion := map[string][]*types.Storage{}
 	for _, storage := range storages {
+		log.Infof("cleanupStorages processed regions: %s", storage.Region)
 		bucketsByRegion[storage.Region] = append(bucketsByRegion[storage.Region], storage)
 	}
 
