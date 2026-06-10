@@ -22,6 +22,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
 	sqladmin "google.golang.org/api/sqladmin/v1beta4"
+	storage "google.golang.org/api/storage/v1"
 )
 
 var provider = gcpProvider{}
@@ -31,6 +32,7 @@ type gcpProvider struct {
 	computeClient *compute.Service
 	iamClient     *iam.Service
 	sqlClient     *sqladmin.Service
+	storageClient *storage.Service
 }
 
 func init() {
@@ -47,11 +49,11 @@ func init() {
 	ctx.CloudProviders[types.GCP] = func() types.CloudProvider {
 		if len(provider.projectID) == 0 {
 			log.Debug("[GCP] Trying to prepare")
-			computeClient, iamClient, sqlClient, err := initClients()
+			computeClient, iamClient, sqlClient, storageClient, err := initClients()
 			if err != nil {
 				panic("[GCP] Failed to authenticate, err: " + err.Error())
 			}
-			if err := provider.init(projectID, computeClient, iamClient, sqlClient); err != nil {
+			if err := provider.init(projectID, computeClient, iamClient, sqlClient, storageClient); err != nil {
 				panic("[GCP] Failed to initialize provider, err: " + err.Error())
 			}
 			log.Info("[GCP] Successfully prepared")
@@ -60,7 +62,7 @@ func init() {
 	}
 }
 
-func initClients() (computeClient *http.Client, iamClient *http.Client, sqlClient *http.Client, err error) {
+func initClients() (computeClient *http.Client, iamClient *http.Client, sqlClient *http.Client, storageClient *http.Client, err error) {
 	computeClient, err = google.DefaultClient(context.Background(), compute.CloudPlatformScope)
 	if err != nil {
 		return
@@ -73,11 +75,12 @@ func initClients() (computeClient *http.Client, iamClient *http.Client, sqlClien
 	if err != nil {
 		return
 	}
+	storageClient, err = google.DefaultClient(context.Background(), storage.CloudPlatformScope)
 	return
 }
 
 func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iamHTTPClient *http.Client,
-	sqlHTTPClient *http.Client) error {
+	sqlHTTPClient *http.Client, storageHTTPClient *http.Client) error {
 
 	p.projectID = projectID
 	computeClient, err := compute.New(computeHTTPClient)
@@ -95,6 +98,12 @@ func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iam
 		return errors.New("Failed to initialize Sql admin client, err: " + err.Error())
 	}
 	p.sqlClient = sqlClient
+
+	storageClient, err := storage.New(storageHTTPClient)
+	if err != nil {
+		return errors.New("Failed to initialize Storage admin client, err: " + err.Error())
+	}
+	p.storageClient = storageClient
 	return nil
 }
 
