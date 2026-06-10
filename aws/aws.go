@@ -459,6 +459,7 @@ func (p awsProvider) getCloudS3ClientsByRegion() map[string]s3Client {
 	s3Clients := map[string]s3Client{}
 	for k := range p.s3Clients {
 		nameForChecking := strings.Trim(strings.ToLower(k), "\"")
+		log.Infof("What is the key ooo: %s", k)
 		if ctx.AwsExcludedRegions[nameForChecking] {
 			log.Infof("[AWS] Skipping S3 region: %s", k)
 			continue
