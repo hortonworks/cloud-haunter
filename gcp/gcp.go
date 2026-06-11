@@ -1184,7 +1184,9 @@ func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
 }
 
 func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
+	storages := storageContainer.Get(types.GCP)
 	log.Debug("[GCP] Cleanup storages")
+	log.Debugf("[GCP] storages: %v", storages)
 	return nil
 	//return []error{errors.New("[GCP] Cleanup storages is not supported yet")}
 }
