@@ -1165,17 +1165,21 @@ func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
 
 	storages := []*types.Storage{}
 	for _, item := range buckets.Items {
-		parsedTime, _ := time.Parse(time.RFC3339Nano, item.TimeCreated)
+		parsedCreationTime, err := time.Parse(time.RFC3339Nano, item.TimeCreated)
+		if err != nil {
+			log.Errorf("[GCP] failed to parse timestamp: %s for bucket: %s with error: %v", item.TimeCreated, item.Name, err)
+			continue
+		}
 		storage := &types.Storage{
 			Name:      item.Name,
-			Created:   parsedTime,
+			Created:   parsedCreationTime,
 			CloudType: types.GCP,
 			Region:    item.Location,
 		}
 		storages = append(storages, storage)
-		log.Infof("Storage: %v, CreationTimeStamp: %s", storage, item.TimeCreated)
+		log.Debugf("Storage: %v, CreationTimeStamp: %s", storage, item.TimeCreated)
 	}
-	return nil, err
+	return storages, err
 	//return nil, errors.New("[GCP] Getting storages is not supported yet")
 }
 
