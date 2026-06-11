@@ -1155,10 +1155,25 @@ func (p gcpProvider) DeleteAlerts(*types.AlertContainer) []error {
 }
 
 func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
+	log.Infof("[GCP] GetStorages")
 	storageListCall := p.storageClient.Buckets.List(p.projectID)
 	buckets, err := storageListCall.Do()
+	if err != nil {
+		log.Error("Failed to fetch S3 Buckets.")
+		return nil, err
+	}
+
+	storages := []*types.Storage{}
 	for _, item := range buckets.Items {
-		log.Infof("Name: %s Id: %s", item.Name, item.Id)
+		parsedTime, _ := time.Parse("", item.TimeCreated)
+		storage := &types.Storage{
+			Name:      item.Name,
+			Created:   parsedTime,
+			CloudType: types.GCP,
+			Region:    item.Location,
+		}
+		storages = append(storages, storage)
+		log.Infof("Storage: %v, CreationTimeStamp: %s", storage, item.TimeCreated)
 	}
 	return nil, err
 	//return nil, errors.New("[GCP] Getting storages is not supported yet")
