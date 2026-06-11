@@ -1177,7 +1177,7 @@ func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
 			Region:    item.Location,
 		}
 		storages = append(storages, storage)
-		log.Debugf("Storage: %v, CreationTimeStamp: %s", storage, item.TimeCreated)
+		log.Debugf("[GCP] Storage: %v, CreationTimeStamp: %s", storage, item.TimeCreated)
 	}
 	return storages, err
 	//return nil, errors.New("[GCP] Getting storages is not supported yet")
