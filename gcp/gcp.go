@@ -1165,7 +1165,7 @@ func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
 
 	storages := []*types.Storage{}
 	for _, item := range buckets.Items {
-		parsedTime, _ := time.Parse("2022-11-28T21:23:58.188Z", item.TimeCreated)
+		parsedTime, _ := time.Parse(time.RFC3339, item.TimeCreated)
 		storage := &types.Storage{
 			Name:      item.Name,
 			Created:   parsedTime,
