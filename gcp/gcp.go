@@ -1187,6 +1187,9 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 	storages := storageContainer.Get(types.GCP)
 	log.Debug("[GCP] Cleanup storages")
 	log.Debugf("[GCP] storages: %v", storages)
+	for _, storage := range storages {
+		log.Debugf("Storage: %v", *storage)
+	}
 	return nil
 	//return []error{errors.New("[GCP] Cleanup storages is not supported yet")}
 }
