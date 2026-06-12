@@ -1217,7 +1217,7 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 						errChan <- err
 					}
 					nextPageToken = objects.NextPageToken
-					log.Infof("NextPageToken: %s", objects.NextPageToken)
+					log.Debugf("Bucket name: %s - NextPageToken: %s", bucketName, objects.NextPageToken)
 
 					if nextPageToken == "" {
 						break
