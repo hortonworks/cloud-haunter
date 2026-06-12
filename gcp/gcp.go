@@ -1180,7 +1180,6 @@ func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
 		log.Debugf("[GCP] Storage: %v, CreationTimeStamp: %s", storage, item.TimeCreated)
 	}
 	return storages, err
-	//return nil, errors.New("[GCP] Getting storages is not supported yet")
 }
 
 func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
@@ -1284,7 +1283,6 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 	}
 
 	return errors
-	//return []error{errors.New("[GCP] Cleanup storages is not supported yet")}
 }
 
 func getDatabaseInstanceCreationTimeStamp(opService *sqladmin.OperationsListCall, dbName string) (time.Time, error) {
