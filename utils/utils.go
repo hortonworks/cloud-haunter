@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"io/ioutil"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,25 @@ func IsStartsWith(hay string, needles ...string) bool {
 	for _, n := range needles {
 		if strings.Index(hay, n) == 0 {
 			return true
+		}
+	}
+	return false
+}
+
+func IsStartsWithOrRegexp(hay string, needles ...string) bool {
+	for _, n := range needles {
+		if strings.HasPrefix(n, "regexp:") {
+			pattern := strings.SplitN(n, ":", 2)[1]
+			matched, err := regexp.MatchString(pattern, hay)
+			if err != nil {
+				log.Errorf("Error matching using pattern \"%s\"", pattern)
+				return false
+			}
+			return matched
+		} else {
+			if strings.Index(hay, n) == 0 {
+				return true
+			}
 		}
 	}
 	return false
