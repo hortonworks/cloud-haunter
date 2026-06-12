@@ -1191,8 +1191,39 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 	for _, storage := range storages {
 		bucketsByRegion[storage.Region] = append(bucketsByRegion[storage.Region], storage)
 	}
-	log.Debugf("[GCP] bucketsByRegion: %v", bucketsByRegion)
-	return nil
+
+	errChan := make(chan error)
+	wg := sync.WaitGroup{}
+	wg.Add(len(bucketsByRegion))
+
+	for r, b := range bucketsByRegion {
+		go func(storageClient storage.Service, region string, bucketsInRegion []*types.Storage) {
+			defer wg.Done()
+			for i := 0; i < len(bucketsInRegion); i += 1 {
+				var bucketName = bucketsInRegion[i].Name
+				//var cleanedUpStorage int64
+
+				objectListCall := p.storageClient.Objects.List(bucketName)
+				_, err := objectListCall.Do()
+				if err != nil {
+					log.Errorf("[GCP] Failed to retrieve objects in bucket: %s", bucketName)
+					errChan <- err
+				}
+			}
+		}(*p.storageClient, r, b)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errors []error
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+
+	return errors
 	//return []error{errors.New("[GCP] Cleanup storages is not supported yet")}
 }
 
