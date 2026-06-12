@@ -1204,11 +1204,13 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 				//var cleanedUpStorage int64
 
 				objectListCall := p.storageClient.Objects.List(bucketName)
-				_, err := objectListCall.Do()
+				objects, err := objectListCall.Do()
 				if err != nil {
 					log.Errorf("[GCP] Failed to retrieve objects in bucket: %s", bucketName)
 					errChan <- err
 				}
+
+				log.Infof("NextPageToken: %s", objects.NextPageToken)
 			}
 		}(*p.storageClient, r, b)
 	}
