@@ -1247,6 +1247,10 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 						log.Infof("[GCP] File '%s' in S3 bucket will be deleted because it is older than %s.", object.Id, retentionTime)
 					}
 				}
+
+				if bucketsInRegion[i].Created.Before(retentionTime) {
+					log.Infof("[GCP] Trying to delete S3 bucket '%s' because it is older than %s.", bucketName, retentionTime)
+				}
 			}
 		}(*p.storageClient, r, b)
 	}
