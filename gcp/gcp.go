@@ -1205,19 +1205,25 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 				//var cleanedUpStorage int64
 				nextPageToken := ""
 				pageCounter := 1
+				var objects []*storage.Object
 				for {
 
 					objectListCall := p.storageClient.Objects.List(bucketName)
 					if nextPageToken != "" {
 						objectListCall.PageToken(nextPageToken)
 					}
-					objects, err := objectListCall.Do()
+					objectsPage, err := objectListCall.Do()
 					if err != nil {
 						log.Errorf("[GCP] Failed to retrieve objects in bucket: %s", bucketName)
 						errChan <- err
 					}
-					nextPageToken = objects.NextPageToken
-					log.Debugf("Bucket name: %s - Page: %d - NextPageToken: %s", bucketName, pageCounter, objects.NextPageToken)
+
+					if objectsPage != nil {
+						objects = append(objects, objectsPage.Items...)
+					}
+
+					nextPageToken = objectsPage.NextPageToken
+					log.Debugf("Bucket name: %s - Page: %d - NextPageToken: %s", bucketName, pageCounter, objectsPage.NextPageToken)
 					pageCounter++
 					if nextPageToken == "" {
 						break
