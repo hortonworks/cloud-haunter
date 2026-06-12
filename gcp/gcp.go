@@ -1184,6 +1184,7 @@ func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
 }
 
 func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
+	retentionTime := time.Now().AddDate(0, 0, -retentionDays)
 	storages := storageContainer.Get(types.GCP)
 	log.Debug("[GCP] Cleanup storages")
 
@@ -1236,8 +1237,14 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 
 				log.Debugf("[GCP] Total number of collected objects: %d", len(objects))
 				for _, object := range objects {
-					if object != nil {
-
+					modificationTime, err := time.Parse(RFC3339Nano, object.Updated)
+					if err != nil {
+						log.Errorf("[GCP] Unable to parse modification time for object: %s in bucket: %s", object.Name, object.Bucket)
+						errChan <- err
+						continue
+					}
+					if modificationTime.Before(retentionTime) {
+						log.Infof("[GCP] File '%s' in S3 bucket will be deleted because it is older than %s.", object.Id, retentionTime)
 					}
 				}
 			}
