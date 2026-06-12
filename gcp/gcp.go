@@ -1243,6 +1243,9 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 							log.Infof("[GCP][DRY-RUN] File '%s' in S3 bucket will be deleted because it is older than %s.", object.Id, retentionTime)
 						} else {
 							log.Infof("[GCP] File '%s' in S3 bucket will be deleted because it is older than %s.", object.Id, retentionTime)
+							//objectGetCall := storageClient.Objects.Get(object.Bucket, object.Name)
+							//objectInfo, err := objectGetCall.Do()
+							//objectInfo.Size
 							objectDeleteCall := storageClient.Objects.Delete(object.Bucket, object.Name)
 							err := objectDeleteCall.Do()
 							if err != nil {
