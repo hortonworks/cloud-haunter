@@ -41,6 +41,7 @@ func IsStartsWithOrRegexp(hay string, needles ...string) bool {
 	for _, n := range needles {
 		if strings.HasPrefix(n, "regexp:") {
 			pattern := strings.SplitN(n, ":", 2)[1]
+			log.Debugf("Matching '%s' with pattern '%s'", hay, pattern)
 			matched, err := regexp.MatchString(pattern, hay)
 			if err != nil {
 				log.Errorf("Error matching using pattern \"%s\"", pattern)
