@@ -1204,7 +1204,7 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 				var bucketName = bucketsInRegion[i].Name
 				//var cleanedUpStorage int64
 				nextPageToken := ""
-
+				pageCounter := 1
 				for {
 
 					objectListCall := p.storageClient.Objects.List(bucketName)
@@ -1217,8 +1217,8 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 						errChan <- err
 					}
 					nextPageToken = objects.NextPageToken
-					log.Debugf("Bucket name: %s - NextPageToken: %s", bucketName, objects.NextPageToken)
-
+					log.Debugf("Bucket name: %s - Page: %d - NextPageToken: %s", bucketName, pageCounter, objects.NextPageToken)
+					pageCounter++
 					if nextPageToken == "" {
 						break
 					}
