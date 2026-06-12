@@ -1229,6 +1229,13 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 						break
 					}
 				}
+
+				log.Debugf("[GCP] Total number of collected objects: %d", len(objects))
+				for _, object := range objects {
+					if object != nil {
+
+					}
+				}
 			}
 		}(*p.storageClient, r, b)
 	}
