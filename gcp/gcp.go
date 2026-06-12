@@ -1195,6 +1195,7 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 	errChan := make(chan error)
 	wg := sync.WaitGroup{}
 	wg.Add(len(bucketsByRegion))
+	DEBUG_MAX_PAGE_COUNT := 3
 
 	for r, b := range bucketsByRegion {
 		go func(storageClient storage.Service, region string, bucketsInRegion []*types.Storage) {
@@ -1226,6 +1227,9 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 					log.Debugf("Bucket name: %s - Page: %d - NextPageToken: %s", bucketName, pageCounter, objectsPage.NextPageToken)
 					pageCounter++
 					if nextPageToken == "" {
+						break
+					}
+					if pageCounter > DEBUG_MAX_PAGE_COUNT {
 						break
 					}
 				}
