@@ -1237,7 +1237,7 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 
 				log.Debugf("[GCP] Total number of collected objects: %d", len(objects))
 				for _, object := range objects {
-					modificationTime, err := time.Parse(RFC3339Nano, object.Updated)
+					modificationTime, err := time.Parse(time.RFC3339Nano, object.Updated)
 					if err != nil {
 						log.Errorf("[GCP] Unable to parse modification time for object: %s in bucket: %s", object.Name, object.Bucket)
 						errChan <- err
