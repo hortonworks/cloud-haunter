@@ -1162,7 +1162,6 @@ func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
 		log.Error("Failed to fetch S3 Buckets.")
 		return nil, err
 	}
-
 	storages := []*types.Storage{}
 	for _, item := range buckets.Items {
 		parsedCreationTime, err := time.Parse(time.RFC3339Nano, item.TimeCreated)
@@ -1171,9 +1170,12 @@ func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
 			continue
 		}
 		storage := &types.Storage{
+			ID:        item.Id,
 			Name:      item.Name,
+			Owner:     item.Labels["owner"],
 			Created:   parsedCreationTime,
 			CloudType: types.GCP,
+			Tags:      item.Labels,
 			Region:    item.Location,
 		}
 		storages = append(storages, storage)
