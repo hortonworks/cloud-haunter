@@ -1204,7 +1204,7 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 
 			for i := 0; i < len(bucketsInRegion); i += 1 {
 				var bucketName = bucketsInRegion[i].Name
-				//var cleanedUpStorage int64
+				var cleanedUpStorage int64
 				nextPageToken := ""
 				pageCounter := 1
 				var objects []*storage.Object
@@ -1245,18 +1245,18 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 							log.Infof("[GCP][DRY-RUN] File '%s' in S3 bucket will be deleted because it is older than %s.", object.Id, retentionTime)
 						} else {
 							log.Infof("[GCP] File '%s' in S3 bucket will be deleted because it is older than %s.", object.Id, retentionTime)
-							//objectGetCall := storageClient.Objects.Get(object.Bucket, object.Name)
-							//objectInfo, err := objectGetCall.Do()
-							//objectInfo.Size
 							objectDeleteCall := storageClient.Objects.Delete(object.Bucket, object.Name)
 							err := objectDeleteCall.Do()
 							if err != nil {
 								errChan <- err
+							} else {
+								cleanedUpStorage += int64(object.Size)
 							}
 						}
 					}
 				}
 
+				log.Infof("[GCP] Cleaned up %s worth of files in GCP object storage %s", utils.GetHumanReadableFileSize(cleanedUpStorage), bucketName)
 				if bucketsInRegion[i].Created.Before(retentionTime) {
 					if ctx.DryRun {
 						log.Infof("[GCP][DRY-RUN] Trying to delete S3 bucket '%s' because it is older than %s.", bucketName, retentionTime)
