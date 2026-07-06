@@ -28,6 +28,9 @@ const (
 	// NoMatchFilter filters the items that do not match the include criteria of the filter config
 	NoMatchFilter = FilterType("nomatch")
 
+	// NoFilter allows everything to pass
+	NoFilter = FilterType("nofilter")
+
 	// InclusiveFilter filter type that will return only the matching entries from the filter's inclusive configuration
 	InclusiveFilter = FilterConfigType("inclusive")
 
