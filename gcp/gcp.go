@@ -1209,7 +1209,6 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 				pageCounter := 1
 				var objects []*storage.Object
 				for {
-
 					objectListCall := p.storageClient.Objects.List(bucketName)
 					if nextPageToken != "" {
 						objectListCall.PageToken(nextPageToken)
