@@ -47,13 +47,9 @@ func IsStartsWithOrRegexp(hay string, needles ...string) bool {
 				return false
 			}
 			log.Debugf("Matching '%s' with pattern '%s' = %t", hay, pattern, matched)
-			if matched {
-				return true
-			}
+			return matched
 		} else {
-			if strings.Index(hay, n) == 0 {
-				return true
-			}
+			return strings.Index(hay, n) == 0
 		}
 	}
 	return false
