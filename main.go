@@ -55,6 +55,9 @@ func main() {
 	if ctx.Verbose {
 		log.SetLevel(log.DebugLevel)
 	}
+	if ctx.DryRun {
+		log.Warn("We are in dry run mode.")
+	}
 	ctx.IgnoreLabelDisabled = *ignoreLabelDisabled
 	ctx.ExactMatchOwner = *exactMatchOwner
 
