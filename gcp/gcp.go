@@ -1259,9 +1259,8 @@ func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, r
 
 				log.Infof("[GCP] Cleaned up %s worth of files in GCP object storage %s", utils.GetHumanReadableFileSize(cleanedUpStorage), bucketName)
 				if bucketsInRegion[i].Created.Before(retentionTime) {
-					if ctx.DryRun {
-						log.Infof("[GCP][DRY-RUN] Trying to delete S3 bucket '%s' because it is older than %s.", bucketName, retentionTime)
-					} else {
+					log.Infof("[GCP] Trying to delete S3 bucket '%s' because it is older than %s.", bucketName, retentionTime)
+					if !ctx.DryRun {
 						log.Infof("[GCP] Trying to delete S3 bucket '%s' because it is older than %s.", bucketName, retentionTime)
 						deleteCall := storageClient.Buckets.Delete(bucketName)
 						err := deleteCall.Do()
