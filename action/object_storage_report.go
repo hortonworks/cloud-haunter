@@ -26,8 +26,9 @@ func (a StorageReportAction) Execute(op types.OpType, filter []types.FilterType,
 	defer file.Close()
 	csvWriter := csv.NewWriter(file)
 	defer csvWriter.Flush()
+	csvWriter.Write([]string{"Cloud Type", "Name", "Owner"})
 	for _, item := range items {
-		csvWriter.Write([]string{item.GetCloudType().String(), item.GetName()})
+		csvWriter.Write([]string{item.GetCloudType().String(), item.GetName(), item.GetOwner()})
 		log.Infof("[%s] %s", item.GetCloudType(), item.GetName())
 	}
 	log.Info("Report generation complete.")
