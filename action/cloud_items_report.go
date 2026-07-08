@@ -22,7 +22,7 @@ func (a CloudItemsReportAction) Execute(op types.OpType, filter []types.FilterTy
 	isoTimestamp := time.Now().UTC().Format(time.RFC3339)
 	fileName := fmt.Sprintf("report-cloud-items-%s.csv", isoTimestamp)
 
-	log.Info("Generating cloud items report")
+	log.Info("Generating cloud items report.")
 
 	file, err := os.Create(fileName)
 	if err != nil {
