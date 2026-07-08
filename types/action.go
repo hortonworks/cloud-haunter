@@ -26,7 +26,7 @@ const (
 	// CleanupAction cleans up the cloud item  if the item supports such operation
 	CleanupAction = ActionType("cleanup")
 
-	StorageReportAction = ActionType("report-storage")
+	CloudItemsReportAction = ActionType("report-cloud-items")
 )
 
 // Action to execute on the cloud items

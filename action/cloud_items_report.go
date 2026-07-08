@@ -2,7 +2,9 @@ package action
 
 import (
 	"encoding/csv"
+	"fmt"
 	"os"
+	"time"
 
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
@@ -10,15 +12,19 @@ import (
 )
 
 func init() {
-	ctx.Actions[types.StorageReportAction] = new(StorageReportAction)
+	ctx.Actions[types.CloudItemsReportAction] = new(CloudItemsReportAction)
 }
 
-type StorageReportAction struct {
+type CloudItemsReportAction struct {
 }
 
-func (a StorageReportAction) Execute(op types.OpType, filter []types.FilterType, items []types.CloudItem) {
-	log.Info("Generating report.")
-	file, err := os.Create("report.csv")
+func (a CloudItemsReportAction) Execute(op types.OpType, filter []types.FilterType, items []types.CloudItem) {
+	isoTimestamp := time.Now().UTC().Format(time.RFC3339)
+	fileName := fmt.Sprintf("report-cloud-items-%s.csv", isoTimestamp)
+
+	log.Info("Generating cloud items report")
+
+	file, err := os.Create(fileName)
 	if err != nil {
 		log.Fatalf("Could not create file: %s", err)
 		return
@@ -31,5 +37,5 @@ func (a StorageReportAction) Execute(op types.OpType, filter []types.FilterType,
 		csvWriter.Write([]string{item.GetCloudType().String(), item.GetName(), item.GetOwner()})
 		log.Infof("[%s] %s", item.GetCloudType(), item.GetName())
 	}
-	log.Info("Report generation complete.")
+	log.Infof("Written report to %s", fileName)
 }
