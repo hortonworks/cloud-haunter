@@ -2,7 +2,6 @@ package action
 
 import (
 	"encoding/csv"
-	"fmt"
 	"os"
 
 	ctx "github.com/hortonworks/cloud-haunter/context"
@@ -18,7 +17,8 @@ type StorageReportAction struct {
 }
 
 func (a StorageReportAction) Execute(op types.OpType, filter []types.FilterType, items []types.CloudItem) {
-	file, err := os.Create(fmt.Sprintf("report.csv"))
+	log.Info("Generating report.")
+	file, err := os.Create("report.csv")
 	if err != nil {
 		log.Fatalf("Could not create file: %s", err)
 		return
@@ -26,9 +26,9 @@ func (a StorageReportAction) Execute(op types.OpType, filter []types.FilterType,
 	defer file.Close()
 	csvWriter := csv.NewWriter(file)
 	defer csvWriter.Flush()
-
 	for _, item := range items {
 		csvWriter.Write([]string{item.GetCloudType().String(), item.GetName()})
 		log.Infof("[%s] %s", item.GetCloudType(), item.GetName())
 	}
+	log.Info("Report generation complete.")
 }
