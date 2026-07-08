@@ -28,7 +28,7 @@ func (a StorageReportAction) Execute(op types.OpType, filter []types.FilterType,
 	defer csvWriter.Flush()
 
 	for _, item := range items {
-		csvWriter.Write([]string{item.GetCloudType().String(), item.G, item.GetName()})
+		csvWriter.Write([]string{item.GetCloudType().String(), item.GetName()})
 		log.Infof("[%s] %s", item.GetCloudType(), item.GetName())
 	}
 }
