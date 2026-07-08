@@ -21,13 +21,14 @@ func (a StorageReportAction) Execute(op types.OpType, filter []types.FilterType,
 	file, err := os.Create(fmt.Sprintf("report.csv"))
 	if err != nil {
 		log.Fatalf("Could not create file: %s", err)
+		return
 	}
 	defer file.Close()
 	csvWriter := csv.NewWriter(file)
 	defer csvWriter.Flush()
 
 	for _, item := range items {
-		csvWriter.Write([]string{item.GetCloudType().String(), item.GetName()})
+		csvWriter.Write([]string{item.GetCloudType().String(), item.G, item.GetName()})
 		log.Infof("[%s] %s", item.GetCloudType(), item.GetName())
 	}
 }
