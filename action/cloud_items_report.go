@@ -24,7 +24,7 @@ func (a CloudItemsReportAction) Execute(op types.OpType, filter []types.FilterTy
 	isoTimestamp = strings.ReplaceAll(isoTimestamp, ":", "-") // colon is disallowed on some platforms (e.g. MS/Windows).
 	fileName := fmt.Sprintf("report-cloud-items-%s.csv", isoTimestamp)
 
-	log.Info("Generating cloud items report.")
+	log.Infof("Writing cloud items report to %s", fileName)
 
 	file, err := os.Create(fileName)
 	if err != nil {
@@ -39,5 +39,5 @@ func (a CloudItemsReportAction) Execute(op types.OpType, filter []types.FilterTy
 	for _, item := range items {
 		csvWriter.Write([]string{item.GetCloudType().String(), item.GetName(), item.GetOwner()})
 	}
-	log.Infof("Written cloud items report to %s", fileName)
+	log.Infof("Writing of cloud items report is complete. Report path: %s", fileName)
 }
