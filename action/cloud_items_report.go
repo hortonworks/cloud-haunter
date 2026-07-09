@@ -39,5 +39,5 @@ func (a CloudItemsReportAction) Execute(op types.OpType, filter []types.FilterTy
 	for _, item := range items {
 		csvWriter.Write([]string{item.GetCloudType().String(), item.GetName(), item.GetOwner()})
 	}
-	log.Infof("Writing of cloud items report is complete. Report path: %s", fileName)
+	log.Infof("Writing of cloud items report is complete. Report filename: %s", fileName)
 }
