@@ -41,14 +41,13 @@ GOLANG_CONTAINER?=docker-private.infra.cloudera.com/cloudera_thirdparty/golang
 deps:
 ifeq ($(shell uname),Linux)
 ifeq (, $(shell which gh))
-	apt-get update
+# Based on the official GH CLI docs: https://github.com/cli/cli/blob/trunk/docs/install_linux.md#debian
+# Snapshot: https://web.archive.org/web/20260710093431/https://github.com/cli/cli/blob/trunk/docs/install_linux.md#debian
 	(type -p wget >/dev/null || (apt update && apt install wget -y)) \
 	&& mkdir -p -m 755 /etc/apt/keyrings \
-	&& out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-	&& cat $out | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
-	&& chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+	&& wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 	&& mkdir -p -m 755 /etc/apt/sources.list.d \
-	&& echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+	&& echo "deb [arch=$$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
 	&& apt update \
 	&& apt install gh -y
 endif
