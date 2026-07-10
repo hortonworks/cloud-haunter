@@ -1,6 +1,6 @@
 module github.com/hortonworks/cloud-haunter
 
-go 1.23
+go 1.26
 
 require (
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
