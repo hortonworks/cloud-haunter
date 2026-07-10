@@ -75,7 +75,7 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 
 	if names := filterConfig.GetFilterValues(filterEntityType, item.GetCloudType(), types.Name); names != nil {
 		log.Debugf("[%s] filtering item %s to names [%s]", filterName, item.GetName(), names)
-		filtered, applied = filtered || utils.IsStartsWith(item.GetName(), names...), true
+		filtered, applied = filtered || utils.IsStartsWithOrRegexp(item.GetName(), names...), true
 	}
 
 	if owners := filterConfig.GetFilterValues(filterEntityType, item.GetCloudType(), types.Owner); owners != nil {

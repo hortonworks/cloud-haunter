@@ -1574,6 +1574,10 @@ func cleanupStorages(s3Clients map[string]s3Client, storageContainer *types.Stor
 	storages := storageContainer.Get(types.AWS)
 	bucketsByRegion := map[string][]*types.Storage{}
 	for _, storage := range storages {
+		if ctx.AwsExcludedRegions[strings.ToLower(storage.Region)] {
+			log.Infof("[AWS] Skipping S3 region: %s", storage.Region)
+			continue
+		}
 		bucketsByRegion[storage.Region] = append(bucketsByRegion[storage.Region], storage)
 	}
 

@@ -22,6 +22,7 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
 	sqladmin "google.golang.org/api/sqladmin/v1beta4"
+	storage "google.golang.org/api/storage/v1"
 )
 
 var provider = gcpProvider{}
@@ -31,6 +32,7 @@ type gcpProvider struct {
 	computeClient *compute.Service
 	iamClient     *iam.Service
 	sqlClient     *sqladmin.Service
+	storageClient *storage.Service
 }
 
 func init() {
@@ -47,11 +49,11 @@ func init() {
 	ctx.CloudProviders[types.GCP] = func() types.CloudProvider {
 		if len(provider.projectID) == 0 {
 			log.Debug("[GCP] Trying to prepare")
-			computeClient, iamClient, sqlClient, err := initClients()
+			computeClient, iamClient, sqlClient, storageClient, err := initClients()
 			if err != nil {
 				panic("[GCP] Failed to authenticate, err: " + err.Error())
 			}
-			if err := provider.init(projectID, computeClient, iamClient, sqlClient); err != nil {
+			if err := provider.init(projectID, computeClient, iamClient, sqlClient, storageClient); err != nil {
 				panic("[GCP] Failed to initialize provider, err: " + err.Error())
 			}
 			log.Info("[GCP] Successfully prepared")
@@ -60,7 +62,7 @@ func init() {
 	}
 }
 
-func initClients() (computeClient *http.Client, iamClient *http.Client, sqlClient *http.Client, err error) {
+func initClients() (computeClient *http.Client, iamClient *http.Client, sqlClient *http.Client, storageClient *http.Client, err error) {
 	computeClient, err = google.DefaultClient(context.Background(), compute.CloudPlatformScope)
 	if err != nil {
 		return
@@ -73,11 +75,12 @@ func initClients() (computeClient *http.Client, iamClient *http.Client, sqlClien
 	if err != nil {
 		return
 	}
+	storageClient, err = google.DefaultClient(context.Background(), storage.CloudPlatformScope)
 	return
 }
 
 func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iamHTTPClient *http.Client,
-	sqlHTTPClient *http.Client) error {
+	sqlHTTPClient *http.Client, storageHTTPClient *http.Client) error {
 
 	p.projectID = projectID
 	computeClient, err := compute.New(computeHTTPClient)
@@ -95,6 +98,12 @@ func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iam
 		return errors.New("Failed to initialize Sql admin client, err: " + err.Error())
 	}
 	p.sqlClient = sqlClient
+
+	storageClient, err := storage.New(storageHTTPClient)
+	if err != nil {
+		return errors.New("Failed to initialize Storage admin client, err: " + err.Error())
+	}
+	p.storageClient = storageClient
 	return nil
 }
 
@@ -1146,11 +1155,132 @@ func (p gcpProvider) DeleteAlerts(*types.AlertContainer) []error {
 }
 
 func (p gcpProvider) GetStorages() ([]*types.Storage, error) {
-	return nil, errors.New("[GCP] Getting storages is not supported yet")
+	log.Infof("[GCP] GetStorages")
+	storageListCall := p.storageClient.Buckets.List(p.projectID)
+	buckets, err := storageListCall.Do()
+	if err != nil {
+		log.Error("Failed to fetch S3 Buckets.")
+		return nil, err
+	}
+	storages := []*types.Storage{}
+	for _, item := range buckets.Items {
+		parsedCreationTime, err := time.Parse(time.RFC3339Nano, item.TimeCreated)
+		if err != nil {
+			log.Errorf("[GCP] failed to parse timestamp: %s for bucket: %s with error: %v", item.TimeCreated, item.Name, err)
+			continue
+		}
+		storage := &types.Storage{
+			ID:        item.Id,
+			Name:      item.Name,
+			Owner:     item.Labels["owner"],
+			Created:   parsedCreationTime,
+			CloudType: types.GCP,
+			Tags:      item.Labels,
+			Region:    item.Location,
+		}
+		storages = append(storages, storage)
+		log.Debugf("[GCP] Storage: %v, CreationTimeStamp: %s", storage, item.TimeCreated)
+	}
+	return storages, err
 }
 
 func (p gcpProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
-	return []error{errors.New("[GCP] Cleanup storages is not supported yet")}
+	retentionTime := time.Now().AddDate(0, 0, -retentionDays)
+	storages := storageContainer.Get(types.GCP)
+	log.Debug("[GCP] Cleanup storages")
+
+	bucketsByRegion := map[string][]*types.Storage{}
+	for _, storage := range storages {
+		bucketsByRegion[storage.Region] = append(bucketsByRegion[storage.Region], storage)
+	}
+
+	errChan := make(chan error)
+	wg := sync.WaitGroup{}
+	wg.Add(len(bucketsByRegion))
+
+	for r, b := range bucketsByRegion {
+		go func(storageClient storage.Service, region string, bucketsInRegion []*types.Storage) {
+			defer wg.Done()
+
+			for i := 0; i < len(bucketsInRegion); i += 1 {
+				var bucketName = bucketsInRegion[i].Name
+				var cleanedUpStorage int64
+				nextPageToken := ""
+				pageCounter := 0
+				var objects []*storage.Object
+				for {
+					objectListCall := p.storageClient.Objects.List(bucketName)
+					if nextPageToken != "" {
+						objectListCall.PageToken(nextPageToken)
+					}
+					objectsPage, err := objectListCall.Do()
+					if err != nil {
+						log.Errorf("[GCP] Failed to retrieve objects in bucket: %s", bucketName)
+						errChan <- err
+					}
+
+					if objectsPage != nil {
+						objects = append(objects, objectsPage.Items...)
+					}
+
+					nextPageToken = objectsPage.NextPageToken
+					log.Debugf("Bucket name: %s - Page: %d - NextPageToken: %s", bucketName, pageCounter, objectsPage.NextPageToken)
+					pageCounter++
+					if nextPageToken == "" {
+						break
+					}
+				}
+
+				log.Debugf("[GCP] Total number of collected objects: %d", len(objects))
+				for _, object := range objects {
+					modificationTime, err := time.Parse(time.RFC3339Nano, object.Updated)
+					if err != nil {
+						log.Errorf("[GCP] Unable to parse modification time for object: %s in bucket: %s", object.Name, object.Bucket)
+						errChan <- err
+						continue
+					}
+					if modificationTime.Before(retentionTime) {
+						log.Infof("[GCP] File '%s' in S3 bucket will be deleted because it is older than %s.", object.Id, retentionTime)
+						if ctx.DryRun {
+							cleanedUpStorage += int64(object.Size)
+							continue
+						}
+						objectDeleteCall := storageClient.Objects.Delete(object.Bucket, object.Name)
+						err := objectDeleteCall.Do()
+						if err != nil {
+							errChan <- err
+						} else {
+							cleanedUpStorage += int64(object.Size)
+						}
+					}
+				}
+
+				log.Infof("[GCP] Cleaned up %s worth of files in GCP object storage %s", utils.GetHumanReadableFileSize(cleanedUpStorage), bucketName)
+				if bucketsInRegion[i].Created.Before(retentionTime) {
+					log.Infof("[GCP] Trying to delete S3 bucket '%s' because it is older than %s.", bucketName, retentionTime)
+					if !ctx.DryRun {
+						deleteCall := storageClient.Buckets.Delete(bucketName)
+						err := deleteCall.Do()
+						if err != nil {
+							errChan <- err
+						}
+					}
+				}
+			}
+		}(*p.storageClient, r, b)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var errors []error
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+
+	return errors
 }
 
 func getDatabaseInstanceCreationTimeStamp(opService *sqladmin.OperationsListCall, dbName string) (time.Time, error) {

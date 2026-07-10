@@ -1,8 +1,9 @@
 package types
 
 import (
-	log "github.com/sirupsen/logrus"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // FilterConfigV2 structure that stores the information provided by the exclude/include flag
@@ -11,10 +12,11 @@ type FilterConfigV2 struct {
 }
 
 type FilterConfigV2Filter struct {
-	Types      []FilterEntityType     `yaml:"filterTypes"`
-	CloudTypes []CloudType            `yaml:"cloudTypes"`
-	Properties []FilterConfigProperty `yaml:"filterProperties"`
-	Values     []string               `yaml:"filterValues"`
+	Types       []FilterEntityType     `yaml:"filterTypes"`
+	CloudTypes  []CloudType            `yaml:"cloudTypes"`
+	Properties  []FilterConfigProperty `yaml:"filterProperties"`
+	Values      []string               `yaml:"filterValues"`
+	RegexValues []string               `yaml:"filterValuesRegex,omitempty"`
 }
 
 func (filterConfig FilterConfigV2) GetFilterValues(fType FilterEntityType, cloud CloudType, property FilterConfigProperty) []string {
