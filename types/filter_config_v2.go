@@ -12,11 +12,10 @@ type FilterConfigV2 struct {
 }
 
 type FilterConfigV2Filter struct {
-	Types       []FilterEntityType     `yaml:"filterTypes"`
-	CloudTypes  []CloudType            `yaml:"cloudTypes"`
-	Properties  []FilterConfigProperty `yaml:"filterProperties"`
-	Values      []string               `yaml:"filterValues"`
-	RegexValues []string               `yaml:"filterValuesRegex,omitempty"`
+	Types      []FilterEntityType     `yaml:"filterTypes"`
+	CloudTypes []CloudType            `yaml:"cloudTypes"`
+	Properties []FilterConfigProperty `yaml:"filterProperties"`
+	Values     []string               `yaml:"filterValues"`
 }
 
 func (filterConfig FilterConfigV2) GetFilterValues(fType FilterEntityType, cloud CloudType, property FilterConfigProperty) []string {

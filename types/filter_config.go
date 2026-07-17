@@ -1,9 +1,10 @@
 package types
 
 import (
-	log "github.com/sirupsen/logrus"
 	"reflect"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type IFilterConfig interface {

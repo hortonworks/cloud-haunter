@@ -161,6 +161,7 @@ OPERATIONS:`)
 	println("VERBOSE:\n\t-v")
 	println("DISABLE_IGNORE_LABEL:\n\t-i")
 	println("EXACT_MATCH_OWNERS:\n\t-e")
+	println("EXCLUDE AWS REGIONS:\n\t-excludeAwsRegion")
 	println("HELP:\n\t-h")
 }
 
