@@ -2,13 +2,13 @@ package azure
 
 import (
 	"context"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"testing"
 	"time"
 
-	"github.com/Azure/go-autorest/autorest"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+
 	"github.com/hortonworks/cloud-haunter/types"
 
 	"github.com/stretchr/testify/assert"
@@ -21,15 +21,11 @@ type callInfo struct {
 func TestProviderInit(t *testing.T) {
 	provider := azureProvider{}
 
-	authorizer := func() (autorest.Authorizer, error) {
-		return autorest.NullAuthorizer{}, nil
-	}
-
 	credentialProvider := func(*azidentity.EnvironmentCredentialOptions) (*azidentity.EnvironmentCredential, error) {
 		return &azidentity.EnvironmentCredential{}, nil
 	}
 
-	provider.init("AZURE_SUBSCRIPTION_ID", credentialProvider, authorizer)
+	provider.init("AZURE_SUBSCRIPTION_ID", credentialProvider)
 
 	assert.Equal(t, "AZURE_SUBSCRIPTION_ID", provider.subscriptionID)
 	assert.NotNil(t, provider.vmClient)

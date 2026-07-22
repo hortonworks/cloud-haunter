@@ -9,8 +9,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
-	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-04-01/storage"
 
 	"net/url"
 	"os"
@@ -22,8 +22,6 @@ import (
 	"sync"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
-	"github.com/Azure/go-autorest/autorest"
-	"github.com/Azure/go-autorest/autorest/azure/auth"
 	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
@@ -45,8 +43,8 @@ type azureProvider struct {
 	rgClient               *armresources.ResourceGroupsClient
 	dbClient               *armpostgresqlflexibleservers.ServersClient
 	subscriptionClient     *armsubscription.SubscriptionsClient
-	storageAccountClient   storage.AccountsClient
-	storageContainerClient storage.BlobContainersClient
+	storageAccountClient   armstorage.AccountsClient
+	storageContainerClient armstorage.BlobContainersClient
 	// resClient      resources.Client
 }
 
@@ -59,7 +57,7 @@ func init() {
 	ctx.CloudProviders[types.AZURE] = func() types.CloudProvider {
 		if provider.vmClient == nil {
 			log.Debug("[AZURE] Trying to prepare")
-			if err := provider.init(subscriptionID, azidentity.NewEnvironmentCredential, auth.NewAuthorizerFromEnvironment); err != nil {
+			if err := provider.init(subscriptionID, azidentity.NewEnvironmentCredential); err != nil {
 				panic("[AZURE] Failed to initialize provider: " + err.Error())
 			}
 			log.Info("[AZURE] Successfully prepared")
@@ -69,22 +67,23 @@ func init() {
 }
 
 func (p *azureProvider) init(subscriptionID string,
-	credentialProvider func(*azidentity.EnvironmentCredentialOptions) (*azidentity.EnvironmentCredential, error),
-	authorizer func() (autorest.Authorizer, error)) error {
-
-	authorization, err := authorizer()
-
-	p.subscriptionID = subscriptionID
-	p.storageAccountClient = storage.NewAccountsClient(subscriptionID)
-	p.storageAccountClient.Authorizer = authorization
-	p.storageContainerClient = storage.NewBlobContainersClient(subscriptionID)
-	p.storageContainerClient.Authorizer = authorization
+	credentialProvider func(*azidentity.EnvironmentCredentialOptions) (*azidentity.EnvironmentCredential, error)) error {
 
 	credential, err := credentialProvider(nil)
 	if err != nil {
 		log.Error("[AZURE] Failed to initialize credential: " + err.Error())
 		return err
 	}
+
+	clientFactory, err := armstorage.NewClientFactory(subscriptionID, credential, nil)
+	if err != nil {
+		log.Fatalf("failed to create client: %v", err)
+	}
+
+	p.subscriptionID = subscriptionID
+	p.storageAccountClient = *clientFactory.NewAccountsClient()
+	p.storageContainerClient = *clientFactory.NewBlobContainersClient()
+
 	if p.vmClient, err = armcompute.NewVirtualMachinesClient(subscriptionID, credential, nil); err != nil {
 		return err
 	}
@@ -536,35 +535,34 @@ func (p azureProvider) DeleteAlerts(*types.AlertContainer) []error {
 }
 
 func (p azureProvider) GetStorages() ([]*types.Storage, error) {
-	accountListResultIterator, err := p.storageAccountClient.ListComplete(context.Background())
-	if err != nil {
-		log.Errorf("[AZURE] Failed to get storage accounts, err: %s", err)
-		return nil, err
-	}
+	accountListPager := p.storageAccountClient.NewListPager(nil)
+
 	storages := []*types.Storage{}
-	for accountListResultIterator.NotDone() {
-		storageAccount := accountListResultIterator.Value()
-		resourceGroup, resourceName := getResourceGroupName(*storageAccount.ID)
-		tags := utils.ConvertTags(storageAccount.Tags)
-		storage := &types.Storage{
-			ID:        *storageAccount.ID,
-			Name:      resourceName,
-			Owner:     tags[ctx.OwnerLabel],
-			Created:   storageAccount.CreationTime.Time,
-			CloudType: types.AZURE,
-			Tags:      tags,
-			Region:    *storageAccount.PrimaryLocation,
-			MetaData: map[string]string{
-				ResourceGroupName: resourceGroup,
-			},
-		}
-
-		storages = append(storages, storage)
-
-		err = accountListResultIterator.Next()
+	ctxbg := context.Background()
+	for accountListPager.More() {
+		page, err := accountListPager.NextPage(ctxbg)
 		if err != nil {
 			log.Errorf("[AZURE] Failed to get storage accounts next iteration, err: %s", err)
 			return nil, err
+		}
+
+		for _, storageAccount := range page.Value {
+			resourceGroup, resourceName := getResourceGroupName(*storageAccount.ID)
+			tags := utils.ConvertTags(storageAccount.Tags)
+			storage := &types.Storage{
+				ID:        *storageAccount.ID,
+				Name:      resourceName,
+				Owner:     tags[ctx.OwnerLabel],
+				Created:   *storageAccount.Properties.CreationTime,
+				CloudType: types.AZURE,
+				Tags:      tags,
+				Region:    *storageAccount.Properties.PrimaryLocation,
+				MetaData: map[string]string{
+					ResourceGroupName: resourceGroup,
+				},
+			}
+
+			storages = append(storages, storage)
 		}
 	}
 	return storages, nil
@@ -595,12 +593,13 @@ func (p azureProvider) getContainerUrls(storage types.Storage) (*[]azblob.Contai
 
 func (p azureProvider) getServiceUrl(storage types.Storage) (*azblob.ServiceURL, error) {
 	log.Debugf("[AZURE] Getting service url for storage account %s", storage.Name)
-	keysResult, err := p.storageAccountClient.ListKeys(context.Background(), storage.MetaData[ResourceGroupName], storage.Name, "")
+	keysResult, err := p.storageAccountClient.ListKeys(context.Background(), storage.MetaData[ResourceGroupName], storage.Name, nil)
 	if err != nil {
 		log.Errorf("[AZURE] Failed to list access keys for storage account %s, err: %s", storage.Name, err)
 		return nil, err
 	}
-	key := *(((*keysResult.Keys)[0]).Value)
+	//key := *(((*keysResult.Keys)[0]).Value)
+	key := *(keysResult.Keys[0].Value)
 	credential, err := azblob.NewSharedKeyCredential(storage.Name, key)
 	if err != nil {
 		log.Errorf("[AZURE] Failed to create credential for storage account %s, err: %s", storage.Name, err)
