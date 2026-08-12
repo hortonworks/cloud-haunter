@@ -8,18 +8,20 @@ import (
 
 	"github.com/hortonworks/cloud-haunter/utils"
 
-	_ "github.com/hortonworks/cloud-haunter/action"
-	_ "github.com/hortonworks/cloud-haunter/aws"
-	_ "github.com/hortonworks/cloud-haunter/azure"
-	ctx "github.com/hortonworks/cloud-haunter/context"
-	_ "github.com/hortonworks/cloud-haunter/filter"
-	_ "github.com/hortonworks/cloud-haunter/gcp"
-	_ "github.com/hortonworks/cloud-haunter/hipchat"
-	_ "github.com/hortonworks/cloud-haunter/operation"
-	_ "github.com/hortonworks/cloud-haunter/slack"
+	"github.com/hortonworks/cloud-haunter/action"
+	"github.com/hortonworks/cloud-haunter/aws"
+	"github.com/hortonworks/cloud-haunter/azure"
+	"github.com/hortonworks/cloud-haunter/config"
+	"github.com/hortonworks/cloud-haunter/filter"
+	"github.com/hortonworks/cloud-haunter/gcp"
+	"github.com/hortonworks/cloud-haunter/operation"
+	"github.com/hortonworks/cloud-haunter/slack"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
+
+// Version is the application version, injected at link time via -ldflags.
+var Version string
 
 func main() {
 	defer func() {
@@ -43,38 +45,51 @@ func main() {
 
 	flag.Parse()
 
-	parseRegionsStr(*excludedAwsRegions)
+	awsExcludedRegions := parseRegionsStr(*excludedAwsRegions)
 
-	if *help {
-		printHelp()
-		os.Exit(0)
-	}
-
-	ctx.DryRun = *dryRun
-	ctx.Verbose = *verbose
-	if ctx.Verbose {
+	if *verbose {
 		log.SetLevel(log.DebugLevel)
 	}
-	if ctx.DryRun {
+	if *dryRun {
 		log.Warn("We are in dry run mode.")
 	}
-	ctx.IgnoreLabelDisabled = *ignoreLabelDisabled
-	ctx.ExactMatchOwner = *exactMatchOwner
-
+	var filterConfig types.IFilterConfig
 	if filterConfigLoc != nil && len(*filterConfigLoc) != 0 {
 		var err error
-		ctx.FilterConfig, err = utils.LoadFilterConfig(*filterConfigLoc)
+		filterConfig, err = utils.LoadFilterConfig(*filterConfigLoc)
 		if err != nil {
 			log.Warnf("[UTIL] Failed to load %s as V1 filter config, trying as V2. Error: %s", *filterConfigLoc, err.Error())
-			ctx.FilterConfig, err = utils.LoadFilterConfigV2(*filterConfigLoc)
+			filterConfig, err = utils.LoadFilterConfigV2(*filterConfigLoc)
 			if err != nil {
 				panic("Unable to parse filter configuration: " + err.Error())
 			}
 		}
 	}
 
+	cfg := &config.Config{
+		FilterConfig:          filterConfig,
+		IgnoreLabel:           config.DefaultIgnoreLabel,
+		OwnerLabel:            config.DefaultOwnerLabel,
+		IgnoreLabelDisabled:   *ignoreLabelDisabled,
+		ExactMatchOwner:       *exactMatchOwner,
+		DryRun:                *dryRun,
+		ResourceGroupingLabel: config.DefaultResourceGroupingLabel,
+		AwsExcludedRegions:    awsExcludedRegions,
+		CloudProviders:        make(map[types.CloudType]func() types.CloudProvider),
+		Dispatchers:           make(map[string]types.Dispatcher),
+	}
+	if err := cfg.LoadEnv(); err != nil {
+		log.Fatalf("[MAIN] Invalid configuration: %s", err.Error())
+	}
+	operations, filters, actions := registerComponents(cfg)
+
+	if *help {
+		printHelp(operations, filters, actions)
+		os.Exit(0)
+	}
+
 	op := func() *types.OpType {
-		for i := range ctx.Operations {
+		for i := range operations {
 			if i.String() == *opType {
 				return &i
 			}
@@ -85,20 +100,20 @@ func main() {
 		panic("Operation is not found.")
 	}
 
-	var filters []types.Filter
+	var matchedFilters []types.Filter
 	var filterNames []types.FilterType
 	selectedFilters := utils.SplitListToMap(*filterTypes)
-	for f := range ctx.Filters {
+	for f := range filters {
 		if _, ok := selectedFilters[f.String()]; ok {
-			filters = append(filters, ctx.Filters[f])
+			matchedFilters = append(matchedFilters, filters[f])
 			filterNames = append(filterNames, f)
 		}
 	}
 
 	action := func() types.Action {
-		for i := range ctx.Actions {
+		for i := range actions {
 			if i.String() == *actionType {
-				return ctx.Actions[i]
+				return actions[i]
 			}
 		}
 		return nil
@@ -109,47 +124,110 @@ func main() {
 
 	var clouds []types.CloudType
 	selectedClouds := utils.SplitListToMap(*cloudTypes)
-	for t := range ctx.CloudProviders {
+	for t := range cfg.CloudProviders {
 		_, ok := selectedClouds[t.String()]
 		if len(selectedClouds) == 0 || ok {
 			clouds = append(clouds, t)
 		} else {
-			delete(ctx.CloudProviders, t)
+			delete(cfg.CloudProviders, t)
 		}
 	}
 	if len(clouds) == 0 {
 		panic("Cloud provider not found.")
 	}
 
-	items := ctx.Operations[*op].Execute(clouds)
-	for _, filter := range filters {
-		items = filter.Execute(items)
+	items, err := operations[*op].Execute(clouds)
+	if err != nil {
+		log.Fatalf("[MAIN] Operation %s failed: %s", op.String(), err.Error())
 	}
-	action.Execute(*op, filterNames, items)
+	for _, filter := range matchedFilters {
+		items, err = filter.Execute(items)
+		if err != nil {
+			log.Fatalf("[MAIN] Filter failed: %s", err.Error())
+		}
+	}
+	if err := action.Execute(*op, filterNames, items); err != nil {
+		log.Fatalf("[MAIN] Action %s failed: %s", *actionType, err.Error())
+	}
 	log.Info("Action completed.")
 }
 
+// registerComponents wires the available cloud providers, dispatchers, actions,
+// operations and filters, injecting the shared cfg into each. Providers and the
+// Slack dispatcher register themselves into cfg.CloudProviders / cfg.Dispatchers;
+// the actions, operations and filters are returned as local registries that main
+// owns. This inverts the previous pattern where each package registered itself
+// from an init() function and read global state directly, keeping the mapping
+// explicit and in one place.
+func registerComponents(cfg *config.Config) (
+	map[types.OpType]types.Operation,
+	map[types.FilterType]types.Filter,
+	map[types.ActionType]types.Action,
+) {
+	aws.Register(cfg)
+	azure.Register(cfg)
+	gcp.Register(cfg)
+	slack.Register(cfg)
+
+	actions := map[types.ActionType]types.Action{
+		types.LogAction:              action.NewLog(cfg),
+		types.Json:                   action.NewJSON(cfg),
+		types.StopAction:             action.NewStop(cfg),
+		types.TerminationAction:      action.NewTermination(cfg),
+		types.NotificationAction:     action.NewNotification(cfg),
+		types.CloudItemsReportAction: action.NewCloudItemsReport(),
+		types.CleanupAction:          action.NewCleanup(cfg),
+	}
+
+	operations := map[types.OpType]types.Operation{
+		types.Instances:   operation.NewInstances(cfg),
+		types.CloudAccess: operation.NewAccess(cfg),
+		types.Databases:   operation.NewDatabases(cfg),
+		types.Disks:       operation.NewDisks(cfg),
+		types.Images:      operation.NewImages(cfg),
+		types.ReadImages:  operation.NewReadImages(),
+		types.Stacks:      operation.NewStacks(cfg),
+		types.Alerts:      operation.NewAlerts(cfg),
+		types.Storages:    operation.NewStorages(cfg),
+		types.Resources:   operation.NewResources(cfg),
+	}
+
+	filters := map[types.FilterType]types.Filter{
+		types.OwnerlessFilter:   filter.NewOwnerless(cfg),
+		types.RunningFilter:     filter.NewRunning(cfg),
+		types.StoppedFilter:     filter.NewStopped(cfg),
+		types.FailedFilter:      filter.NewFailed(cfg),
+		types.UnusedFilter:      filter.NewUnused(cfg),
+		types.MatchFilter:       filter.NewMatch(cfg),
+		types.NoMatchFilter:     filter.NewNoMatch(cfg),
+		types.LongRunningFilter: filter.NewLongRunning(cfg),
+		types.OldAccessFilter:   filter.NewOldAccess(cfg),
+	}
+
+	return operations, filters, actions
+}
+
 // should be kept in sync with README.md
-func printHelp() {
+func printHelp(operations map[types.OpType]types.Operation, filters map[types.FilterType]types.Filter, actions map[types.ActionType]types.Action) {
 	println(`NAME:
    Cloud Haunter
 USAGE:
    ch -o=operation -a=action [-f=filter1,filter2] [-c=cloud1,cloud2]
 VERSION:`)
-	println("   " + ctx.Version)
+	println("   " + Version)
 	println(`
 AUTHOR(S):
    Hortonworks
 OPERATIONS:`)
-	for _, o := range getSortedOperations() {
+	for _, o := range getSortedOperations(operations) {
 		println("\t-o " + o)
 	}
 	println("FILTERS:")
-	for _, f := range getSortedFilters() {
+	for _, f := range getSortedFilters(filters) {
 		println("\t-f " + f)
 	}
 	println("ACTIONS:")
-	for _, a := range getSortedActions() {
+	for _, a := range getSortedActions(actions) {
 		println("\t-a " + a)
 	}
 	println("CLOUDS:")
@@ -165,36 +243,37 @@ OPERATIONS:`)
 	println("HELP:\n\t-h")
 }
 
-func getSortedOperations() []string {
-	operations := []string{}
-	for ot := range ctx.Operations {
-		operations = append(operations, string(ot))
+func getSortedOperations(operations map[types.OpType]types.Operation) []string {
+	names := []string{}
+	for ot := range operations {
+		names = append(names, string(ot))
 	}
-	sort.Strings(operations)
-	return operations
+	sort.Strings(names)
+	return names
 }
 
-func getSortedFilters() []string {
-	filters := []string{}
-	for f := range ctx.Filters {
-		filters = append(filters, string(f))
+func getSortedFilters(filters map[types.FilterType]types.Filter) []string {
+	names := []string{}
+	for f := range filters {
+		names = append(names, string(f))
 	}
-	sort.Strings(filters)
-	return filters
+	sort.Strings(names)
+	return names
 }
 
-func getSortedActions() []string {
-	actions := []string{}
-	for a := range ctx.Actions {
-		actions = append(actions, string(a))
+func getSortedActions(actions map[types.ActionType]types.Action) []string {
+	names := []string{}
+	for a := range actions {
+		names = append(names, string(a))
 	}
-	sort.Strings(actions)
-	return actions
+	sort.Strings(names)
+	return names
 }
 
-func parseRegionsStr(regionsStr string) {
-	regionList := strings.Split(regionsStr, ",")
-	for _, item := range regionList {
-		ctx.AwsExcludedRegions[strings.ToLower(item)] = true
+func parseRegionsStr(regionsStr string) map[string]bool {
+	excluded := make(map[string]bool)
+	for _, item := range strings.Split(regionsStr, ",") {
+		excluded[strings.ToLower(item)] = true
 	}
+	return excluded
 }

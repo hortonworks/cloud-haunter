@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
-	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-04-01/storage"
 
 	"net/url"
 	"os"
@@ -22,9 +23,7 @@ import (
 	"sync"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
-	"github.com/Azure/go-autorest/autorest"
-	"github.com/Azure/go-autorest/autorest/azure/auth"
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -32,11 +31,14 @@ import (
 const (
 	ResourceGroupName string = "ResourceGroupName"
 	ScaleSetName      string = "ScaleSetName"
+
+	// azureCreationTimeLabel lists the tag keys (in priority order) that hold an
+	// instance's creation timestamp on Azure. Azure-specific and never overridden.
+	azureCreationTimeLabel = "creation-timestamp,cb-creation-timestamp,cdp-creation-timestamp"
 )
 
-var provider = azureProvider{}
-
 type azureProvider struct {
+	cfg                    *config.Config
 	subscriptionID         string
 	vmClient               *armcompute.VirtualMachinesClient
 	vmScaleSetClient       *armcompute.VirtualMachineScaleSetsClient
@@ -45,46 +47,54 @@ type azureProvider struct {
 	rgClient               *armresources.ResourceGroupsClient
 	dbClient               *armpostgresqlflexibleservers.ServersClient
 	subscriptionClient     *armsubscription.SubscriptionsClient
-	storageAccountClient   storage.AccountsClient
-	storageContainerClient storage.BlobContainersClient
+	storageAccountClient   armstorage.AccountsClient
+	storageContainerClient armstorage.BlobContainersClient
 	// resClient      resources.Client
 }
 
-func init() {
+// Register wires the Azure provider into the cloud-provider registry with the
+// given config injected. main calls it once after building the config, so the
+// provider is constructed with its dependencies instead of reading package
+// globals or being mutated by a setter. Client initialization is deferred to
+// first use and memoized.
+func Register(cfg *config.Config) {
 	subscriptionID := os.Getenv("AZURE_SUBSCRIPTION_ID")
 	if len(subscriptionID) == 0 {
 		log.Warn("[AZURE] AZURE_SUBSCRIPTION_ID environment variable is missing")
 		return
 	}
-	ctx.CloudProviders[types.AZURE] = func() types.CloudProvider {
-		if provider.vmClient == nil {
+	p := &azureProvider{cfg: cfg}
+	var once sync.Once
+	cfg.CloudProviders[types.AZURE] = func() types.CloudProvider {
+		once.Do(func() {
 			log.Debug("[AZURE] Trying to prepare")
-			if err := provider.init(subscriptionID, azidentity.NewEnvironmentCredential, auth.NewAuthorizerFromEnvironment); err != nil {
+			if err := p.init(subscriptionID, azidentity.NewEnvironmentCredential); err != nil {
 				panic("[AZURE] Failed to initialize provider: " + err.Error())
 			}
 			log.Info("[AZURE] Successfully prepared")
-		}
-		return provider
+		})
+		return p
 	}
 }
 
 func (p *azureProvider) init(subscriptionID string,
-	credentialProvider func(*azidentity.EnvironmentCredentialOptions) (*azidentity.EnvironmentCredential, error),
-	authorizer func() (autorest.Authorizer, error)) error {
-
-	authorization, err := authorizer()
-
-	p.subscriptionID = subscriptionID
-	p.storageAccountClient = storage.NewAccountsClient(subscriptionID)
-	p.storageAccountClient.Authorizer = authorization
-	p.storageContainerClient = storage.NewBlobContainersClient(subscriptionID)
-	p.storageContainerClient.Authorizer = authorization
+	credentialProvider func(*azidentity.EnvironmentCredentialOptions) (*azidentity.EnvironmentCredential, error)) error {
 
 	credential, err := credentialProvider(nil)
 	if err != nil {
 		log.Error("[AZURE] Failed to initialize credential: " + err.Error())
 		return err
 	}
+
+	clientFactory, err := armstorage.NewClientFactory(subscriptionID, credential, nil)
+	if err != nil {
+		log.Fatalf("failed to create client: %v", err)
+	}
+
+	p.subscriptionID = subscriptionID
+	p.storageAccountClient = *clientFactory.NewAccountsClient()
+	p.storageContainerClient = *clientFactory.NewBlobContainersClient()
+
 	if p.vmClient, err = armcompute.NewVirtualMachinesClient(subscriptionID, credential, nil); err != nil {
 		return err
 	}
@@ -134,7 +144,7 @@ func (p azureProvider) GetStacks() ([]*types.Stack, error) {
 			break
 		}
 		for _, rg := range page.Value {
-			stacks = append(stacks, newStack(*rg))
+			stacks = append(stacks, newStack(*rg, p.cfg.OwnerLabel))
 		}
 	}
 
@@ -232,9 +242,9 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 	for inst := range instanceChan {
 		switch inst.(type) {
 		case azureInstance:
-			instances = append(instances, newInstanceByVM(inst.(azureInstance)))
+			instances = append(instances, newInstanceByVM(inst.(azureInstance), p.cfg.OwnerLabel))
 		case azureScaleSetInstance:
-			instances = append(instances, newInstanceByScaleSetVM(inst.(azureScaleSetInstance)))
+			instances = append(instances, newInstanceByScaleSetVM(inst.(azureScaleSetInstance), p.cfg.OwnerLabel))
 		}
 	}
 
@@ -300,7 +310,7 @@ func (p azureProvider) DeleteImages(images *types.ImageContainer) []error {
 			existingImages = append(existingImages, *image)
 		}
 	}
-	return deleteImages(imagesClient{p.imageClient}, imagesToDelete, existingImages)
+	return deleteImages(imagesClient{p.imageClient}, imagesToDelete, existingImages, p.cfg.DryRun)
 }
 
 type imagesClient struct {
@@ -313,10 +323,22 @@ type azureImage struct {
 	name          string
 }
 
+// vmDeleteClient is the narrow slice of *armcompute.VirtualMachinesClient that
+// the terminate path uses. Depending on the interface (rather than the concrete
+// SDK client) lets tests supply a fake without touching the Azure SDK.
+type vmDeleteClient interface {
+	BeginDelete(ctx context.Context, resourceGroupName string, vmName string, options *armcompute.VirtualMachinesClientBeginDeleteOptions) (*runtime.Poller[armcompute.VirtualMachinesClientDeleteResponse], error)
+}
+
 func (p azureProvider) TerminateInstances(instanceContainer *types.InstanceContainer) []error {
 	log.Debugf("[AZURE] Terminating instances")
+	return terminateInstances(p.vmClient, instanceContainer.Get(types.AZURE), p.cfg.DryRun)
+}
 
-	instances := instanceContainer.Get(types.AZURE)
+// terminateInstances deletes each instance through the given client, honouring
+// dry-run and aggregating any errors. It is the testable core of
+// TerminateInstances: the thin method above only supplies the real SDK client.
+func terminateInstances(client vmDeleteClient, instances []*types.Instance, dryRun bool) []error {
 	wg := sync.WaitGroup{}
 	wg.Add(len(instances))
 	errChan := make(chan error)
@@ -330,11 +352,11 @@ func (p azureProvider) TerminateInstances(instanceContainer *types.InstanceConta
 				<-sem
 			}()
 
-			if ctx.DryRun {
+			if dryRun {
 				log.Infof("[AZURE] Dry-run set, instance is not terminated: %s", instance.Name)
 			} else {
 				log.Infof("[AZURE] Terminating instance %s", instance.Name)
-				_, err := p.vmClient.BeginDelete(context.Background(), instance.Metadata[ResourceGroupName], instance.Name, nil)
+				_, err := client.BeginDelete(context.Background(), instance.Metadata[ResourceGroupName], instance.Name, nil)
 				if err != nil {
 					log.Errorf("[AZURE] Failed to terminate instance %s, err: %s", instance.Name, err.Error())
 					errChan <- err
@@ -367,7 +389,7 @@ func (p azureProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	for _, rg := range azureStacks {
 		rgName := rg.Name
 		log.Infof("[AZURE] Delete resource group: %s", rgName)
-		if ctx.DryRun {
+		if p.cfg.DryRun {
 			log.Infof("[AZURE] Dry-run set, resource group is not deleted: %s", rgName)
 		} else {
 			_, err := p.rgClient.BeginDelete(context.Background(), rgName, nil)
@@ -436,7 +458,7 @@ func (p azureProvider) StopDatabases(databases *types.DatabaseContainer) (errs [
 
 	for _, database := range databases.Get(types.AZURE) {
 		log.Debugf("[AZURE] Stopping database: %s", database.Name)
-		if ctx.DryRun {
+		if p.cfg.DryRun {
 			log.Infof("[AZURE] Dry-run set, database is not stopped: %s", database.Name)
 		} else {
 			_, err := p.dbClient.BeginStop(context.Background(), database.Metadata[ResourceGroupName], database.Name, nil)
@@ -476,7 +498,7 @@ func (p azureProvider) GetDatabases() ([]*types.Database, error) {
 				ID:           *database.ID,
 				Name:         *database.Name,
 				Tags:         tags,
-				Owner:        tags[ctx.OwnerLabel],
+				Owner:        tags[p.cfg.OwnerLabel],
 				Created:      getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 				InstanceType: *database.SKU.Name,
 				Region:       *database.Location,
@@ -503,7 +525,7 @@ func (p azureProvider) DeleteDatabases(databases *types.DatabaseContainer) []err
 		go func(database *types.Database) {
 			defer wg.Done()
 
-			if ctx.DryRun {
+			if p.cfg.DryRun {
 				log.Infof("[AZURE] Dry-run set, database is not deleted: %s", database.Name)
 			} else {
 				_, err := p.dbClient.BeginDelete(context.Background(), database.Metadata[ResourceGroupName], database.Name, nil)
@@ -536,35 +558,34 @@ func (p azureProvider) DeleteAlerts(*types.AlertContainer) []error {
 }
 
 func (p azureProvider) GetStorages() ([]*types.Storage, error) {
-	accountListResultIterator, err := p.storageAccountClient.ListComplete(context.Background())
-	if err != nil {
-		log.Errorf("[AZURE] Failed to get storage accounts, err: %s", err)
-		return nil, err
-	}
+	accountListPager := p.storageAccountClient.NewListPager(nil)
+
 	storages := []*types.Storage{}
-	for accountListResultIterator.NotDone() {
-		storageAccount := accountListResultIterator.Value()
-		resourceGroup, resourceName := getResourceGroupName(*storageAccount.ID)
-		tags := utils.ConvertTags(storageAccount.Tags)
-		storage := &types.Storage{
-			ID:        *storageAccount.ID,
-			Name:      resourceName,
-			Owner:     tags[ctx.OwnerLabel],
-			Created:   storageAccount.CreationTime.Time,
-			CloudType: types.AZURE,
-			Tags:      tags,
-			Region:    *storageAccount.PrimaryLocation,
-			MetaData: map[string]string{
-				ResourceGroupName: resourceGroup,
-			},
-		}
-
-		storages = append(storages, storage)
-
-		err = accountListResultIterator.Next()
+	ctxbg := context.Background()
+	for accountListPager.More() {
+		page, err := accountListPager.NextPage(ctxbg)
 		if err != nil {
 			log.Errorf("[AZURE] Failed to get storage accounts next iteration, err: %s", err)
 			return nil, err
+		}
+
+		for _, storageAccount := range page.Value {
+			resourceGroup, resourceName := getResourceGroupName(*storageAccount.ID)
+			tags := utils.ConvertTags(storageAccount.Tags)
+			storage := &types.Storage{
+				ID:        *storageAccount.ID,
+				Name:      resourceName,
+				Owner:     tags[p.cfg.OwnerLabel],
+				Created:   *storageAccount.Properties.CreationTime,
+				CloudType: types.AZURE,
+				Tags:      tags,
+				Region:    *storageAccount.Properties.PrimaryLocation,
+				MetaData: map[string]string{
+					ResourceGroupName: resourceGroup,
+				},
+			}
+
+			storages = append(storages, storage)
 		}
 	}
 	return storages, nil
@@ -595,12 +616,13 @@ func (p azureProvider) getContainerUrls(storage types.Storage) (*[]azblob.Contai
 
 func (p azureProvider) getServiceUrl(storage types.Storage) (*azblob.ServiceURL, error) {
 	log.Debugf("[AZURE] Getting service url for storage account %s", storage.Name)
-	keysResult, err := p.storageAccountClient.ListKeys(context.Background(), storage.MetaData[ResourceGroupName], storage.Name, "")
+	keysResult, err := p.storageAccountClient.ListKeys(context.Background(), storage.MetaData[ResourceGroupName], storage.Name, nil)
 	if err != nil {
 		log.Errorf("[AZURE] Failed to list access keys for storage account %s, err: %s", storage.Name, err)
 		return nil, err
 	}
-	key := *(((*keysResult.Keys)[0]).Value)
+	//key := *(((*keysResult.Keys)[0]).Value)
+	key := *(keysResult.Keys[0].Value)
 	credential, err := azblob.NewSharedKeyCredential(storage.Name, key)
 	if err != nil {
 		log.Errorf("[AZURE] Failed to create credential for storage account %s, err: %s", storage.Name, err)
@@ -669,7 +691,7 @@ func (p azureProvider) CleanupStorages(storageContainer *types.StorageContainer,
 					for _, blob := range *blobs {
 						if blob.Properties.CreationTime.Before(retentionTime) {
 							log.Infof("[AZURE] Blob %s in storage account %s is older than %s", blob.Name, storage.Name, retentionTime)
-							if !ctx.DryRun {
+							if !p.cfg.DryRun {
 								_, err := containerUrl.NewBlobURL(blob.Name).Delete(context.Background(), azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
 								if err != nil {
 									log.Errorf("[AZURE] Failed to delete blob %s in storage account %s", blob.Name, storage.Name)
@@ -699,7 +721,7 @@ func (p azureProvider) CleanupStorages(storageContainer *types.StorageContainer,
 	return errs
 }
 
-func deleteImages(imagesClient imagesClient, imagesToDelete []azureImage, existingImages []armcompute.Image) []error {
+func deleteImages(imagesClient imagesClient, imagesToDelete []azureImage, existingImages []armcompute.Image, dryRun bool) []error {
 	wg := sync.WaitGroup{}
 	errorChan := make(chan error)
 	for _, image := range existingImages {
@@ -710,7 +732,7 @@ func deleteImages(imagesClient imagesClient, imagesToDelete []azureImage, existi
 					wg.Add(1)
 					go func(i armcompute.Image, ai azureImage) {
 						defer wg.Done()
-						if ctx.DryRun {
+						if dryRun {
 							log.Infof("[AZURE] Dry-run set, image is not deleted: %s:%s, region: %s", *i.Name, ai.ID, *i.Location)
 						} else {
 							log.Infof("[AZURE] Delete image: %s", *i.ID)
@@ -766,14 +788,14 @@ func getScaleSetVMInstanceID(name string) string {
 	return parts[len(parts)-1]
 }
 
-func newInstanceByVM(inst azureInstance) *types.Instance {
+func newInstanceByVM(inst azureInstance, ownerLabel string) *types.Instance {
 	vm := inst.instance
 	view := inst.instanceView
-	return newInstance(*vm.Name, *vm.ID, *vm.Location, string(*vm.Properties.HardwareProfile.VMSize), inst.resourceGroupName, getInstanceState(view.Statuses), vm.Tags)
+	return newInstance(*vm.Name, *vm.ID, *vm.Location, string(*vm.Properties.HardwareProfile.VMSize), inst.resourceGroupName, getInstanceState(view.Statuses), vm.Tags, ownerLabel)
 }
 
-func newInstanceByScaleSetVM(inst azureScaleSetInstance) *types.Instance {
-	instance := newInstance(*inst.instance.Name, *inst.instance.ID, *inst.instance.Location, string(*inst.instance.Properties.HardwareProfile.VMSize), inst.resourceGroupName, getScaleSetInstanceState(inst.instanceView), inst.tagMap)
+func newInstanceByScaleSetVM(inst azureScaleSetInstance, ownerLabel string) *types.Instance {
+	instance := newInstance(*inst.instance.Name, *inst.instance.ID, *inst.instance.Location, string(*inst.instance.Properties.HardwareProfile.VMSize), inst.resourceGroupName, getScaleSetInstanceState(inst.instanceView), inst.tagMap, ownerLabel)
 	instance.Metadata[ScaleSetName] = inst.scaleSetName
 	return instance
 }
@@ -788,7 +810,7 @@ func newImage(image armcompute.Image) *types.Image {
 	}
 }
 
-func newInstance(name, ID, location, instanceType, resourceGroupName string, state types.State, tagMap map[string]*string) *types.Instance {
+func newInstance(name, ID, location, instanceType, resourceGroupName string, state types.State, tagMap map[string]*string, ownerLabel string) *types.Instance {
 	tags := utils.ConvertTags(tagMap)
 	return &types.Instance{
 		Name:         name,
@@ -796,7 +818,7 @@ func newInstance(name, ID, location, instanceType, resourceGroupName string, sta
 		Created:      getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 		CloudType:    types.AZURE,
 		Tags:         tags,
-		Owner:        tags[ctx.OwnerLabel],
+		Owner:        tags[ownerLabel],
 		Region:       location,
 		InstanceType: instanceType,
 		State:        state,
@@ -873,7 +895,7 @@ func convertDBStatusToState(state armpostgresqlflexibleservers.ServerState) type
 }
 
 func getCreationTimeFromTags(tags types.Tags, convertTimeUnix func(unixTimestamp string) time.Time) time.Time {
-	for _, label := range strings.Split(ctx.AzureCreationTimeLabel, ",") {
+	for _, label := range strings.Split(azureCreationTimeLabel, ",") {
 		if creationTimestamp, ok := tags[label]; ok {
 			return convertTimeUnix(creationTimestamp)
 		}
@@ -881,14 +903,14 @@ func getCreationTimeFromTags(tags types.Tags, convertTimeUnix func(unixTimestamp
 	return convertTimeUnix("0")
 }
 
-func newStack(rg armresources.ResourceGroup) *types.Stack {
+func newStack(rg armresources.ResourceGroup, ownerLabel string) *types.Stack {
 	tags := utils.ConvertTags(rg.Tags)
 	return &types.Stack{
 		ID:        *rg.ID,
 		Name:      *rg.Name,
 		Created:   getCreationTimeFromTags(tags, utils.ConvertTimeUnix),
 		Tags:      tags,
-		Owner:     tags[ctx.OwnerLabel],
+		Owner:     tags[ownerLabel],
 		CloudType: types.AZURE,
 		State:     types.Running,
 		Region:    *rg.Location,

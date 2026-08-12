@@ -1,26 +1,29 @@
 package action
 
 import (
+	"errors"
+	"fmt"
 	"sync"
 
-	"fmt"
-
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Actions[types.TerminationAction] = new(terminationAction)
+// NewTermination returns the termination action implementation.
+func NewTermination(cfg *config.Config) types.Action {
+	return terminationAction{cfg}
 }
 
 type terminationAction struct {
+	cfg *config.Config
 }
 
-func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, items []types.CloudItem) {
+func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, items []types.CloudItem) error {
 	wg := sync.WaitGroup{}
-	wg.Add(len(ctx.CloudProviders))
-	for t, p := range ctx.CloudProviders {
+	wg.Add(len(a.cfg.CloudProviders))
+	errChan := make(chan error, len(a.cfg.CloudProviders))
+	for t, p := range a.cfg.CloudProviders {
 		go func(cType types.CloudType, provider types.CloudProvider) {
 			defer wg.Done()
 
@@ -34,38 +37,46 @@ func (a terminationAction) Execute(op types.OpType, filters []types.FilterType, 
 
 			if len(cloudItems) > 0 {
 				log.Infof("[TERMINATION] Terminating %d items on %s: %s", len(cloudItems), cType, items)
-				var errors []error
+				var errs []error
 
 				item := *cloudItems[0]
 				switch t := item.GetItem().(type) {
 				case types.Instance:
-					errors = terminateInstances(provider, cloudItems)
+					errs = terminateInstances(provider, cloudItems)
 				case types.Stack:
-					errors = terminateStacks(provider, cloudItems)
+					errs = terminateStacks(provider, cloudItems)
 				case types.Disk:
-					errors = deleteDisks(provider, cloudItems)
+					errs = deleteDisks(provider, cloudItems)
 				case types.Image:
-					errors = deleteImages(provider, cloudItems)
+					errs = deleteImages(provider, cloudItems)
 				case types.Alert:
-					errors = deleteAlerts(provider, cloudItems)
+					errs = deleteAlerts(provider, cloudItems)
 				case types.Database:
-					errors = deleteDatabases(provider, cloudItems)
+					errs = deleteDatabases(provider, cloudItems)
 				case types.Resource:
-					errors = terminateResources(provider, cloudItems)
+					errs = terminateResources(provider, cloudItems)
 				default:
-					panic(fmt.Sprintf("[TERMINATION] Operation on type %T is not allowed", t))
+					errChan <- fmt.Errorf("[TERMINATION] operation on type %T is not allowed", t)
+					return
 				}
 
-				if len(errors) != 0 {
-					for _, err := range errors {
+				if len(errs) != 0 {
+					for _, err := range errs {
 						log.Errorf("[TERMINATION] Failed to terminate %ss on %s, err: %s", item.GetType(), cType, err.Error())
 					}
-					panic(fmt.Sprintf("[TERMINATION] Failed to terminate %ss on %s", item.GetType(), cType))
+					errChan <- fmt.Errorf("[TERMINATION] failed to terminate %ss on %s", item.GetType(), cType)
 				}
 			}
 		}(t, p())
 	}
 	wg.Wait()
+	close(errChan)
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 func terminateInstances(provider types.CloudProvider, items []*types.CloudItem) []error {

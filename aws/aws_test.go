@@ -13,7 +13,7 @@ import (
 	elb "github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -23,6 +23,16 @@ var (
 	NOW                         = time.Now()
 	OWNER                       = "user"
 )
+
+// testCfg mirrors the label constants the fixtures key their tags with, so the
+// free funcs under test resolve owner/grouping tags the same way production
+// does. Fields left zero (DryRun, AwsExcludedRegions) match the tests' intent.
+func testCfg() *config.Config {
+	return &config.Config{
+		OwnerLabel:            config.DefaultOwnerLabel,
+		ResourceGroupingLabel: config.DefaultResourceGroupingLabel,
+	}
+}
 
 func TestProviderInit(t *testing.T) {
 	provider := awsProvider{}
@@ -38,7 +48,7 @@ func TestGetRunningInstances(t *testing.T) {
 	ec2Clients := map[string]ec2Client{"region": mockEc2Client{operationChannel: make(chan string, 10)}}
 	ctClients := map[string]cloudTrailClient{"region": mockCtClient{}}
 
-	instances, _ := getInstances(types.AWS, ec2Clients, ctClients)
+	instances, _ := getInstances(testCfg(), types.AWS, ec2Clients, ctClients)
 
 	assert.Equal(t, 1, len(instances))
 }
@@ -50,7 +60,7 @@ func TestGetAccesses(t *testing.T) {
 }
 
 func TestGetRegions(t *testing.T) {
-	regions, _ := getRegions(mockEc2Client{operationChannel: make(chan string, 10)})
+	regions, _ := getRegions(testCfg(), mockEc2Client{operationChannel: make(chan string, 10)})
 
 	assert.Equal(t, 1, len(regions))
 }
@@ -71,7 +81,7 @@ func TestDeleteVolumes(t *testing.T) {
 		defer close(region1Chan)
 		defer close(region2Chan)
 
-		deleteVolumes(types.AWS, clients, volumes)
+		deleteVolumes(testCfg(), types.AWS, clients, volumes)
 	}()
 
 	assert.Equal(t, "disk-id-1", <-region1Chan)
@@ -94,7 +104,7 @@ func TestDeleteImages(t *testing.T) {
 		defer close(region1Chan)
 		defer close(region2Chan)
 
-		deleteImages(types.AWS, clients, images)
+		deleteImages(testCfg(), types.AWS, clients, images)
 	}()
 
 	assert.Equal(t, "ami-id-1", <-region1Chan)
@@ -105,13 +115,13 @@ func TestNewInstanceWithName(t *testing.T) {
 	ec2Instance := newTestInstance()
 	ec2Instance.Tags = []*ec2.Tag{{Key: &(&types.S{S: "Name"}).S, Value: &(&types.S{S: "name"}).S}}
 
-	instance := newInstance(types.AWS, ec2Instance)
+	instance := newInstance(testCfg(), types.AWS, ec2Instance)
 
 	assert.Equal(t, "name", instance.Name)
 }
 
 func TestNewInstanceMissingName(t *testing.T) {
-	instance := newInstance(types.AWS, newTestInstance())
+	instance := newInstance(testCfg(), types.AWS, newTestInstance())
 
 	assert.Equal(t, "ID", instance.Name)
 }
@@ -156,7 +166,7 @@ func TestNewStackOwner(t *testing.T) {
 	cfStack.SetStackName("name")
 	cfStack.SetTags([]*cloudformation.Tag{&ownerTag})
 
-	stack := newStack(types.AWS, &cfStack, "us-west-1")
+	stack := newStack(testCfg(), types.AWS, &cfStack, "us-west-1")
 
 	assert.Equal(t, "validOwner", stack.Owner)
 }
@@ -173,7 +183,7 @@ func TestGetVpcs(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		resources, err := getVpcs(types.AWS, ec2Clients)
+		resources, err := getVpcs(testCfg(), types.AWS, ec2Clients)
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(resources))
 		resource = resources[0]
@@ -213,7 +223,7 @@ func TestDeleteVpcs(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		deleteVpcs(ec2Clients, vpcs)
+		deleteVpcs(testCfg(), ec2Clients, vpcs)
 	}()
 
 	assert.Equal(t, "DescribeVpcEndpoints", <-operationChannel)
@@ -251,7 +261,7 @@ func TestGetLoadBalancers(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		resources, err := getLoadBalancers(types.AWS, elbClients)
+		resources, err := getLoadBalancers(testCfg(), types.AWS, elbClients)
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(resources))
 		resource = resources[0]
@@ -296,7 +306,7 @@ func TestDeleteLoadBalancers(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		deleteLoadBalancers(elbClients, ec2Clients, lbs)
+		deleteLoadBalancers(testCfg(), elbClients, ec2Clients, lbs)
 	}()
 
 	assert.Equal(t, "ModifyLoadBalancerAttributes:lb-1", <-operationChannel)
@@ -337,7 +347,7 @@ func TestRemoveCfStack(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, cwClients, stacks)
+		deleteStacks(testCfg(), cfClients, rdsClients, ec2Clients, elbClients, cwClients, stacks)
 	}()
 
 	assert.Equal(t, "DescribeStackResources", <-operationChannel)
@@ -407,7 +417,7 @@ func TestRemoveNativeStack(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, cwClients, stacks)
+		deleteStacks(testCfg(), cfClients, rdsClients, ec2Clients, elbClients, cwClients, stacks)
 	}()
 
 	assert.Equal(t, "TerminateInstances:i", <-operationChannel)
@@ -447,7 +457,7 @@ func TestGetNativeStacks(t *testing.T) {
 	go func() {
 		defer close(operationChannel)
 
-		stacks, err := getNativeStacks(types.AWS, ec2Clients, elbClients, cwClients, []*types.Stack{})
+		stacks, err := getNativeStacks(testCfg(), types.AWS, ec2Clients, elbClients, cwClients, []*types.Stack{})
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(stacks))
 		stack = stacks[0]
@@ -991,11 +1001,11 @@ func (t mockCwClient) DeleteAlarms(input *cloudwatch.DeleteAlarmsInput) (*cloudw
 func getResourceGroupedElbTags() []*elb.Tag {
 	return []*elb.Tag{
 		{
-			Key:   aws.String(ctx.ResourceGroupingLabel),
+			Key:   aws.String(config.DefaultResourceGroupingLabel),
 			Value: aws.String(RESOURCE_GROUPING_TAG_VALUE),
 		},
 		{
-			Key:   aws.String(ctx.OwnerLabel),
+			Key:   aws.String(config.DefaultOwnerLabel),
 			Value: aws.String(OWNER),
 		},
 	}
@@ -1004,11 +1014,11 @@ func getResourceGroupedElbTags() []*elb.Tag {
 func getResourceGroupedEc2Tags() []*ec2.Tag {
 	return []*ec2.Tag{
 		{
-			Key:   aws.String(ctx.ResourceGroupingLabel),
+			Key:   aws.String(config.DefaultResourceGroupingLabel),
 			Value: aws.String(RESOURCE_GROUPING_TAG_VALUE),
 		},
 		{
-			Key:   aws.String(ctx.OwnerLabel),
+			Key:   aws.String(config.DefaultOwnerLabel),
 			Value: aws.String(OWNER),
 		},
 	}
@@ -1017,11 +1027,11 @@ func getResourceGroupedEc2Tags() []*ec2.Tag {
 func getVpcTags() []*ec2.Tag {
 	return []*ec2.Tag{
 		{
-			Key:   aws.String(ctx.ResourceGroupingLabel),
+			Key:   aws.String(config.DefaultResourceGroupingLabel),
 			Value: aws.String(RESOURCE_GROUPING_TAG_VALUE),
 		},
 		{
-			Key:   aws.String(ctx.OwnerLabel),
+			Key:   aws.String(config.DefaultOwnerLabel),
 			Value: aws.String(OWNER),
 		},
 		{

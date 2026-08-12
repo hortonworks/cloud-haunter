@@ -1,48 +1,35 @@
-package operation
+package filter
 
 import (
-	"os"
+	"fmt"
 	"time"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-var defaultAvailablePeriod = 120 * 24 * time.Hour
-
 type oldAccess struct {
-	availablePeriod time.Duration
+	cfg *config.Config
 }
 
-func init() {
-	availableEnv := os.Getenv("ACCESS_AVAILABLE_PERIOD")
-	var availablePeriod time.Duration
-	if len(availableEnv) > 0 {
-		duration, err := time.ParseDuration(availableEnv)
-		if err != nil {
-			log.Errorf("[OLDACCESS] err: %s", err)
-			return
-		}
-		availablePeriod = duration
-	} else {
-		availablePeriod = defaultAvailablePeriod
-	}
-	log.Infof("[OLDACCESS] running period set to: %s", availablePeriod)
-	ctx.Filters[types.OldAccessFilter] = oldAccess{availablePeriod}
+// NewOldAccess returns the oldaccess filter implementation. The available period
+// is taken from cfg.AccessAvailablePeriod (resolved from ACCESS_AVAILABLE_PERIOD
+// when the config is built).
+func NewOldAccess(cfg *config.Config) types.Filter {
+	return oldAccess{cfg}
 }
 
-func (f oldAccess) Execute(items []types.CloudItem) []types.CloudItem {
+func (f oldAccess) Execute(items []types.CloudItem) ([]types.CloudItem, error) {
 	log.Debugf("[OLDACCESS] Filtering accesses (%d): [%s]", len(items), items)
-	return filter("OLDACCESS", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
+	return filter(f.cfg, "OLDACCESS", items, types.ExclusiveFilter, func(item types.CloudItem) (bool, error) {
 		switch item.GetItem().(type) {
 		case types.Access:
-			match := item.GetCreated().Add(f.availablePeriod).Before(time.Now())
+			match := item.GetCreated().Add(f.cfg.AccessAvailablePeriod).Before(time.Now())
 			log.Debugf("[OLDACCESS] Access: %s match: %v", item.GetName(), match)
-			return match
+			return match, nil
 		default:
-			log.Fatalf("[OLDACCESS] Filter does not apply for cloud item: %s", item.GetName())
+			return false, fmt.Errorf("[OLDACCESS] filter does not apply for cloud item: %s", item.GetName())
 		}
-		return true
 	})
 }

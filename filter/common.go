@@ -1,41 +1,46 @@
-package operation
+package filter
 
 import (
 	"reflect"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
 	log "github.com/sirupsen/logrus"
 )
 
-func filter(filterName string, items []types.CloudItem, filterType types.FilterConfigType, isNeeded func(types.CloudItem) bool) []types.CloudItem {
+func filter(cfg *config.Config, filterName string, items []types.CloudItem, filterType types.FilterConfigType, isNeeded func(types.CloudItem) (bool, error)) ([]types.CloudItem, error) {
 	var filtered []types.CloudItem
 	for _, item := range items {
 		var include bool
 		if filterType.IsInclusive() {
-			include = isFilterMatch(filterName, item, filterType, ctx.FilterConfig)
+			include = isFilterMatch(cfg, filterName, item, filterType)
 		} else {
-			include = !isFilterMatch(filterName, item, filterType, ctx.FilterConfig)
+			include = !isFilterMatch(cfg, filterName, item, filterType)
 		}
 		if include {
 			log.Debugf("[%s] item %s is not filtered, because of filter config", filterName, item.GetName())
 		} else {
 			log.Debugf("[%s] item %s is filtered, because of filter config", filterName, item.GetName())
 		}
-		if isNeeded(item) && include {
+		needed, err := isNeeded(item)
+		if err != nil {
+			return nil, err
+		}
+		if needed && include {
 			filtered = append(filtered, item)
 		}
 	}
-	return filtered
+	return filtered, nil
 }
 
-func isFilterMatch(filterName string, item types.CloudItem, filterType types.FilterConfigType, filterConfig types.IFilterConfig) bool {
+func isFilterMatch(cfg *config.Config, filterName string, item types.CloudItem, filterType types.FilterConfigType) bool {
+	filterConfig := cfg.FilterConfig
 	name := item.GetName()
-	_, ignoreLabelFound := item.GetTags()[ctx.IgnoreLabel]
+	_, ignoreLabelFound := item.GetTags()[cfg.IgnoreLabel]
 	if ignoreLabelFound {
-		log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, ctx.IgnoreLabel)
-		if ctx.IgnoreLabelDisabled {
+		log.Debugf("[%s] Found ignore label on item: %s, label: %s", filterName, name, cfg.IgnoreLabel)
+		if cfg.IgnoreLabelDisabled {
 			log.Debugf("[%s] Ignore label usage is disabled, continuing to apply filter on item: %s", filterName, name)
 		} else {
 			if filterType.IsInclusive() {
@@ -79,9 +84,9 @@ func isFilterMatch(filterName string, item types.CloudItem, filterType types.Fil
 	}
 
 	if owners := filterConfig.GetFilterValues(filterEntityType, item.GetCloudType(), types.Owner); owners != nil {
-		log.Debugf("[%s] filtering item %s with exact match '%t' to owners [%s]", filterName, item.GetName(), ctx.ExactMatchOwner, owners)
+		log.Debugf("[%s] filtering item %s with exact match '%t' to owners [%s]", filterName, item.GetName(), cfg.ExactMatchOwner, owners)
 		var ownerMatch bool
-		if ctx.ExactMatchOwner {
+		if cfg.ExactMatchOwner {
 			ownerMatch = utils.IsAnyEquals(item.GetOwner(), owners...)
 		} else {
 			ownerMatch = utils.IsStartsWith(item.GetOwner(), owners...)

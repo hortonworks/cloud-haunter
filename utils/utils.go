@@ -12,7 +12,6 @@ import (
 
 	"encoding/json"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	"gopkg.in/yaml.v2"
 )
@@ -128,9 +127,9 @@ func LoadFilterConfigV2(location string) (*types.FilterConfigV2, error) {
 }
 
 // GetCloudAccountNames returns the name of the configured cloud accounts
-func GetCloudAccountNames() map[types.CloudType]string {
+func GetCloudAccountNames(providers map[types.CloudType]func() types.CloudProvider) map[types.CloudType]string {
 	var accounts = make(map[types.CloudType]string)
-	for cType, initFunc := range ctx.CloudProviders {
+	for cType, initFunc := range providers {
 		accounts[cType] = initFunc().GetAccountName()
 	}
 	return accounts

@@ -3,14 +3,11 @@ package operation
 import (
 	"sync"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-var providers = ctx.CloudProviders
-
-func collect(clouds []types.CloudType, getter func(types.CloudProvider) ([]types.CloudItem, error)) (chan []types.CloudItem, chan error) {
+func collect(providers map[types.CloudType]func() types.CloudProvider, clouds []types.CloudType, getter func(types.CloudProvider) ([]types.CloudItem, error)) (chan []types.CloudItem, chan error) {
 	itemsChan := make(chan []types.CloudItem, 10)
 	errChan := make(chan error, 5)
 	wg := sync.WaitGroup{}
@@ -36,19 +33,22 @@ func collect(clouds []types.CloudType, getter func(types.CloudProvider) ([]types
 
 func wait(itemsChan chan []types.CloudItem, errChan chan error, errorMsg string) []types.CloudItem {
 	allItems := make([]types.CloudItem, 0)
-	exit := false
-	for !exit {
+	// collect closes both channels once every provider has finished. Keep reading
+	// until BOTH are closed so buffered items are never dropped: a closed channel
+	// is set to nil, which disables its select case (a receive on nil blocks
+	// forever) while the other channel continues to drain.
+	for itemsChan != nil || errChan != nil {
 		select {
 		case items, ok := <-itemsChan:
 			if !ok {
-				exit = true
-				break
+				itemsChan = nil
+				continue
 			}
 			allItems = append(allItems, items...)
 		case err, ok := <-errChan:
 			if !ok {
-				exit = true
-				break
+				errChan = nil
+				continue
 			}
 			log.Errorf(errorMsg+", err: %s", err.Error())
 		}
@@ -56,8 +56,8 @@ func wait(itemsChan chan []types.CloudItem, errChan chan error, errorMsg string)
 	return allItems
 }
 
-func collectInstances(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
-	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
+func collectInstances(providers map[types.CloudType]func() types.CloudProvider, clouds []types.CloudType) (chan []types.CloudItem, chan error) {
+	return collect(providers, clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
 		instances, err := provider.GetInstances()
 		if err != nil {
 			return nil, err
@@ -66,8 +66,8 @@ func collectInstances(clouds []types.CloudType) (chan []types.CloudItem, chan er
 	})
 }
 
-func collectStacks(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
-	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
+func collectStacks(providers map[types.CloudType]func() types.CloudProvider, clouds []types.CloudType) (chan []types.CloudItem, chan error) {
+	return collect(providers, clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
 		stacks, err := provider.GetStacks()
 		if err != nil {
 			return nil, err
@@ -76,8 +76,8 @@ func collectStacks(clouds []types.CloudType) (chan []types.CloudItem, chan error
 	})
 }
 
-func collectResources(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
-	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
+func collectResources(providers map[types.CloudType]func() types.CloudProvider, clouds []types.CloudType) (chan []types.CloudItem, chan error) {
+	return collect(providers, clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
 		resources, err := provider.GetResources()
 		if err != nil {
 			return nil, err

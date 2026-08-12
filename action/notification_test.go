@@ -1,20 +1,19 @@
 package action
 
 import (
+	"errors"
+	"sync"
 	"testing"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
 )
 
-func TestNotificationInit(t *testing.T) {
-	assert.NotNil(t, ctx.Actions[types.NotificationAction])
-}
-
 type mockDispatcher struct {
+	mu    sync.Mutex
 	calls int
+	err   error
 }
 
 func (d *mockDispatcher) GetName() string {
@@ -22,39 +21,60 @@ func (d *mockDispatcher) GetName() string {
 }
 
 func (d *mockDispatcher) Send(op types.OpType, filters []types.FilterType, items []types.CloudItem) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.calls++
-	return nil
+	return d.err
 }
 
-type notificationSuite struct {
-	suite.Suite
-	dispatchers    map[string]types.Dispatcher
-	mockDispatcher *mockDispatcher
+func TestNotification(t *testing.T) {
+	t.Parallel()
+	mock := &mockDispatcher{}
+	cfg := &config.Config{Dispatchers: map[string]types.Dispatcher{"mock": mock}}
+
+	err := NewNotification(cfg).Execute(types.Instances, []types.FilterType{}, []types.CloudItem{types.Access{}})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, mock.calls)
 }
 
-func (s *notificationSuite) SetupSuite() {
-	s.dispatchers = ctx.Dispatchers
+// TestNotificationSkipsWhenNoItems covers the len(items) > 0 guard: no
+// dispatcher is invoked when there is nothing to report.
+func TestNotificationSkipsWhenNoItems(t *testing.T) {
+	t.Parallel()
+	mock := &mockDispatcher{}
+	cfg := &config.Config{Dispatchers: map[string]types.Dispatcher{"mock": mock}}
+
+	err := notificationAction{cfg}.Execute(types.Instances, nil, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 0, mock.calls)
 }
 
-func (s *notificationSuite) SetupTest() {
-	s.mockDispatcher = &mockDispatcher{0}
-	ctx.Dispatchers = map[string]types.Dispatcher{"mock": s.mockDispatcher}
+// TestNotificationFansOutToAllDispatchers verifies every registered dispatcher
+// receives the notification.
+func TestNotificationFansOutToAllDispatchers(t *testing.T) {
+	t.Parallel()
+	a := &mockDispatcher{}
+	b := &mockDispatcher{}
+	cfg := &config.Config{Dispatchers: map[string]types.Dispatcher{"a": a, "b": b}}
+
+	err := notificationAction{cfg}.Execute(types.Instances, nil, []types.CloudItem{types.Access{}})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, a.calls)
+	assert.Equal(t, 1, b.calls)
 }
 
-func (s *notificationSuite) TearDownSuite() {
-	ctx.Dispatchers = s.dispatchers
-}
+// TestNotificationToleratesDispatcherError verifies a dispatcher error is logged
+// rather than propagated (Execute must not panic).
+func TestNotificationToleratesDispatcherError(t *testing.T) {
+	t.Parallel()
+	mock := &mockDispatcher{err: errors.New("boom")}
+	cfg := &config.Config{Dispatchers: map[string]types.Dispatcher{"mock": mock}}
 
-func (s *notificationSuite) TestNotification() {
-	action := notificationAction{}
-	op := types.Instances
-	items := []types.CloudItem{types.Access{}}
+	err := notificationAction{cfg}.Execute(types.Instances, nil, []types.CloudItem{types.Access{}})
 
-	action.Execute(op, []types.FilterType{}, items)
-
-	s.Equal(1, s.mockDispatcher.calls)
-}
-
-func TestNotificationSuite(t *testing.T) {
-	suite.Run(t, new(notificationSuite))
+	assert.NoError(t, err)
+	assert.Equal(t, 1, mock.calls)
 }

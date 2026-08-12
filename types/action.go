@@ -31,5 +31,5 @@ const (
 
 // Action to execute on the cloud items
 type Action interface {
-	Execute(OpType, []FilterType, []CloudItem)
+	Execute(OpType, []FilterType, []CloudItem) error
 }

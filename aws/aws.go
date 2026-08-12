@@ -28,7 +28,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -47,13 +47,17 @@ const (
 	METADATA_ELASTIC_IPS     = "elasticIps"
 	METADATA_ALARMS          = "alarms"
 	DEFAULT_REGION           = "us-east-1"
+
+	// AWS-specific tunables (never overridden at runtime).
+	awsBulkOperationSize                      = 50
+	awsApiOperationRateLimit                  = 1000
+	awsApiOperationRateLimitIntervalInSeconds = 30
 )
 
-var provider = awsProvider{}
-
-var rateLimiter = rate.NewLimiter(rate.Every(time.Duration(ctx.AwsApiOperationRateLimitIntervalInSeconds)*time.Second), ctx.AwsApiOperationRateLimit)
+var rateLimiter = rate.NewLimiter(rate.Every(time.Duration(awsApiOperationRateLimitIntervalInSeconds)*time.Second), awsApiOperationRateLimit)
 
 type awsProvider struct {
+	cfg                  *config.Config
 	ec2Clients           map[string]*ec2.EC2
 	autoScalingClients   map[string]*autoscaling.AutoScaling
 	cloudTrailClient     map[string]*cloudtrail.CloudTrail
@@ -71,35 +75,46 @@ type ThrottledTransport struct {
 	ratelimiter      *rate.Limiter
 }
 
-func init() {
-	accessKeyId := os.Getenv("AWS_ACCESS_KEY_ID")
-	if len(accessKeyId) == 0 {
-		log.Warn("[AWS] AWS_ACCESS_KEY_ID environment variable is missing")
+// Register wires the AWS (and AWS GOV) providers into the cloud-provider
+// registry with cfg injected. main calls it once after building the config;
+// client init is deferred to first use and memoized.
+func Register(cfg *config.Config) {
+	if !awsCredentialsPresent("[AWS]") {
 		return
 	}
-	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-	if len(secretAccessKey) == 0 {
-		log.Warn("[AWS] AWS_SECRET_ACCESS_KEY environment variable is missing")
-		return
-	}
-	ctx.CloudProviders[types.AWS] = func() types.CloudProvider {
-		if len(provider.ec2Clients) == 0 {
+	p := &awsProvider{cfg: cfg}
+	var once sync.Once
+	cfg.CloudProviders[types.AWS] = func() types.CloudProvider {
+		once.Do(func() {
 			log.Debug("[AWS] Trying to prepare")
 			ec2Client, err := newEc2Client("eu-west-1")
 			if err != nil {
 				panic("[AWS] Failed to create ec2 client, err: " + err.Error())
 			}
-			err = provider.init(func() ([]string, error) {
+			err = p.init(func() ([]string, error) {
 				log.Debug("[AWS] Fetching regions")
-				return getRegions(ec2Client)
+				return getRegions(cfg, ec2Client)
 			}, false)
 			if err != nil {
 				panic("[AWS] Failed to initialize provider, err: " + err.Error())
 			}
 			log.Info("[AWS] Successfully prepared")
-		}
-		return provider
+		})
+		return p
 	}
+	registerGov(cfg)
+}
+
+func awsCredentialsPresent(logPrefix string) bool {
+	if len(os.Getenv("AWS_ACCESS_KEY_ID")) == 0 {
+		log.Warnf("%s AWS_ACCESS_KEY_ID environment variable is missing", logPrefix)
+		return false
+	}
+	if len(os.Getenv("AWS_SECRET_ACCESS_KEY")) == 0 {
+		log.Warnf("%s AWS_SECRET_ACCESS_KEY environment variable is missing", logPrefix)
+		return false
+	}
+	return true
 }
 
 func (p *awsProvider) init(getRegions func() ([]string, error), govCloud bool) error {
@@ -196,13 +211,13 @@ func (p awsProvider) GetAccountName() string {
 func (p awsProvider) GetInstances() ([]*types.Instance, error) {
 	log.Debug("[AWS] Fetching instances")
 	ec2Clients, ctClients := p.getEc2AndCTClientsByRegion()
-	return getInstances(p.GetCloudType(), ec2Clients, ctClients)
+	return getInstances(p.cfg, p.GetCloudType(), ec2Clients, ctClients)
 }
 
 func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	log.Debug("[AWS] Fetching CloudFormation stacks")
 	cfClients := p.getCFClientsByRegion()
-	cfStacks, cfError := getCFStacks(p.GetCloudType(), cfClients)
+	cfStacks, cfError := getCFStacks(p.cfg, p.GetCloudType(), cfClients)
 	if cfError != nil {
 		return nil, cfError
 	}
@@ -210,7 +225,7 @@ func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
-	nativeStacks, nativeError := getNativeStacks(p.GetCloudType(), ec2Clients, elbClients, cloudWatchClients, cfStacks)
+	nativeStacks, nativeError := getNativeStacks(p.cfg, p.GetCloudType(), ec2Clients, elbClients, cloudWatchClients, cfStacks)
 	if nativeError != nil {
 		return nil, nativeError
 	}
@@ -221,11 +236,11 @@ func (p awsProvider) GetResources() ([]*types.Resource, error) {
 	log.Debug("[AWS] Fetching Resources")
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	vpcs, vpcsErr := getVpcs(p.GetCloudType(), ec2Clients)
+	vpcs, vpcsErr := getVpcs(p.cfg, p.GetCloudType(), ec2Clients)
 	if vpcsErr != nil {
 		return nil, vpcsErr
 	}
-	lbs, lbsErr := getLoadBalancers(p.GetCloudType(), elbClients)
+	lbs, lbsErr := getLoadBalancers(p.cfg, p.GetCloudType(), elbClients)
 	if lbsErr != nil {
 		return nil, lbsErr
 	}
@@ -233,7 +248,7 @@ func (p awsProvider) GetResources() ([]*types.Resource, error) {
 	return resources, nil
 }
 
-func getVpcs(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*types.Resource, error) {
+func getVpcs(cfg *config.Config, cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*types.Resource, error) {
 	log.Debug("[AWS] Fetching VPCs")
 	vpcChan := make(chan *types.Resource, 5)
 	wg := sync.WaitGroup{}
@@ -262,7 +277,7 @@ func getVpcs(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*typ
 							CloudType:    cloudType,
 							Region:       region,
 							Tags:         tags,
-							Owner:        tags[ctx.OwnerLabel],
+							Owner:        tags[cfg.OwnerLabel],
 							ResourceType: types.Vpc,
 						}
 						vpcChan <- newVpc
@@ -290,7 +305,7 @@ func getVpcs(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*typ
 	return vpcs, nil
 }
 
-func getLoadBalancers(cloudType types.CloudType, elbClients map[string]elbClient) ([]*types.Resource, error) {
+func getLoadBalancers(cfg *config.Config, cloudType types.CloudType, elbClients map[string]elbClient) ([]*types.Resource, error) {
 	log.Debug("[AWS] Fetching load balancers")
 	lbChan := make(chan *types.Resource, 5)
 	wg := sync.WaitGroup{}
@@ -326,7 +341,7 @@ func getLoadBalancers(cloudType types.CloudType, elbClients map[string]elbClient
 							CloudType:    cloudType,
 							Region:       region,
 							Tags:         tags,
-							Owner:        tags[ctx.OwnerLabel],
+							Owner:        tags[cfg.OwnerLabel],
 							ResourceType: types.LoadBalancer,
 						}
 						lbChan <- newLoadBalancer
@@ -362,7 +377,7 @@ func (p awsProvider) GetDatabases() ([]*types.Database, error) {
 		rdsClients[k] = p.rdsClients[k]
 		ctClients[k] = p.cloudTrailClient[k]
 	}
-	return getDatabases(p.GetCloudType(), rdsClients, ctClients)
+	return getDatabases(p.cfg, p.GetCloudType(), rdsClients, ctClients)
 }
 
 func (p awsProvider) DeleteDatabases(databases *types.DatabaseContainer) []error {
@@ -381,7 +396,7 @@ func (p awsProvider) DeleteDatabases(databases *types.DatabaseContainer) []error
 		go func(region string, databases []*types.Database) {
 			defer wg.Done()
 			for _, db := range databases {
-				if ctx.DryRun {
+				if p.cfg.DryRun {
 					log.Infof("[AWS] Dry-run set, database is not deleted: %s", db.Name)
 				} else {
 					log.Infof("[AWS] Delete database: %s", db.Name)
@@ -410,7 +425,7 @@ func (p awsProvider) DeleteDatabases(databases *types.DatabaseContainer) []error
 func (p awsProvider) GetDisks() ([]*types.Disk, error) {
 	log.Debug("[AWS] Fetch volumes")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return getDisks(p.GetCloudType(), ec2Clients)
+	return getDisks(p.cfg, p.GetCloudType(), ec2Clients)
 }
 
 func (p awsProvider) getEc2AndCTClientsByRegion() (map[string]ec2Client, map[string]cloudTrailClient) {
@@ -481,10 +496,10 @@ func (p awsProvider) TerminateInstances(instances *types.InstanceContainer) []er
 
 			ec2Client := p.ec2Clients[region]
 
-			for i := 0; i < len(instanceIds); i += ctx.AwsBulkOperationSize {
-				log.Infof("[AWS] Round %d for terminate operation in region %s", (i/ctx.AwsBulkOperationSize)+1, region)
-				arrayEnd := i + ctx.AwsBulkOperationSize
-				if ctx.AwsBulkOperationSize > len(instanceIds[i:]) {
+			for i := 0; i < len(instanceIds); i += awsBulkOperationSize {
+				log.Infof("[AWS] Round %d for terminate operation in region %s", (i/awsBulkOperationSize)+1, region)
+				arrayEnd := i + awsBulkOperationSize
+				if awsBulkOperationSize > len(instanceIds[i:]) {
 					arrayEnd = i + len(instanceIds[i:])
 				}
 
@@ -528,19 +543,19 @@ func (p awsProvider) TerminateStacks(stacks *types.StackContainer) []error {
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
 	elbClients := p.getElbClientsByRegion()
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
-	return deleteStacks(cfClients, rdsClients, ec2Clients, elbClients, cloudWatchClients, stacks.Get(p.GetCloudType()))
+	return deleteStacks(p.cfg, cfClients, rdsClients, ec2Clients, elbClients, cloudWatchClients, stacks.Get(p.GetCloudType()))
 }
 
 func (p awsProvider) TerminateResources(resources *types.ResourceContainer) []error {
 	log.Debug("[AWS] Delete resources")
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	deleteLoadBalancersErr := deleteLoadBalancers(elbClients, ec2Clients, resources.Get(p.GetCloudType()))
-	deleteVpcsErr := deleteVpcs(ec2Clients, resources.Get(p.GetCloudType()))
+	deleteLoadBalancersErr := deleteLoadBalancers(p.cfg, elbClients, ec2Clients, resources.Get(p.GetCloudType()))
+	deleteVpcsErr := deleteVpcs(p.cfg, ec2Clients, resources.Get(p.GetCloudType()))
 	return append(deleteVpcsErr, deleteLoadBalancersErr...)
 }
 
-func deleteVpcs(ec2Clients map[string]ec2Client, resources []*types.Resource) []error {
+func deleteVpcs(cfg *config.Config, ec2Clients map[string]ec2Client, resources []*types.Resource) []error {
 	regionVpcs := map[string][]*types.Resource{}
 	for _, resource := range resources {
 		if resource.ResourceType == types.Vpc {
@@ -556,7 +571,7 @@ func deleteVpcs(ec2Clients map[string]ec2Client, resources []*types.Resource) []
 		go func(region string, ec2Client ec2Client, vpcs []*types.Resource) {
 			defer wg.Done()
 			for _, vpc := range vpcs {
-				if ctx.DryRun {
+				if cfg.DryRun {
 					log.Infof("[AWS] Dry-run set, VPC not deleted: %s in region: %s", vpc.ID, region)
 				} else {
 					err := deleteVpcWithDependencies(ec2Client, "N/A", vpc.ID, region)
@@ -580,7 +595,7 @@ func deleteVpcs(ec2Clients map[string]ec2Client, resources []*types.Resource) []
 	return errs
 }
 
-func deleteLoadBalancers(elbClients map[string]elbClient, ec2Clients map[string]ec2Client, resources []*types.Resource) []error {
+func deleteLoadBalancers(cfg *config.Config, elbClients map[string]elbClient, ec2Clients map[string]ec2Client, resources []*types.Resource) []error {
 	regionLoadBalancers := map[string][]*types.Resource{}
 	for _, resource := range resources {
 		if resource.ResourceType == types.LoadBalancer {
@@ -596,7 +611,7 @@ func deleteLoadBalancers(elbClients map[string]elbClient, ec2Clients map[string]
 		go func(region string, elbClient elbClient, ec2Client ec2Client, loadBalancers []*types.Resource) {
 			defer wg.Done()
 			for _, loadBalancer := range loadBalancers {
-				if ctx.DryRun {
+				if cfg.DryRun {
 					log.Infof("[AWS] Dry-run set, load balancer not deleted: %s in region: %s", loadBalancer.Name, region)
 				} else {
 					elbExists, elbExistsErr := disableElbDeleteProtection(elbClient, "N/A", loadBalancer.ID, region)
@@ -647,7 +662,7 @@ func deleteLoadBalancers(elbClients map[string]elbClient, ec2Clients map[string]
 func (p awsProvider) DeleteDisks(volumes *types.DiskContainer) []error {
 	log.Debug("[AWS] Delete volumes")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return deleteVolumes(p.GetCloudType(), ec2Clients, volumes.Get(p.GetCloudType()))
+	return deleteVolumes(p.cfg, p.GetCloudType(), ec2Clients, volumes.Get(p.GetCloudType()))
 }
 
 func (p awsProvider) GetImages() ([]*types.Image, error) {
@@ -659,7 +674,7 @@ func (p awsProvider) GetImages() ([]*types.Image, error) {
 func (p awsProvider) DeleteImages(images *types.ImageContainer) []error {
 	log.Debug("[AWS] Delete images")
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
-	return deleteImages(p.GetCloudType(), ec2Clients, images.Get(p.GetCloudType()))
+	return deleteImages(p.cfg, p.GetCloudType(), ec2Clients, images.Get(p.GetCloudType()))
 }
 
 func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
@@ -678,10 +693,10 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 		go func(region string, instances []*types.Instance) {
 			defer wg.Done()
 
-			for i := 0; i < len(instances); i += ctx.AwsBulkOperationSize {
-				log.Infof("[AWS] Round %d for stop operation", (i/ctx.AwsBulkOperationSize)+1)
-				arrayEnd := i + ctx.AwsBulkOperationSize
-				if ctx.AwsBulkOperationSize > len(instances[i:]) {
+			for i := 0; i < len(instances); i += awsBulkOperationSize {
+				log.Infof("[AWS] Round %d for stop operation", (i/awsBulkOperationSize)+1)
+				arrayEnd := i + awsBulkOperationSize
+				if awsBulkOperationSize > len(instances[i:]) {
 					arrayEnd = i + len(instances[i:])
 				}
 
@@ -815,7 +830,7 @@ func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
 	return errs
 }
 
-func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, stacks []*types.Stack) []error {
+func deleteStacks(cfg *config.Config, cfClients map[string]cfClient, rdsClients map[string]rdsClient, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, stacks []*types.Stack) []error {
 	regionStacks := map[string][]*types.Stack{}
 	for _, stack := range stacks {
 		regionStacks[stack.Region] = append(regionStacks[stack.Region], stack)
@@ -833,7 +848,7 @@ func deleteStacks(cfClients map[string]cfClient, rdsClients map[string]rdsClient
 			go func(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, elbClient elbClient, cloudWatchClient cloudWatchClient, region string, stack *types.Stack) {
 				defer wg.Done()
 
-				if ctx.DryRun {
+				if cfg.DryRun {
 					log.Infof("[AWS] Dry-run set, stack is not deleted: %s, region: %s", stack.Name, region)
 				} else {
 					switch stack.Metadata[METADATA_TYPE] {
@@ -1380,7 +1395,7 @@ func deleteLoadBalancer(elbClient elbClient, stackName string, elbArn string, re
 	return err
 }
 
-func deleteVolumes(cloudType types.CloudType, ec2Clients map[string]ec2Client, volumes []*types.Disk) []error {
+func deleteVolumes(cfg *config.Config, cloudType types.CloudType, ec2Clients map[string]ec2Client, volumes []*types.Disk) []error {
 	regionVolumes := map[string][]*types.Disk{}
 	for _, vol := range volumes {
 		if vol.CloudType == cloudType {
@@ -1398,7 +1413,7 @@ func deleteVolumes(cloudType types.CloudType, ec2Clients map[string]ec2Client, v
 			defer wg.Done()
 
 			for _, vol := range volumes {
-				if ctx.DryRun {
+				if cfg.DryRun {
 					log.Infof("[AWS] Dry-run set, volume is not deleted: %s:%s, region: %s", vol.Name, vol.ID, region)
 				} else {
 					log.Infof("[AWS] Initiate delete volume: %s:%s", vol.Name, vol.ID)
@@ -1406,7 +1421,7 @@ func deleteVolumes(cloudType types.CloudType, ec2Clients map[string]ec2Client, v
 					if vol.State == types.InUse {
 						log.Infof("[AWS] Volume %s:%s is in-use, trying to detach", vol.Name, vol.ID)
 						if _, detachError = ec2Client.DetachVolume(&ec2.DetachVolumeInput{VolumeId: &vol.ID}); detachError == nil {
-							detachError = waitForVolumeUnusedState(cloudType, ec2Client, vol)
+							detachError = waitForVolumeUnusedState(cfg, cloudType, ec2Client, vol)
 						}
 					}
 
@@ -1435,14 +1450,14 @@ func deleteVolumes(cloudType types.CloudType, ec2Clients map[string]ec2Client, v
 	return errs
 }
 
-func waitForVolumeUnusedState(cloudType types.CloudType, ec2Client ec2Client, vol *types.Disk) error {
+func waitForVolumeUnusedState(cfg *config.Config, cloudType types.CloudType, ec2Client ec2Client, vol *types.Disk) error {
 	log.Infof("[AWS] Waiting for Volume %s:%s 'available' state...", vol.Name, vol.ID)
 	//Polling state max 10 times with 1 sec interval
 	var counter int = 0
-	d, e := getDisk(cloudType, ec2Client, vol.ID)
+	d, e := getDisk(cfg, cloudType, ec2Client, vol.ID)
 	for e == nil && d.State != types.Unused && counter < 10 {
 		time.Sleep(1 * time.Second)
-		d, e = getDisk(cloudType, ec2Client, vol.ID)
+		d, e = getDisk(cfg, cloudType, ec2Client, vol.ID)
 		counter++
 	}
 	if e != nil {
@@ -1455,7 +1470,7 @@ func waitForVolumeUnusedState(cloudType types.CloudType, ec2Client ec2Client, vo
 	return nil
 }
 
-func deleteImages(cloudType types.CloudType, ec2Clients map[string]ec2Client, images []*types.Image) []error {
+func deleteImages(cfg *config.Config, cloudType types.CloudType, ec2Clients map[string]ec2Client, images []*types.Image) []error {
 	regionImages := map[string][]*types.Image{}
 	for _, image := range images {
 		if image.CloudType == cloudType {
@@ -1478,7 +1493,7 @@ func deleteImages(cloudType types.CloudType, ec2Clients map[string]ec2Client, im
 			}()
 
 			for _, image := range images {
-				if ctx.DryRun {
+				if cfg.DryRun {
 					log.Infof("[AWS] Dry-run set, image is not deleted: %s:%s, region: %s", image.Name, image.ID, region)
 				} else {
 					log.Infof("[AWS] Delete image: %s:%s", image.Name, image.ID)
@@ -1518,7 +1533,7 @@ func (p awsProvider) GetAlerts() ([]*types.Alert, error) {
 func (p awsProvider) DeleteAlerts(alertContainer *types.AlertContainer) []error {
 	log.Debug("[AWS] Delete alerts")
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
-	return deleteAlerts(cloudWatchClients, alertContainer.Get(p.GetCloudType()))
+	return deleteAlerts(p.cfg, cloudWatchClients, alertContainer.Get(p.GetCloudType()))
 }
 
 func (p awsProvider) GetStorages() ([]*types.Storage, error) {
@@ -1566,15 +1581,15 @@ func getStorages(s3Clients map[string]s3Client) ([]*types.Storage, error) {
 func (p awsProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
 	log.Debug("[AWS] Cleanup storages")
 	s3Clients := p.getCloudS3ClientsByRegion()
-	return cleanupStorages(s3Clients, storageContainer, retentionDays)
+	return cleanupStorages(p.cfg, s3Clients, storageContainer, retentionDays)
 }
 
-func cleanupStorages(s3Clients map[string]s3Client, storageContainer *types.StorageContainer, retentionDays int) []error {
+func cleanupStorages(cfg *config.Config, s3Clients map[string]s3Client, storageContainer *types.StorageContainer, retentionDays int) []error {
 	retentionTime := time.Now().AddDate(0, 0, -retentionDays)
 	storages := storageContainer.Get(types.AWS)
 	bucketsByRegion := map[string][]*types.Storage{}
 	for _, storage := range storages {
-		if ctx.AwsExcludedRegions[strings.ToLower(storage.Region)] {
+		if cfg.AwsExcludedRegions[strings.ToLower(storage.Region)] {
 			log.Infof("[AWS] Skipping S3 region: %s", storage.Region)
 			continue
 		}
@@ -1613,7 +1628,7 @@ func cleanupStorages(s3Clients map[string]s3Client, storageContainer *types.Stor
 				}
 				for _, object := range objects {
 					if object.LastModified.Before(retentionTime) {
-						if ctx.DryRun {
+						if cfg.DryRun {
 							log.Infof("[AWS] Dry-run set, file '%s' in S3 bucket '%s' will not be deleted", *object.Key, bucketName)
 						} else {
 							log.Infof("[AWS] File '%s' in S3 bucket '%s' will be deleted because it is older than %s.", *object.Key, bucketName, retentionTime)
@@ -1639,7 +1654,7 @@ func cleanupStorages(s3Clients map[string]s3Client, storageContainer *types.Stor
 				log.Infof("[AWS] Cleaned up %s worth of files in S3 bucket %s", utils.GetHumanReadableFileSize(cleanedUpStorage), bucketName)
 
 				if bucketsInRegion[i].Created.Before(retentionTime) {
-					if ctx.DryRun {
+					if cfg.DryRun {
 						log.Infof("[AWS] Dry-run set, S3 bucket will not be deleted: %s", bucketName)
 					} else {
 						log.Infof("[AWS] Trying to delete S3 bucket '%s' because it is older than %s.", bucketName, retentionTime)
@@ -1767,7 +1782,7 @@ type s3Client interface {
 	DeleteObject(input *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error)
 }
 
-func getInstances(cloudType types.CloudType, ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
+func getInstances(cfg *config.Config, cloudType types.CloudType, ec2Clients map[string]ec2Client, cloudTrailClients map[string]cloudTrailClient) ([]*types.Instance, error) {
 	instChan := make(chan *types.Instance, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
@@ -1787,9 +1802,9 @@ func getInstances(cloudType types.CloudType, ec2Clients map[string]ec2Client, cl
 				log.Debugf("[AWS] Processing instances (%d): [%s] in region: %s", len(instanceResult.Reservations), instanceResult.Reservations, region)
 				for _, res := range instanceResult.Reservations {
 					for _, inst := range res.Instances {
-						i := newInstance(cloudType, inst)
+						i := newInstance(cfg, cloudType, inst)
 						if len(i.Owner) == 0 && i.State == types.Running {
-							log.Debugf("[AWS] instance %s does not have an %s tag, check CloudTrail logs", i.Name, ctx.OwnerLabel)
+							log.Debugf("[AWS] instance %s does not have an %s tag, check CloudTrail logs", i.Name, cfg.OwnerLabel)
 							if iamUser := getIAMUserFromCloudTrail(*inst.InstanceId, cloudTrailClient); iamUser != nil {
 								i.Metadata = map[string]string{"IAMUser": *iamUser}
 							}
@@ -1819,7 +1834,7 @@ func getInstances(cloudType types.CloudType, ec2Clients map[string]ec2Client, cl
 	return instances, nil
 }
 
-func getCFStacks(cloudType types.CloudType, cfClients map[string]cfClient) ([]*types.Stack, error) {
+func getCFStacks(cfg *config.Config, cloudType types.CloudType, cfClients map[string]cfClient) ([]*types.Stack, error) {
 	cfChan := make(chan *types.Stack, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(cfClients))
@@ -1842,7 +1857,7 @@ func getCFStacks(cloudType types.CloudType, cfClients map[string]cfClient) ([]*t
 				}
 				log.Debugf("[AWS] Processing stacks (%d) in region: %s: [%s]", len(stackResult.Stacks), region, stackResult.Stacks)
 				for _, s := range stackResult.Stacks {
-					stack := newStack(cloudType, s, region)
+					stack := newStack(cfg, cloudType, s, region)
 					cfChan <- stack
 				}
 				if stackResult.NextToken != nil {
@@ -1884,7 +1899,7 @@ type AwsNativeStack struct {
 	Tags           types.Tags
 }
 
-func getNativeStacks(cloudType types.CloudType, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, cfStacks []*types.Stack) ([]*types.Stack, error) {
+func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, cfStacks []*types.Stack) ([]*types.Stack, error) {
 	stackChan := make(chan AwsNativeStack, 5)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
@@ -1910,7 +1925,7 @@ func getNativeStacks(cloudType types.CloudType, ec2Clients map[string]ec2Client,
 					}
 					for _, tagDescription := range tagsResponse.TagDescriptions {
 						for _, tag := range tagDescription.Tags {
-							if *tag.Key == ctx.ResourceGroupingLabel {
+							if *tag.Key == cfg.ResourceGroupingLabel {
 								loadBalancersByGroup[*tag.Value] = append(loadBalancersByGroup[*tag.Value], loadBalancer)
 								break
 							}
@@ -1936,7 +1951,7 @@ func getNativeStacks(cloudType types.CloudType, ec2Clients map[string]ec2Client,
 					log.Debugf("[AWS] Skipping elastic IP %s in region %s for native stack assembly, as it has a CF tag", *ip.PublicIp, region)
 					continue
 				}
-				if group, ok := tags[ctx.ResourceGroupingLabel]; ok {
+				if group, ok := tags[cfg.ResourceGroupingLabel]; ok {
 					elasticIpsByGroup[group] = append(elasticIpsByGroup[group], ip)
 				}
 			}
@@ -1955,7 +1970,7 @@ func getNativeStacks(cloudType types.CloudType, ec2Clients map[string]ec2Client,
 						log.Debugf("[AWS] Skipping security group %s in region %s for native stack assembly, as it has a CF tag", *sg.GroupName, region)
 						continue
 					}
-					if group, ok := tags[ctx.ResourceGroupingLabel]; ok {
+					if group, ok := tags[cfg.ResourceGroupingLabel]; ok {
 						securityGroupsByGroup[group] = append(securityGroupsByGroup[group], sg)
 					}
 				}
@@ -2008,14 +2023,14 @@ func getNativeStacks(cloudType types.CloudType, ec2Clients map[string]ec2Client,
 
 			nativeStacks := map[string]*AwsNativeStack{}
 			for _, awsInstance := range awsInstances {
-				instance := newInstance(cloudType, awsInstance)
+				instance := newInstance(cfg, cloudType, awsInstance)
 				if _, ok := instance.Tags[CF_TAG]; ok {
 					log.Debugf("[AWS] Skipping instance %s in region %s for native stack assembly, as it has a CF tag", instance.ID, region)
 					continue
 				}
-				group, ok := instance.Tags[ctx.ResourceGroupingLabel]
+				group, ok := instance.Tags[cfg.ResourceGroupingLabel]
 				if !ok {
-					log.Warnf("[AWS] Failed to find stack for instance %s with grouping tag %s in region %s", instance.ID, ctx.ResourceGroupingLabel, region)
+					log.Warnf("[AWS] Failed to find stack for instance %s with grouping tag %s in region %s", instance.ID, cfg.ResourceGroupingLabel, region)
 					continue
 				}
 
@@ -2090,7 +2105,7 @@ func getNativeStacks(cloudType types.CloudType, ec2Clients map[string]ec2Client,
 
 			cfStackGroups := []string{}
 			for _, cfStack := range cfStacks {
-				if group, ok := cfStack.Tags[ctx.ResourceGroupingLabel]; ok {
+				if group, ok := cfStack.Tags[cfg.ResourceGroupingLabel]; ok {
 					cfStackGroups = append(cfStackGroups, group)
 				}
 			}
@@ -2204,7 +2219,7 @@ func getImages(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*t
 	return images, nil
 }
 
-func getDisk(cloudType types.CloudType, ec2Client ec2Client, volumeId string) (*types.Disk, error) {
+func getDisk(cfg *config.Config, cloudType types.CloudType, ec2Client ec2Client, volumeId string) (*types.Disk, error) {
 	result, err := ec2Client.DescribeVolumes(&ec2.DescribeVolumesInput{VolumeIds: []*string{&volumeId}})
 	if err != nil {
 		log.Errorf("[AWS] Failed to fetch the volume, err: %s", err)
@@ -2215,11 +2230,11 @@ func getDisk(cloudType types.CloudType, ec2Client ec2Client, volumeId string) (*
 	if len(result.Volumes) == 0 {
 		return nil, errors.New(fmt.Sprintf("Volume not found with id '%s'", volumeId))
 	}
-	return newDisk(cloudType, result.Volumes[0]), nil
+	return newDisk(cfg, cloudType, result.Volumes[0]), nil
 
 }
 
-func getDisks(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*types.Disk, error) {
+func getDisks(cfg *config.Config, cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*types.Disk, error) {
 	diskChan := make(chan *types.Disk)
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
@@ -2236,7 +2251,7 @@ func getDisks(cloudType types.CloudType, ec2Clients map[string]ec2Client) ([]*ty
 			}
 			log.Debugf("[AWS] Processing volumes (%d): [%s] in region: %s", len(result.Volumes), result.Volumes, region)
 			for _, vol := range result.Volumes {
-				diskChan <- newDisk(cloudType, vol)
+				diskChan <- newDisk(cfg, cloudType, vol)
 			}
 
 		}(r, c)
@@ -2398,7 +2413,7 @@ func getAlerts(cloudType types.CloudType, cloudWatchClients map[string]cloudWatc
 	return alerts, nil
 }
 
-func deleteAlerts(cloudWatchClients map[string]cloudWatchClient, alerts []*types.Alert) []error {
+func deleteAlerts(cfg *config.Config, cloudWatchClients map[string]cloudWatchClient, alerts []*types.Alert) []error {
 	log.Infof("[AWS] Deleting %d alerts", len(alerts))
 
 	regionAlerts := map[string][]*types.Alert{}
@@ -2419,13 +2434,13 @@ func deleteAlerts(cloudWatchClients map[string]cloudWatchClient, alerts []*types
 				alertNames = append(alertNames, alert.Name)
 			}
 
-			for i := 0; i < len(alertsInRegion); i += ctx.AwsBulkOperationSize {
-				endIndex := i + ctx.AwsBulkOperationSize
+			for i := 0; i < len(alertsInRegion); i += awsBulkOperationSize {
+				endIndex := i + awsBulkOperationSize
 				if endIndex > len(alertsInRegion) {
 					endIndex = len(alertsInRegion)
 				}
 				currentAlertNames := alertNames[i:endIndex]
-				if ctx.DryRun {
+				if cfg.DryRun {
 					log.Infof("[AWS] Dry-run set, alerts %s were not deleted in region %s", currentAlertNames, region)
 				} else {
 					log.Infof("[AWS] Deleting alerts %s in region %s", currentAlertNames, region)
@@ -2454,7 +2469,7 @@ func deleteAlerts(cloudWatchClients map[string]cloudWatchClient, alerts []*types
 	return errors
 }
 
-func getDatabases(cloudType types.CloudType, rdsClients map[string]rdsClient, cloudTrailClients map[string]cloudTrailClient) ([]*types.Database, error) {
+func getDatabases(cfg *config.Config, cloudType types.CloudType, rdsClients map[string]rdsClient, cloudTrailClients map[string]cloudTrailClient) ([]*types.Database, error) {
 	dbChan := make(chan *types.Database)
 	wg := sync.WaitGroup{}
 	wg.Add(len(rdsClients))
@@ -2478,7 +2493,7 @@ func getDatabases(cloudType types.CloudType, rdsClients map[string]rdsClient, cl
 				if err != nil {
 					log.Debugf("[AWS] Cannot list tags for DB: %s", *db.DBName)
 				}
-				d := newDatabase(cloudType, *db, tags)
+				d := newDatabase(cfg, cloudType, *db, tags)
 				if d.State == types.Running && len(d.Owner) == 0 {
 					log.Debugf("[AWS] Check CloudTrail for database: %s", d.Name)
 					if iamUser := getIAMUserFromCloudTrail(d.Name, cloudTrailClient); iamUser != nil {
@@ -2503,7 +2518,7 @@ func getDatabases(cloudType types.CloudType, rdsClients map[string]rdsClient, cl
 	return databases, nil
 }
 
-func getRegions(ec2Client ec2Client) ([]string, error) {
+func getRegions(cfg *config.Config, ec2Client ec2Client) ([]string, error) {
 	regionResult, e := ec2Client.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if e != nil {
 		return nil, e
@@ -2511,7 +2526,7 @@ func getRegions(ec2Client ec2Client) ([]string, error) {
 	log.Debugf("[AWS] Processing regions (%d): [%s]", len(regionResult.Regions), regionResult.Regions)
 	regions := make([]string, 0)
 	for _, region := range regionResult.Regions {
-		if ctx.AwsExcludedRegions[strings.ToLower(*region.RegionName)] {
+		if cfg.AwsExcludedRegions[strings.ToLower(*region.RegionName)] {
 			log.Infof("[AWS] Skipping CloudFormation fetch from region: %s", *region.RegionName)
 			continue
 		}
@@ -2669,7 +2684,7 @@ func newSession(configure func(*aws.Config)) (*session.Session, error) {
 	return session.NewSession(&config)
 }
 
-func newInstance(cloudType types.CloudType, inst *ec2.Instance) *types.Instance {
+func newInstance(cfg *config.Config, cloudType types.CloudType, inst *ec2.Instance) *types.Instance {
 	tags := getEc2Tags(inst.Tags)
 	var name string
 	if n, ok := tags["Name"]; ok {
@@ -2687,7 +2702,7 @@ func newInstance(cloudType types.CloudType, inst *ec2.Instance) *types.Instance 
 		Created:      getCreated(inst.LaunchTime),
 		CloudType:    cloudType,
 		Tags:         tags,
-		Owner:        tags[ctx.OwnerLabel],
+		Owner:        tags[cfg.OwnerLabel],
 		Region:       getRegionFromAvailabilityZone(inst.Placement.AvailabilityZone),
 		InstanceType: *inst.InstanceType,
 		State:        getInstanceState(inst),
@@ -2695,7 +2710,7 @@ func newInstance(cloudType types.CloudType, inst *ec2.Instance) *types.Instance 
 	}
 }
 
-func newStack(cloudType types.CloudType, stack *cloudformation.Stack, region string) *types.Stack {
+func newStack(cfg *config.Config, cloudType types.CloudType, stack *cloudformation.Stack, region string) *types.Stack {
 	tags := getCFTags(stack.Tags)
 	return &types.Stack{
 		ID:        *stack.StackId,
@@ -2703,7 +2718,7 @@ func newStack(cloudType types.CloudType, stack *cloudformation.Stack, region str
 		Created:   getCreated(stack.CreationTime),
 		CloudType: cloudType,
 		Tags:      tags,
-		Owner:     tags[ctx.OwnerLabel],
+		Owner:     tags[cfg.OwnerLabel],
 		Region:    region,
 		State:     getCFState(stack),
 		Metadata:  map[string]string{METADATA_TYPE: TYPE_CF},
@@ -2751,7 +2766,7 @@ func getCFState(stack *cloudformation.Stack) types.State {
 	return types.Running
 }
 
-func newDisk(cloudType types.CloudType, volume *ec2.Volume) *types.Disk {
+func newDisk(cfg *config.Config, cloudType types.CloudType, volume *ec2.Volume) *types.Disk {
 	tags := getEc2Tags(volume.Tags)
 	var name string
 	if n, ok := tags["Name"]; ok {
@@ -2768,7 +2783,7 @@ func newDisk(cloudType types.CloudType, volume *ec2.Volume) *types.Disk {
 		Created:   getCreated(volume.CreateTime),
 		Size:      *volume.Size,
 		Type:      *volume.VolumeType,
-		Owner:     tags[ctx.OwnerLabel],
+		Owner:     tags[cfg.OwnerLabel],
 		Tags:      tags,
 	}
 }
@@ -2790,7 +2805,7 @@ func newImage(cloudType types.CloudType, image *ec2.Image, region string) *types
 	}
 }
 
-func newDatabase(cloudType types.CloudType, rds rds.DBInstance, tagList *rds.ListTagsForResourceOutput) *types.Database {
+func newDatabase(cfg *config.Config, cloudType types.CloudType, rds rds.DBInstance, tagList *rds.ListTagsForResourceOutput) *types.Database {
 	tags := getRdsTags(tagList)
 	return &types.Database{
 		ID:           *rds.DbiResourceId,
@@ -2799,7 +2814,7 @@ func newDatabase(cloudType types.CloudType, rds rds.DBInstance, tagList *rds.Lis
 		Region:       getRegionFromAvailabilityZone(rds.AvailabilityZone),
 		InstanceType: *rds.DBInstanceClass,
 		State:        getDatabaseState(rds),
-		Owner:        tags[ctx.OwnerLabel],
+		Owner:        tags[cfg.OwnerLabel],
 		Tags:         tags,
 		CloudType:    cloudType,
 	}
