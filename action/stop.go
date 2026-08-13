@@ -1,23 +1,26 @@
 package action
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Actions[types.StopAction] = new(stopAction)
+// NewStop returns the stop action implementation.
+func NewStop(cfg *config.Config) types.Action {
+	return stopAction{cfg}
 }
 
 type stopAction struct {
+	cfg *config.Config
 }
 
-func (s stopAction) Execute(_ types.OpType, _ []types.FilterType, items []types.CloudItem) {
+func (s stopAction) Execute(_ types.OpType, _ []types.FilterType, items []types.CloudItem) error {
 	instancesPerCloud := map[types.CloudType][]*types.Instance{}
 	databasesPerCloud := map[types.CloudType][]*types.Database{}
 	for _, item := range items {
@@ -32,43 +35,51 @@ func (s stopAction) Execute(_ types.OpType, _ []types.FilterType, items []types.
 	}
 
 	wg := sync.WaitGroup{}
+	errChan := make(chan error, len(instancesPerCloud)+len(databasesPerCloud))
 	if len(instancesPerCloud) > 0 {
 		wg.Add(len(instancesPerCloud))
-		stopInstances(instancesPerCloud, &wg)
+		stopInstances(s.cfg.CloudProviders, instancesPerCloud, &wg, errChan)
 	}
 	if len(databasesPerCloud) > 0 {
 		wg.Add(len(databasesPerCloud))
-		stopDatabases(databasesPerCloud, &wg)
+		stopDatabases(s.cfg.CloudProviders, databasesPerCloud, &wg, errChan)
 	}
 
 	wg.Wait()
+	close(errChan)
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
-func stopInstances(instancesPerCloud map[types.CloudType][]*types.Instance, wg *sync.WaitGroup) {
+func stopInstances(providers map[types.CloudType]func() types.CloudProvider, instancesPerCloud map[types.CloudType][]*types.Instance, wg *sync.WaitGroup, errChan chan<- error) {
 	for cloud, instances := range instancesPerCloud {
 		go func(cloud types.CloudType, instances []*types.Instance) {
 			defer wg.Done()
 			log.Infof("[STOP] Stop %d instances on %s: %s", len(instances), cloud, strings.Join(getInstanceNames(instances), ","))
-			if errors := ctx.CloudProviders[cloud]().StopInstances(types.NewInstanceContainer(instances)); len(errors) != 0 {
-				for _, err := range errors {
+			if errs := providers[cloud]().StopInstances(types.NewInstanceContainer(instances)); len(errs) != 0 {
+				for _, err := range errs {
 					log.Errorf("[STOP] Failed to stop instances on cloud: %s, err: %s", cloud, err.Error())
 				}
-				panic(fmt.Sprintf("[STOP] Failed to stop instances on cloud: %s", cloud))
+				errChan <- fmt.Errorf("[STOP] failed to stop instances on cloud: %s", cloud)
 			}
 		}(cloud, instances)
 	}
 }
 
-func stopDatabases(databasesPerCloud map[types.CloudType][]*types.Database, wg *sync.WaitGroup) {
+func stopDatabases(providers map[types.CloudType]func() types.CloudProvider, databasesPerCloud map[types.CloudType][]*types.Database, wg *sync.WaitGroup, errChan chan<- error) {
 	for cloud, databases := range databasesPerCloud {
 		go func(cloud types.CloudType, databases []*types.Database) {
 			defer wg.Done()
 			log.Infof("[STOP] Stop %d databases on %s: %s", len(databases), cloud, strings.Join(getDatabaseNames(databases), ","))
-			if errors := ctx.CloudProviders[cloud]().StopDatabases(types.NewDatabaseContainer(databases)); len(errors) != 0 {
-				for _, err := range errors {
+			if errs := providers[cloud]().StopDatabases(types.NewDatabaseContainer(databases)); len(errs) != 0 {
+				for _, err := range errs {
 					log.Errorf("[STOP] Failed to stop databases on cloud: %s, err: %s", cloud, err.Error())
 				}
-				panic(fmt.Sprintf("[STOP] Failed to stop databases on cloud: %s", cloud))
+				errChan <- fmt.Errorf("[STOP] failed to stop databases on cloud: %s", cloud)
 			}
 		}(cloud, databases)
 	}

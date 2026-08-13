@@ -1,26 +1,28 @@
 package operation
 
 import (
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Operations[types.Alerts] = alerts{}
+// NewAlerts returns the getAlerts operation implementation.
+func NewAlerts(cfg *config.Config) types.Operation {
+	return alerts{cfg}
 }
 
 type alerts struct {
+	cfg *config.Config
 }
 
-func (a alerts) Execute(clouds []types.CloudType) []types.CloudItem {
+func (a alerts) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("[ALERTS] Collecting alerts on: [%s]", clouds)
 	itemsChan, errChan := a.collect(clouds)
-	return wait(itemsChan, errChan, "[ALERTS] Failed to collect alerts")
+	return wait(itemsChan, errChan, "[ALERTS] Failed to collect alerts"), nil
 }
 
 func (a alerts) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
-	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
+	return collect(a.cfg.CloudProviders, clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
 		alerts, err := provider.GetAlerts()
 		if err != nil {
 			return nil, err

@@ -38,7 +38,7 @@ type OpType string
 // Operation is executed against cloud providers
 // The result should be a general cloud item that can be specialized later
 type Operation interface {
-	Execute([]CloudType) []CloudItem
+	Execute([]CloudType) ([]CloudItem, error)
 }
 
 func (ot OpType) String() string {

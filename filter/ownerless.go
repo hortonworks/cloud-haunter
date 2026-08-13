@@ -1,23 +1,25 @@
-package operation
+package filter
 
 import (
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Filters[types.OwnerlessFilter] = ownerless{}
+// NewOwnerless returns the ownerless filter implementation.
+func NewOwnerless(cfg *config.Config) types.Filter {
+	return ownerless{cfg}
 }
 
 type ownerless struct {
+	cfg *config.Config
 }
 
-func (o ownerless) Execute(items []types.CloudItem) []types.CloudItem {
-	log.Debugf("[OWNERLESS] Filtering instances without tag %s (%d): [%s]", ctx.OwnerLabel, len(items), items)
-	return filter("OWNERLESS", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
+func (o ownerless) Execute(items []types.CloudItem) ([]types.CloudItem, error) {
+	log.Debugf("[OWNERLESS] Filtering instances without tag %s (%d): [%s]", o.cfg.OwnerLabel, len(items), items)
+	return filter(o.cfg, "OWNERLESS", items, types.ExclusiveFilter, func(item types.CloudItem) (bool, error) {
 		match := len(item.GetOwner()) == 0 || item.GetOwner() == "???"
 		log.Infof("[OWNERLESS] %T: %s match: %v", item, item.GetName(), match)
-		return match
+		return match, nil
 	})
 }

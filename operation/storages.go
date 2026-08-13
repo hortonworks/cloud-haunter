@@ -1,26 +1,28 @@
 package operation
 
 import (
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Operations[types.Storages] = storage{}
+// NewStorages returns the getStorages operation implementation.
+func NewStorages(cfg *config.Config) types.Operation {
+	return storage{cfg}
 }
 
 type storage struct {
+	cfg *config.Config
 }
 
-func (s storage) Execute(clouds []types.CloudType) []types.CloudItem {
+func (s storage) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("Collecting storage accounts on: [%s]", clouds)
 	storageChan, errChan := s.collect(clouds)
-	return wait(storageChan, errChan, "[ACCESS] Failed to collect storages")
+	return wait(storageChan, errChan, "[ACCESS] Failed to collect storages"), nil
 }
 
 func (s storage) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
-	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
+	return collect(s.cfg.CloudProviders, clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
 		storages, err := provider.GetStorages()
 		if err != nil {
 			return nil, err

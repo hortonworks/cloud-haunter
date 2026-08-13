@@ -1,20 +1,27 @@
-package operation
+package filter
 
 import (
 	"testing"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
 	"github.com/stretchr/testify/assert"
 )
 
+// testConfig builds an isolated config for a single test. config.DefaultIgnoreLabel
+// is a read-only default, so referencing it here does not share mutable state.
+func testConfig(fc types.IFilterConfig) *config.Config {
+	return &config.Config{FilterConfig: fc, IgnoreLabel: config.DefaultIgnoreLabel}
+}
+
 func TestIsIgnored(t *testing.T) {
+	t.Parallel()
 	items := []types.CloudItem{
 		&types.Instance{
 			CloudType: types.AWS,
 			Name:      "ignored-by-ignore-label",
-			Tags:      types.Tags{ctx.IgnoreLabel: "true"},
+			Tags:      types.Tags{config.DefaultIgnoreLabel: "true"},
 		},
 		&types.Instance{
 			CloudType: types.AWS,
@@ -41,14 +48,16 @@ func TestIsIgnored(t *testing.T) {
 		},
 	}
 	filterConfig, _ := utils.LoadFilterConfig("testdata/sample-ignore.yml")
+	cfg := testConfig(filterConfig)
 
 	for _, item := range items {
-		isFiltered := isFilterMatch("TEST", item, types.ExclusiveFilter, filterConfig)
+		isFiltered := isFilterMatch(cfg, "TEST", item, types.ExclusiveFilter)
 		assert.True(t, isFiltered, "Item found: "+item.GetName())
 	}
 }
 
 func TestIsIncluded(t *testing.T) {
+	t.Parallel()
 	items := []types.CloudItem{
 		&types.Instance{
 			CloudType: types.AWS,
@@ -75,19 +84,23 @@ func TestIsIncluded(t *testing.T) {
 		},
 	}
 	filterConfig, _ := utils.LoadFilterConfig("testdata/sample-ignore.yml")
+	cfg := testConfig(filterConfig)
 
 	for _, item := range items {
-		isFiltered := isFilterMatch("TEST", item, types.InclusiveFilter, filterConfig)
+		isFiltered := isFilterMatch(cfg, "TEST", item, types.InclusiveFilter)
 		assert.True(t, isFiltered, "Item found: "+item.GetName())
 	}
 }
 
-func TestIncludedAndExcludedWithInclusiveFilter(t *testing.T) {
-	items := []types.CloudItem{
+// mixedIncludeExcludeItems returns AZURE items that the sample config marks as
+// skip/ignore and AWS items it marks as include, for the inclusive/exclusive
+// filter scenarios.
+func mixedIncludeExcludeItems() []types.CloudItem {
+	return []types.CloudItem{
 		&types.Instance{
 			CloudType: types.AZURE,
 			Name:      "ignored-by-ignore-label",
-			Tags:      types.Tags{ctx.IgnoreLabel: "true"},
+			Tags:      types.Tags{config.DefaultIgnoreLabel: "true"},
 		},
 		&types.Instance{
 			CloudType: types.AZURE,
@@ -136,10 +149,16 @@ func TestIncludedAndExcludedWithInclusiveFilter(t *testing.T) {
 			Owner:     "includeMeOwner-0",
 		},
 	}
+}
+
+func TestIncludedAndExcludedWithInclusiveFilter(t *testing.T) {
+	t.Parallel()
+	items := mixedIncludeExcludeItems()
 	filterConfig, _ := utils.LoadFilterConfig("testdata/sample-ignore.yml")
+	cfg := testConfig(filterConfig)
 
 	for _, item := range items {
-		isFiltered := isFilterMatch("TEST", item, types.InclusiveFilter, filterConfig)
+		isFiltered := isFilterMatch(cfg, "TEST", item, types.InclusiveFilter)
 		if item.GetCloudType() == types.AZURE {
 			assert.False(t, isFiltered, "Item found: "+item.GetName())
 		} else {
@@ -149,63 +168,13 @@ func TestIncludedAndExcludedWithInclusiveFilter(t *testing.T) {
 }
 
 func TestIncludedAndExcludedWithExclusiveFilter(t *testing.T) {
-	items := []types.CloudItem{
-		&types.Instance{
-			CloudType: types.AZURE,
-			Name:      "ignored-by-ignore-label",
-			Tags:      types.Tags{ctx.IgnoreLabel: "true"},
-		},
-		&types.Instance{
-			CloudType: types.AZURE,
-			Name:      "skipThisName-0",
-		},
-		&types.Instance{
-			CloudType: types.AZURE,
-			Name:      "ignored-by-owner",
-			Owner:     "skipThisOwner-0",
-		},
-		&types.Instance{
-			CloudType: types.AZURE,
-			Name:      "ignored-by-label",
-			Tags:      types.Tags{"skipThisLabel-0": "true"},
-		},
-		&types.Access{
-			CloudType: types.AZURE,
-			Name:      "skipThisAccess-0",
-		},
-		&types.Access{
-			CloudType: types.AZURE,
-			Name:      "ignored-by-owner",
-			Owner:     "skipThisOwner-0",
-		},
-		&types.Instance{
-			CloudType: types.AWS,
-			Name:      "includeMeName-0",
-		},
-		&types.Instance{
-			CloudType: types.AWS,
-			Name:      "included-by-owner",
-			Owner:     "includeMeOwner-0",
-		},
-		&types.Instance{
-			CloudType: types.AWS,
-			Name:      "included-by-label",
-			Tags:      types.Tags{"includeMeLabel-0": "true"},
-		},
-		&types.Access{
-			CloudType: types.AWS,
-			Name:      "includeMeName-0",
-		},
-		&types.Access{
-			CloudType: types.AWS,
-			Name:      "included-by-owner",
-			Owner:     "includeMeOwner-0",
-		},
-	}
+	t.Parallel()
+	items := mixedIncludeExcludeItems()
 	filterConfig, _ := utils.LoadFilterConfig("testdata/sample-ignore.yml")
+	cfg := testConfig(filterConfig)
 
 	for _, item := range items {
-		isFiltered := isFilterMatch("TEST", item, types.ExclusiveFilter, filterConfig)
+		isFiltered := isFilterMatch(cfg, "TEST", item, types.ExclusiveFilter)
 		if item.GetCloudType() == types.AZURE {
 			assert.True(t, isFiltered, "Item found: "+item.GetName())
 		} else {
@@ -215,20 +184,23 @@ func TestIncludedAndExcludedWithExclusiveFilter(t *testing.T) {
 }
 
 func TestFilter(t *testing.T) {
+	t.Parallel()
 	items := []types.CloudItem{
 		&types.Instance{},
 	}
 
-	filtered := filter("TEST", items, types.ExclusiveFilter, func(types.CloudItem) bool {
-		return true
+	filtered, err := filter(&config.Config{}, "TEST", items, types.ExclusiveFilter, func(types.CloudItem) (bool, error) {
+		return true, nil
 	})
 
+	assert.NoError(t, err)
 	assert.Equal(t, len(items), len(filtered))
 }
 
 func TestInclusiveFilterWithNoMatch(t *testing.T) {
+	t.Parallel()
 	filterConfig, _ := utils.LoadFilterConfig("testdata/sample-ignore.yml")
-	ctx.FilterConfig = filterConfig
+	cfg := testConfig(filterConfig)
 
 	items := []types.CloudItem{
 		&types.Instance{
@@ -237,16 +209,18 @@ func TestInclusiveFilterWithNoMatch(t *testing.T) {
 		},
 	}
 
-	filtered := filter("TEST", items, types.InclusiveFilter, func(types.CloudItem) bool {
-		return true
+	filtered, err := filter(cfg, "TEST", items, types.InclusiveFilter, func(types.CloudItem) (bool, error) {
+		return true, nil
 	})
 
+	assert.NoError(t, err)
 	assert.Equal(t, 0, len(filtered))
 }
 
 func TestInclusiveFilter(t *testing.T) {
+	t.Parallel()
 	filterConfig, _ := utils.LoadFilterConfig("testdata/sample-ignore.yml")
-	ctx.FilterConfig = filterConfig
+	cfg := testConfig(filterConfig)
 
 	tags := types.Tags{}
 	tags["includeMeLabel"] = "test"
@@ -276,16 +250,18 @@ func TestInclusiveFilter(t *testing.T) {
 		},
 	}
 
-	filtered := filter("TEST", items, types.InclusiveFilter, func(types.CloudItem) bool {
-		return true
+	filtered, err := filter(cfg, "TEST", items, types.InclusiveFilter, func(types.CloudItem) (bool, error) {
+		return true, nil
 	})
 
+	assert.NoError(t, err)
 	assert.Equal(t, 4, len(filtered))
 }
 
 func TestExclusiveFilter(t *testing.T) {
+	t.Parallel()
 	filterConfig, _ := utils.LoadFilterConfig("testdata/sample-ignore.yml")
-	ctx.FilterConfig = filterConfig
+	cfg := testConfig(filterConfig)
 
 	tags := types.Tags{}
 	tags["skipThisLabel"] = "test"
@@ -315,9 +291,10 @@ func TestExclusiveFilter(t *testing.T) {
 		},
 	}
 
-	filtered := filter("TEST", items, types.ExclusiveFilter, func(types.CloudItem) bool {
-		return true
+	filtered, err := filter(cfg, "TEST", items, types.ExclusiveFilter, func(types.CloudItem) (bool, error) {
+		return true, nil
 	})
 
+	assert.NoError(t, err)
 	assert.Equal(t, 3, len(filtered))
 }

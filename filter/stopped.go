@@ -1,30 +1,34 @@
-package operation
+package filter
 
 import (
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"fmt"
+
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Filters[types.StoppedFilter] = stopped{}
+// NewStopped returns the stopped filter implementation.
+func NewStopped(cfg *config.Config) types.Filter {
+	return stopped{cfg}
 }
 
 type stopped struct {
+	cfg *config.Config
 }
 
-func (f stopped) Execute(items []types.CloudItem) []types.CloudItem {
+func (f stopped) Execute(items []types.CloudItem) ([]types.CloudItem, error) {
 	log.Debugf("[STOPPED] Filtering items (%d): [%s]", len(items), items)
-	return filter("RUNNING", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
+	return filter(f.cfg, "RUNNING", items, types.ExclusiveFilter, func(item types.CloudItem) (bool, error) {
 		switch item.GetItem().(type) {
 		case types.Instance:
 			if item.GetItem().(types.Instance).State != types.Stopped {
 				log.Debugf("[STOPPED] Filter instance, because it's not in STOPPED state: %s", item.GetName())
-				return false
+				return false, nil
 			}
 		default:
-			log.Fatalf("[STOPPED] Filter does not apply for cloud item: %s", item.GetName())
+			return false, fmt.Errorf("[STOPPED] filter does not apply for cloud item: %s", item.GetName())
 		}
-		return true
+		return true, nil
 	})
 }

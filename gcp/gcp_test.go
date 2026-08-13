@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"cloud.google.com/go/storage"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
 	compute "google.golang.org/api/compute/v1"
@@ -16,14 +17,14 @@ import (
 func TestProviderInit(t *testing.T) {
 	provider := gcpProvider{}
 
-	provider.init("project-id", &http.Client{}, &http.Client{}, &http.Client{}, &http.Client{})
+	provider.init("project-id", &http.Client{}, &http.Client{}, &http.Client{}, &storage.Client{})
 
 	assert.Equal(t, "project-id", provider.projectID)
 	assert.NotNil(t, provider.computeClient)
 }
 
 func TestGetInstances(t *testing.T) {
-	instances, _ := getInstances(mockInstancesListAggregator{})
+	instances, _ := getInstances(mockInstancesListAggregator{}, config.DefaultOwnerLabel)
 
 	assert.Equal(t, 1, len(instances))
 }
@@ -52,14 +53,14 @@ func TestDeleteImages(t *testing.T) {
 	go func() {
 		defer close(imageChan)
 
-		deleteImages(getMockAggregator, images)
+		deleteImages(getMockAggregator, images, false)
 	}()
 
 	assert.Equal(t, "hdc-hdp--1711170803", <-imageChan)
 }
 
 func TestNewInstance(t *testing.T) {
-	instance := newInstance(newTestInstance())
+	instance := newInstance(newTestInstance(), config.DefaultOwnerLabel)
 
 	assert.Equal(t, "instance", instance.Name)
 	assert.Equal(t, "owner", instance.Owner)
@@ -132,7 +133,7 @@ func newTestInstance() *compute.Instance {
 		Name:              "instance",
 		CreationTimestamp: "2006-01-02T15:04:05Z",
 		Zone:              "a/bbb",
-		Labels:            map[string]string{ctx.OwnerLabel: "owner"},
+		Labels:            map[string]string{config.DefaultOwnerLabel: "owner"},
 		MachineType:       "n1-standard-8",
 	}
 }

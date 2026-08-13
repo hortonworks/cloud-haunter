@@ -1,43 +1,31 @@
 package action
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"strconv"
 	"sync"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-var defaultRetentionDays = 90
-
 type cleanupAction struct {
-	retentionDays int
+	cfg *config.Config
 }
 
-func init() {
-	initCleanup()
+// NewCleanup returns the cleanup action implementation. The retention period is
+// taken from cfg.RetentionDays (resolved from RETENTION_DAYS when the config is
+// built).
+func NewCleanup(cfg *config.Config) types.Action {
+	return cleanupAction{cfg}
 }
 
-func initCleanup() {
-	retentionDays := defaultRetentionDays
-	retentionEnv := os.Getenv("RETENTION_DAYS")
-	if len(retentionEnv) > 0 {
-		parsed, err := strconv.Atoi(retentionEnv)
-		if err != nil {
-			log.Fatalf("[CLEANUP] Failed to parse RETENTION_DAYS, err: %s", err)
-		}
-		retentionDays = parsed
-	}
-	ctx.Actions[types.CleanupAction] = cleanupAction{retentionDays}
-}
-
-func (a cleanupAction) Execute(op types.OpType, filters []types.FilterType, items []types.CloudItem) {
+func (a cleanupAction) Execute(op types.OpType, filters []types.FilterType, items []types.CloudItem) error {
 	wg := sync.WaitGroup{}
-	wg.Add(len(ctx.CloudProviders))
-	for t, p := range ctx.CloudProviders {
+	wg.Add(len(a.cfg.CloudProviders))
+	errChan := make(chan error, len(a.cfg.CloudProviders))
+	for t, p := range a.cfg.CloudProviders {
 		go func(cType types.CloudType, provider types.CloudProvider) {
 			defer wg.Done()
 
@@ -51,26 +39,34 @@ func (a cleanupAction) Execute(op types.OpType, filters []types.FilterType, item
 
 			if len(cloudItems) > 0 {
 				log.Infof("[CLEANUP] Cleaning up %d items on %s: %s", len(cloudItems), cType, items)
-				var errors []error
+				var errs []error
 
 				item := *cloudItems[0]
 				switch t := item.GetItem().(type) {
 				case types.Storage:
-					errors = a.cleanupStorages(provider, cloudItems)
+					errs = a.cleanupStorages(provider, cloudItems)
 				default:
-					panic(fmt.Sprintf("[CLEANUP] Operation on type %T is not allowed", t))
+					errChan <- fmt.Errorf("[CLEANUP] operation on type %T is not allowed", t)
+					return
 				}
 
-				if len(errors) != 0 {
-					for _, err := range errors {
+				if len(errs) != 0 {
+					for _, err := range errs {
 						log.Errorf("[CLEANUP] Failed to clean up %ss on %s, err: %s", item.GetType(), cType, err.Error())
 					}
-					panic(fmt.Sprintf("[CLEANUP] Failed to clean up %ss on %s", item.GetType(), cType))
+					errChan <- fmt.Errorf("[CLEANUP] failed to clean up %ss on %s", item.GetType(), cType)
 				}
 			}
 		}(t, p())
 	}
 	wg.Wait()
+	close(errChan)
+
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 func (a cleanupAction) cleanupStorages(provider types.CloudProvider, items []*types.CloudItem) []error {
@@ -79,5 +75,5 @@ func (a cleanupAction) cleanupStorages(provider types.CloudProvider, items []*ty
 		storage := (*item).GetItem().(types.Storage)
 		storages = append(storages, &storage)
 	}
-	return provider.CleanupStorages(types.NewStorageContainer(storages), a.retentionDays)
+	return provider.CleanupStorages(types.NewStorageContainer(storages), a.cfg.RetentionDays)
 }

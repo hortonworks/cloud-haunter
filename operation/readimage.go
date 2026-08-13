@@ -4,31 +4,41 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
-	ctx "github.com/hortonworks/cloud-haunter/context"
-	"github.com/hortonworks/cloud-haunter/types"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"os"
+
+	"github.com/hortonworks/cloud-haunter/types"
+	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Operations[types.ReadImages] = readImages{}
+// NewReadImages returns the readImages operation implementation reading from
+// stdin.
+func NewReadImages() types.Operation {
+	return readImages{in: os.Stdin}
 }
 
 type readImages struct {
+	// in is the source the image JSON is read from; injectable so tests supply an
+	// in-memory reader instead of swapping the os.Stdin global (which would force
+	// the tests to run non-parallel).
+	in io.Reader
 }
 
-func (o readImages) Execute(clouds []types.CloudType) []types.CloudItem {
+func (o readImages) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("[READ_IMAGES] Collecting images from: [%s]", clouds)
 
-	info, err := os.Stdin.Stat()
-	if err != nil {
-		panic(err)
-	} else if info.Mode()&os.ModeCharDevice != 0 {
-		panic(errors.New("[READ_IMAGES] standard input is not char device"))
+	// Guard against an interactive terminal (reading would block forever). Only
+	// *os.File exposes Stat(); an injected reader skips the check.
+	if f, ok := o.in.(interface{ Stat() (os.FileInfo, error) }); ok {
+		info, err := f.Stat()
+		if err != nil {
+			return nil, err
+		} else if info.Mode()&os.ModeCharDevice != 0 {
+			return nil, errors.New("[READ_IMAGES] standard input is not char device")
+		}
 	}
 
-	reader := bufio.NewReader(os.Stdin)
+	reader := bufio.NewReader(o.in)
 	var output []rune
 	for {
 		input, _, err := reader.ReadRune()
@@ -38,12 +48,12 @@ func (o readImages) Execute(clouds []types.CloudType) []types.CloudItem {
 		output = append(output, input)
 	}
 	if len(output) == 0 {
-		panic("[READ_IMAGES] standard input is empty")
+		return nil, errors.New("[READ_IMAGES] standard input is empty")
 	}
 
 	cloudImages, err := parseCloudImagesJSON([]byte(string(output)))
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	images := []*types.Image{}
@@ -51,19 +61,16 @@ func (o readImages) Execute(clouds []types.CloudType) []types.CloudItem {
 		switch cloud {
 		case types.AWS:
 			images = appendToImages(images, cloudImages.Aws, types.AWS)
-			break
 		case types.AZURE:
 			images = appendToImages(images, cloudImages.Azure, types.AZURE)
-			break
 		case types.GCP:
 			images = appendToImages(images, cloudImages.Gcp, types.GCP)
-			break
 		default:
 			log.Warnf("[READ_IMAGES]  Cloud type not supported: %s", cloud.String())
 		}
 	}
 
-	return convertToCloudItems(images)
+	return convertToCloudItems(images), nil
 }
 
 type cloudImages struct {
