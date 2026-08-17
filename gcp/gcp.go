@@ -109,10 +109,6 @@ func (p *gcpProvider) init(projectID string, computeHTTPClient *http.Client, iam
 	}
 	p.sqlClient = sqlClient
 
-	// storageClient, err := storage.New(storageHTTPClient)
-	// if err != nil {
-	// 	return errors.New("Failed to initialize Storage admin client, err: " + err.Error())
-	// }
 	p.storageClient = storageHTTPClient
 	return nil
 }
