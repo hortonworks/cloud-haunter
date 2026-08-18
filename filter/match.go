@@ -1,21 +1,23 @@
-package operation
+package filter
 
 import (
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Filters[types.MatchFilter] = match{}
+// NewMatch returns the match filter implementation.
+func NewMatch(cfg *config.Config) types.Filter {
+	return match{cfg}
 }
 
 type match struct {
+	cfg *config.Config
 }
 
-func (f match) Execute(items []types.CloudItem) []types.CloudItem {
+func (f match) Execute(items []types.CloudItem) ([]types.CloudItem, error) {
 	log.Debugf("[MATCH] Filtering items (%d): [%s]", len(items), items)
-	return filter("MATCH", items, types.InclusiveFilter, func(item types.CloudItem) bool {
-		return true
+	return filter(f.cfg, "MATCH", items, types.InclusiveFilter, func(item types.CloudItem) (bool, error) {
+		return true, nil
 	})
 }

@@ -2,7 +2,7 @@ export BINARY=ch
 
 # This version refers to the next release version required,
 # which will be increased automatically by the dedicated release job
-export VERSION=0.5.76
+export VERSION=0.6.0
 
 ifeq ($(GH_PRE_RELEASE),true)
 	OLD_VER:=$(VERSION)
@@ -11,27 +11,18 @@ endif
 
 GO_VERSION?=$(shell cat go.mod | grep '^go' | awk '{print $$2}')
 PKG_BASE=github.com/hortonworks/cloud-haunter
-BUILD_TIME=$(shell date +%FT%T)
-LDFLAGS=-w -s -X $(PKG_BASE)/context.Version=${VERSION} -X $(PKG_BASE)/context.BuildTime=${BUILD_TIME}
+LDFLAGS=-w -s -X main.Version=${VERSION}
 
 ifdef IGNORE_LABEL
-LDFLAGS+= -X '$(PKG_BASE)/context.IgnoreLabel=$(IGNORE_LABEL)'
+LDFLAGS+= -X '$(PKG_BASE)/config.DefaultIgnoreLabel=$(IGNORE_LABEL)'
 endif
 
 ifdef OWNER_LABEL
-LDFLAGS+= -X '$(PKG_BASE)/context.OwnerLabel=$(OWNER_LABEL)'
+LDFLAGS+= -X '$(PKG_BASE)/config.DefaultOwnerLabel=$(OWNER_LABEL)'
 endif
 
 ifdef RESOURCE_GROUPING_LABEL
-LDFLAGS+= -X '$(PKG_BASE)/context.ResourceGroupingLabel=$(RESOURCE_GROUPING_LABEL)'
-endif
-
-ifdef RESOURCE_DESCRIPTION
-LDFLAGS+= -X '$(PKG_BASE)/context.ResourceDescription=$(RESOURCE_DESCRIPTION)'
-endif
-
-ifdef AZURE_CREATION_TIME_LABEL
-LDFLAGS+= -X '$(PKG_BASE)/context.AzureCreationTimeLabel=$(AZURE_CREATION_TIME_LABEL)'
+LDFLAGS+= -X '$(PKG_BASE)/config.DefaultResourceGroupingLabel=$(RESOURCE_GROUPING_LABEL)'
 endif
 
 GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.git/*")

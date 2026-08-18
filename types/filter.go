@@ -48,7 +48,7 @@ type FilterType string
 
 // Filter interface that can be chained
 type Filter interface {
-	Execute([]CloudItem) []CloudItem
+	Execute([]CloudItem) ([]CloudItem, error)
 }
 
 func (f FilterType) String() string {

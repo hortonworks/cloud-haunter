@@ -1,79 +1,65 @@
-package operation
+package filter
 
 import (
+	"fmt"
 	"time"
 
-	"os"
-
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-var defaultRunningPeriod = 24 * time.Hour
-
 type longRunning struct {
-	runningPeriod time.Duration
+	cfg *config.Config
 }
 
-func init() {
-	runningEnv := os.Getenv("RUNNING_PERIOD")
-	var runningPeriod time.Duration
-	if len(runningEnv) > 0 {
-		duration, err := time.ParseDuration(runningEnv)
-		if err != nil {
-			log.Errorf("[LONGRUNNING] err: %s", err)
-			return
-		}
-		runningPeriod = duration
-	} else {
-		runningPeriod = defaultRunningPeriod
-	}
-	log.Infof("[LONGRUNNING] running period set to: %s", runningPeriod)
-	ctx.Filters[types.LongRunningFilter] = longRunning{runningPeriod}
+// NewLongRunning returns the longrunning filter implementation. The running
+// period is taken from cfg.LongRunningPeriod (resolved from RUNNING_PERIOD when
+// the config is built).
+func NewLongRunning(cfg *config.Config) types.Filter {
+	return longRunning{cfg}
 }
 
-func (f longRunning) Execute(items []types.CloudItem) []types.CloudItem {
+func (f longRunning) Execute(items []types.CloudItem) ([]types.CloudItem, error) {
 	log.Debugf("[LONGRUNNING] Filtering instances (%d): [%s]", len(items), items)
 	now := time.Now()
-	return filter("LONGRUNNING", items, types.ExclusiveFilter, func(item types.CloudItem) bool {
+	return filter(f.cfg, "LONGRUNNING", items, types.ExclusiveFilter, func(item types.CloudItem) (bool, error) {
 		switch item.GetItem().(type) {
 		case types.Instance:
 			if item.GetItem().(types.Instance).State != types.Running {
 				log.Debugf("[LONGRUNNING] Filter instance, because it's not in RUNNING state: %s", item.GetName())
-				return false
+				return false, nil
 			}
 		case types.Stack:
 			if item.GetItem().(types.Stack).State != types.Running {
 				log.Debugf("[LONGRUNNING] Filter stack, because it's not in RUNNING state: %s", item.GetName())
-				return false
+				return false, nil
 			}
 		case types.Database:
 			if item.GetItem().(types.Database).State != types.Running {
 				log.Debugf("[LONGRUNNING] Filter database, because it's not in RUNNING state: %s", item.GetName())
-				return false
+				return false, nil
 			}
 		case types.Disk:
 			if item.GetItem().(types.Disk).State != types.Unused {
 				log.Debugf("[LONGRUNNING] Filter disk, because it's in used state: %s", item.GetName())
-				return false
+				return false, nil
 			}
 		case types.Alert:
 			if item.GetItem().(types.Alert).State != types.Unused {
 				log.Debugf("[LONGRUNNING] Filter alert, because it's in used state: %s", item.GetName())
-				return false
+				return false, nil
 			}
 		case types.Resource:
 			if item.GetItem().(types.Resource).ResourceType == types.Vpc {
 				log.Debugf("[LONGRUNNING] Do not filter resource, because VPC has no 'Created' property: %s", item.GetName())
-				return true
+				return true, nil
 			}
 		default:
-			log.Fatalf("[LONGRUNNING] Filter does not apply for cloud item: %s", item.GetName())
-			return true
+			return false, fmt.Errorf("[LONGRUNNING] filter does not apply for cloud item: %s", item.GetName())
 		}
-		match := item.GetCreated().Add(f.runningPeriod).Before(now)
+		match := item.GetCreated().Add(f.cfg.LongRunningPeriod).Before(now)
 		log.Debugf("[LONGRUNNING] %s: %s match: %v", item.GetType(), item.GetName(), match)
-		return match
+		return match, nil
 	})
 }

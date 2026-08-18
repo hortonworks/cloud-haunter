@@ -1,136 +1,89 @@
 package action
 
 import (
+	"errors"
 	"testing"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
 	"github.com/hortonworks/cloud-haunter/types"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/assert"
 )
 
-type mockProvider struct {
-	calls int
-}
-
-func (p *mockProvider) GetAccountName() string {
-	return "mock"
-}
-
-func (p *mockProvider) GetInstances() ([]*types.Instance, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) TerminateInstances(*types.InstanceContainer) []error {
-	p.calls++
-	return nil
-}
-
-func (p *mockProvider) TerminateStacks(*types.StackContainer) []error {
-	p.calls++
-	return nil
-}
-
-func (p *mockProvider) StopInstances(*types.InstanceContainer) []error {
-	p.calls++
-	return nil
-}
-
-func (p *mockProvider) TerminateResources(*types.ResourceContainer) []error {
-	p.calls++
-	return nil
-}
-
-func (p mockProvider) StopDatabases(_ *types.DatabaseContainer) (e []error) {
-	return
-}
-
-func (p *mockProvider) GetAccesses() ([]*types.Access, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) GetDatabases() ([]*types.Database, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) DeleteDatabases(databases *types.DatabaseContainer) []error {
-	return nil
-}
-
-func (p *mockProvider) GetDisks() ([]*types.Disk, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) DeleteDisks(*types.DiskContainer) []error {
-	return nil
-}
-
-func (p *mockProvider) GetImages() ([]*types.Image, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) GetStacks() ([]*types.Stack, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) GetResources() ([]*types.Resource, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) DeleteImages(*types.ImageContainer) []error {
-	return nil
-}
-
-func (p *mockProvider) GetAlerts() ([]*types.Alert, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) DeleteAlerts(*types.AlertContainer) []error {
-	return nil
-}
-
-func (p *mockProvider) GetStorages() ([]*types.Storage, error) {
-	return nil, nil
-}
-
-func (p *mockProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
-	return nil
-}
-
-type terminationSuite struct {
-	suite.Suite
-	providers    map[types.CloudType]func() types.CloudProvider
-	mockProvider *mockProvider
-}
-
-func (s *terminationSuite) SetupSuite() {
-	s.providers = ctx.CloudProviders
-}
-
-func (s *terminationSuite) SetupTest() {
-	s.mockProvider = &mockProvider{0}
-	ctx.CloudProviders = map[types.CloudType]func() types.CloudProvider{
-		types.AWS: func() types.CloudProvider {
-			return s.mockProvider
-		}}
-}
-
-func (s *terminationSuite) TearDownSuite() {
-	ctx.CloudProviders = s.providers
-}
-
-func (s *terminationSuite) TestTermination() {
-	action := terminationAction{}
-	op := types.Instances
-	items := []types.CloudItem{
-		types.Instance{CloudType: types.AWS},
-		types.Instance{CloudType: types.GCP},
+// TestTerminationByType verifies that Execute dispatches each cloud-item type to
+// the matching provider method.
+func TestTerminationByType(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		item  types.CloudItem
+		count func(*mockProvider) int
+	}{
+		{"instance", &types.Instance{CloudType: types.AWS}, func(p *mockProvider) int { return p.terminateInstances }},
+		{"stack", &types.Stack{CloudType: types.AWS}, func(p *mockProvider) int { return p.terminateStacks }},
+		{"disk", &types.Disk{CloudType: types.AWS}, func(p *mockProvider) int { return p.deleteDisks }},
+		{"image", &types.Image{CloudType: types.AWS}, func(p *mockProvider) int { return p.deleteImages }},
+		{"alert", &types.Alert{CloudType: types.AWS}, func(p *mockProvider) int { return p.deleteAlerts }},
+		{"database", &types.Database{CloudType: types.AWS}, func(p *mockProvider) int { return p.deleteDatabases }},
+		{"resource", &types.Resource{CloudType: types.AWS}, func(p *mockProvider) int { return p.terminateResources }},
 	}
 
-	action.Execute(op, []types.FilterType{}, items)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mock := newMockProvider()
+			cfg := providerCfg(map[types.CloudType]*mockProvider{types.AWS: mock})
 
-	s.Equal(1, s.mockProvider.calls)
+			err := terminationAction{cfg}.Execute(types.Instances, nil, []types.CloudItem{tc.item})
+
+			assert.NoError(t, err)
+			assert.Equal(t, 1, tc.count(mock), "expected the matching provider method to be called once")
+		})
+	}
 }
 
-func TestTerminationSuite(t *testing.T) {
-	suite.Run(t, new(terminationSuite))
+// TestTerminationOnlyRegisteredClouds verifies that items belonging to a cloud
+// that has no registered provider are not terminated.
+func TestTerminationOnlyRegisteredClouds(t *testing.T) {
+	t.Parallel()
+	mock := newMockProvider()
+	cfg := providerCfg(map[types.CloudType]*mockProvider{types.AWS: mock})
+
+	err := NewTermination(cfg).Execute(types.Instances, nil, []types.CloudItem{
+		&types.Instance{CloudType: types.AWS, Name: "aws-1"},
+		&types.Instance{CloudType: types.AWS, Name: "aws-2"},
+		&types.Instance{CloudType: types.GCP, Name: "gcp-1"},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, mock.terminateInstances, "AWS provider terminates once")
+	assert.Len(t, mock.instances.Get(types.AWS), 2, "both AWS instances are passed")
+}
+
+// TestTerminationReturnsErrorOnUnsupportedType exercises the previously
+// panic-only path: an item type termination doesn't handle now yields an error.
+func TestTerminationReturnsErrorOnUnsupportedType(t *testing.T) {
+	t.Parallel()
+	mock := newMockProvider()
+	cfg := providerCfg(map[types.CloudType]*mockProvider{types.AWS: mock})
+
+	err := terminationAction{cfg}.Execute(types.Instances, nil, []types.CloudItem{
+		&types.Storage{CloudType: types.AWS},
+	})
+
+	assert.Error(t, err)
+}
+
+// TestTerminationReturnsErrorOnProviderFailure verifies a provider error is
+// aggregated and returned instead of crashing the process.
+func TestTerminationReturnsErrorOnProviderFailure(t *testing.T) {
+	t.Parallel()
+	mock := newMockProvider()
+	mock.opErr = []error{errors.New("boom")}
+	cfg := providerCfg(map[types.CloudType]*mockProvider{types.AWS: mock})
+
+	err := terminationAction{cfg}.Execute(types.Instances, nil, []types.CloudItem{
+		&types.Instance{CloudType: types.AWS},
+	})
+
+	assert.Error(t, err)
 }

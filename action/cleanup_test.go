@@ -1,33 +1,59 @@
 package action
 
 import (
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"errors"
+	"testing"
+
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"testing"
 )
 
-func TestUnsetOsEnv(t *testing.T) {
-	os.Unsetenv("RETENTION_DAYS")
+// TestCleanupInvokesProviderForStorages verifies that storage items are routed
+// to the provider's CleanupStorages with the configured retention period, and
+// that only items for a registered cloud are processed.
+func TestCleanupInvokesProviderForStorages(t *testing.T) {
+	t.Parallel()
+	mock := newMockProvider()
+	cfg := providerCfg(map[types.CloudType]*mockProvider{types.AWS: mock})
+	cfg.RetentionDays = 42
 
-	initCleanup()
+	err := NewCleanup(cfg).Execute(types.Storages, nil, []types.CloudItem{
+		&types.Storage{CloudType: types.AWS, Name: "s1"},
+		&types.Storage{CloudType: types.AWS, Name: "s2"},
+		&types.Storage{CloudType: types.GCP, Name: "no-provider"},
+	})
 
-	assert.Equal(t, ctx.Actions[types.CleanupAction].(cleanupAction).retentionDays, defaultRetentionDays)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, mock.cleanupStorages, "CleanupStorages called once for AWS")
+	assert.Equal(t, 42, mock.retentionDays, "configured retention flows to the provider")
+	assert.Len(t, mock.storages.Get(types.AWS), 2, "both AWS storages passed")
 }
 
-func TestEmptyOsEnv(t *testing.T) {
-	os.Setenv("RETENTION_DAYS", "")
+// TestCleanupReturnsErrorOnUnsupportedType exercises the previously panic-only
+// path: cleanup only supports storages, so any other item type yields an error.
+func TestCleanupReturnsErrorOnUnsupportedType(t *testing.T) {
+	t.Parallel()
+	mock := newMockProvider()
+	cfg := providerCfg(map[types.CloudType]*mockProvider{types.AWS: mock})
 
-	initCleanup()
+	err := cleanupAction{cfg}.Execute(types.Storages, nil, []types.CloudItem{
+		&types.Instance{CloudType: types.AWS},
+	})
 
-	assert.Equal(t, ctx.Actions[types.CleanupAction].(cleanupAction).retentionDays, defaultRetentionDays)
+	assert.Error(t, err)
 }
 
-func TestSetOsEnv(t *testing.T) {
-	os.Setenv("RETENTION_DAYS", "30")
+// TestCleanupReturnsErrorOnProviderFailure verifies a provider error is
+// aggregated and returned instead of crashing the process.
+func TestCleanupReturnsErrorOnProviderFailure(t *testing.T) {
+	t.Parallel()
+	mock := newMockProvider()
+	mock.opErr = []error{errors.New("boom")}
+	cfg := providerCfg(map[types.CloudType]*mockProvider{types.AWS: mock})
 
-	initCleanup()
+	err := cleanupAction{cfg}.Execute(types.Storages, nil, []types.CloudItem{
+		&types.Storage{CloudType: types.AWS},
+	})
 
-	assert.Equal(t, ctx.Actions[types.CleanupAction].(cleanupAction).retentionDays, 30)
+	assert.Error(t, err)
 }

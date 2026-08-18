@@ -1,26 +1,28 @@
 package operation
 
 import (
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Operations[types.CloudAccess] = access{}
+// NewAccess returns the getAccess operation implementation.
+func NewAccess(cfg *config.Config) types.Operation {
+	return access{cfg}
 }
 
 type access struct {
+	cfg *config.Config
 }
 
-func (o access) Execute(clouds []types.CloudType) []types.CloudItem {
+func (o access) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("Collecting old accesses on: [%s]", clouds)
 	accessChan, errChan := o.collect(clouds)
-	return wait(accessChan, errChan, "[ACCESS] Failed to collect accesses")
+	return wait(accessChan, errChan, "[ACCESS] Failed to collect accesses"), nil
 }
 
 func (o access) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {
-	return collect(clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
+	return collect(o.cfg.CloudProviders, clouds, func(provider types.CloudProvider) ([]types.CloudItem, error) {
 		accesses, err := provider.GetAccesses()
 		if err != nil {
 			return nil, err

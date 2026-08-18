@@ -3,12 +3,13 @@ package slack
 import (
 	"bytes"
 	"fmt"
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"net/http"
+	"os"
+
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	"github.com/hortonworks/cloud-haunter/utils"
 	log "github.com/sirupsen/logrus"
-	"net/http"
-	"os"
 )
 
 const (
@@ -20,6 +21,7 @@ const (
 )
 
 type slackDispatcher struct {
+	cfg        *config.Config
 	webhook    string
 	httpClient *http.Client
 }
@@ -43,12 +45,16 @@ type field struct {
 	Short bool   `json:"short"`
 }
 
-func init() {
+// Register wires the Slack dispatcher into cfg.Dispatchers with cfg injected,
+// but only when SLACK_WEBHOOK_URL is set. main calls it once after building the
+// config. This replaces the previous init()-based self-registration into the
+// context package's global registry.
+func Register(cfg *config.Config) {
 	webhook := os.Getenv("SLACK_WEBHOOK_URL")
 	if len(webhook) > 0 {
-		slack := slackDispatcher{}
+		slack := slackDispatcher{cfg: cfg}
 		slack.init(webhook)
-		ctx.Dispatchers["SLACK"] = slack
+		cfg.Dispatchers["SLACK"] = slack
 		log.Infof("[SLACK] register slack to send notifications")
 	}
 }
@@ -64,7 +70,7 @@ func (d slackDispatcher) GetName() string {
 
 func (d slackDispatcher) Send(op types.OpType, filters []types.FilterType, items []types.CloudItem) error {
 	message := d.generateMessage(op, filters, items)
-	if ctx.DryRun {
+	if d.cfg.DryRun {
 		json, err := utils.CovertJsonToString(message)
 		if err != nil {
 			return err
@@ -94,7 +100,7 @@ func (d slackDispatcher) send(message slackMessage) error {
 
 func (d slackDispatcher) generateMessage(op types.OpType, filters []types.FilterType, items []types.CloudItem) slackMessage {
 	message := slackMessage{}
-	message.Text = fmt.Sprintf("*Operation*: %s *Filters*: %s *Accounts*: %s\n", op, utils.GetFilterNames(filters), utils.GetCloudAccountNames())
+	message.Text = fmt.Sprintf("*Operation*: %s *Filters*: %s *Accounts*: %s\n", op, utils.GetFilterNames(filters), utils.GetCloudAccountNames(d.cfg.CloudProviders))
 
 	itemsPerOwner := map[string][]types.CloudItem{}
 	color := GreenColor

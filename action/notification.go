@@ -3,25 +3,27 @@ package action
 import (
 	"sync"
 
-	ctx "github.com/hortonworks/cloud-haunter/context"
+	"github.com/hortonworks/cloud-haunter/config"
 	"github.com/hortonworks/cloud-haunter/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
-	ctx.Actions[types.NotificationAction] = new(notificationAction)
+// NewNotification returns the notification action implementation.
+func NewNotification(cfg *config.Config) types.Action {
+	return notificationAction{cfg}
 }
 
 type notificationAction struct {
+	cfg *config.Config
 }
 
-func (a notificationAction) Execute(op types.OpType, filters []types.FilterType, items []types.CloudItem) {
-	log.Infof("[NOTIFICATION] Sending %d items for %d dispatchers", len(items), len(ctx.Dispatchers))
+func (a notificationAction) Execute(op types.OpType, filters []types.FilterType, items []types.CloudItem) error {
+	log.Infof("[NOTIFICATION] Sending %d items for %d dispatchers", len(items), len(a.cfg.Dispatchers))
 	log.Debugf("[NOTIFICATION] Sending notifications (%d) for items: [%s]", len(items), items)
 	if len(items) > 0 {
 		wg := sync.WaitGroup{}
-		wg.Add(len(ctx.Dispatchers))
-		for n, d := range ctx.Dispatchers {
+		wg.Add(len(a.cfg.Dispatchers))
+		for n, d := range a.cfg.Dispatchers {
 			log.Debugf("[NOTIFICATION] Using %s to dispatch dispatch notifications", d.GetName())
 			go func(name string, dispatcher types.Dispatcher) {
 				defer wg.Done()
@@ -33,4 +35,5 @@ func (a notificationAction) Execute(op types.OpType, filters []types.FilterType,
 		}
 		wg.Wait()
 	}
+	return nil
 }
