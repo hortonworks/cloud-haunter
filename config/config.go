@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -13,6 +14,9 @@ const (
 	defaultRetentionDays         = 90
 	defaultLongRunningPeriod     = 24 * time.Hour
 	defaultAccessAvailablePeriod = 120 * 24 * time.Hour
+	defaultBudgetPeriod          = 7 * 24 * time.Hour
+	defaultBudgetLimit           = 100.0
+	minimumBudgetPeriod          = 24 * time.Hour
 )
 
 // Default label/tag names used across all cloud providers. They are declared as
@@ -75,6 +79,14 @@ type Config struct {
 	// an access old (ACCESS_AVAILABLE_PERIOD).
 	AccessAvailablePeriod time.Duration
 
+	// BudgetPeriod is how far back the budget-notification action sums the
+	// ignore-labelled spend of each owner (BUDGET_PERIOD).
+	BudgetPeriod time.Duration
+
+	// BudgetLimit is the ignore-labelled spend over BudgetPeriod above which an
+	// owner is reminded (BUDGET_LIMIT, in the billing currency).
+	BudgetLimit float64
+
 	// CloudProviders is the registry of available cloud provider factories.
 	CloudProviders map[types.CloudType]func() types.CloudProvider
 
@@ -83,7 +95,8 @@ type Config struct {
 }
 
 // LoadEnv populates the environment-derived tunables (RETENTION_DAYS,
-// RUNNING_PERIOD, ACCESS_AVAILABLE_PERIOD), applying defaults when a variable is
+// RUNNING_PERIOD, ACCESS_AVAILABLE_PERIOD, BUDGET_PERIOD, BUDGET_LIMIT),
+// applying defaults when a variable is
 // unset. It returns an error if a variable is set but cannot be parsed, so the
 // caller can fail fast at a single point instead of the components failing
 // (inconsistently) deep inside their constructors.
@@ -120,6 +133,30 @@ func (c *Config) loadEnv(getenv func(string) string) error {
 			return fmt.Errorf("invalid ACCESS_AVAILABLE_PERIOD %q: %w", v, err)
 		}
 		c.AccessAvailablePeriod = d
+	}
+
+	c.BudgetPeriod = defaultBudgetPeriod
+	if v := getenv("BUDGET_PERIOD"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("invalid BUDGET_PERIOD %q: %w", v, err)
+		}
+		if d < minimumBudgetPeriod {
+			return fmt.Errorf("invalid BUDGET_PERIOD %q: billing data is daily, the period must be at least %s", v, minimumBudgetPeriod)
+		}
+		c.BudgetPeriod = d
+	}
+
+	c.BudgetLimit = defaultBudgetLimit
+	if v := getenv("BUDGET_LIMIT"); v != "" {
+		limit, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return fmt.Errorf("invalid BUDGET_LIMIT %q: must be a finite, non-negative number: %w", v, err)
+		}
+		if math.IsNaN(limit) || math.IsInf(limit, 0) || limit < 0 {
+			return fmt.Errorf("invalid BUDGET_LIMIT %q: must be a finite, non-negative number", v)
+		}
+		c.BudgetLimit = limit
 	}
 
 	return nil

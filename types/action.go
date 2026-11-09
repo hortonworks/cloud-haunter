@@ -27,6 +27,9 @@ const (
 	CleanupAction = ActionType("cleanup")
 
 	CloudItemsReportAction = ActionType("report-cloud-items")
+
+	// BudgetNotificationAction reminds the owners whose ignore-tagged spend exceeds the budget limit
+	BudgetNotificationAction = ActionType("budget-notification")
 )
 
 // Action to execute on the cloud items

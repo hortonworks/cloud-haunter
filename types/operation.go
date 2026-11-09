@@ -30,6 +30,9 @@ const (
 
 	// Resources operation to return all resources (Load balancer, ...)
 	Resources = OpType("getResources")
+
+	// BillableResources operation to return the instances, databases and disks together
+	BillableResources = OpType("getBillableResources")
 )
 
 // OpType type of the operation

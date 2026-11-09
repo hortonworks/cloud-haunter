@@ -106,3 +106,10 @@ func TestSplitListToMap(t *testing.T) {
 func TestSplitListToMapEmpty(t *testing.T) {
 	assert.Equal(t, map[string]bool{}, SplitListToMap(""))
 }
+
+func TestNormalizeOwner(t *testing.T) {
+	assert.Equal(t, "jdoe", NormalizeOwner("jdoe"))
+	assert.Equal(t, "jdoe", NormalizeOwner(" JDoe@example.com "))
+	assert.Equal(t, "j.doe", NormalizeOwner("J.Doe"))
+	assert.Equal(t, "", NormalizeOwner(""))
+}

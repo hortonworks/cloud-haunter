@@ -3,6 +3,7 @@ package slack
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
@@ -21,9 +22,10 @@ const (
 )
 
 type slackDispatcher struct {
-	cfg        *config.Config
-	webhook    string
-	httpClient *http.Client
+	cfg           *config.Config
+	webhook       string
+	httpClient    *http.Client
+	ownerSlackIDs map[string]string
 }
 
 type slackMessage struct {
@@ -52,7 +54,11 @@ type field struct {
 func Register(cfg *config.Config) {
 	webhook := os.Getenv("SLACK_WEBHOOK_URL")
 	if len(webhook) > 0 {
-		slack := slackDispatcher{cfg: cfg}
+		ownerSlackIDs, err := loadOwnerSlackIDs(os.Getenv(ownerSlackIDsFileEnv))
+		if err != nil {
+			panic(fmt.Sprintf("[SLACK] Unable to load %s: %s", ownerSlackIDsFileEnv, err.Error()))
+		}
+		slack := slackDispatcher{cfg: cfg, ownerSlackIDs: ownerSlackIDs}
 		slack.init(webhook)
 		cfg.Dispatchers["SLACK"] = slack
 		log.Infof("[SLACK] register slack to send notifications")
@@ -92,8 +98,14 @@ func (d slackDispatcher) send(message slackMessage) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if _, err := d.httpClient.Do(req); err != nil {
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
 		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("slack webhook responded %s: %s", resp.Status, string(body))
 	}
 	return nil
 }

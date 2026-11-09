@@ -29,6 +29,12 @@ func TestOperationsCollectItems(t *testing.T) {
 		{"alerts", &mockProvider{alerts: []*types.Alert{{Name: "a", CloudType: types.DUMMY}}}, NewAlerts, 1},
 		{"storages", &mockProvider{storages: []*types.Storage{{Name: "a", CloudType: types.DUMMY}}}, NewStorages, 1},
 		{"resources", &mockProvider{resources: []*types.Resource{{Name: "a", CloudType: types.DUMMY}}}, NewResources, 1},
+		{"billable resources", &mockProvider{
+			instances: []*types.Instance{{Name: "a", CloudType: types.DUMMY}},
+			databases: []*types.Database{{Name: "b", CloudType: types.DUMMY}},
+			disks:     []*types.Disk{{Name: "c", CloudType: types.DUMMY}, {Name: "d", CloudType: types.DUMMY}},
+			stacks:    []*types.Stack{{Name: "not billable", CloudType: types.DUMMY}},
+		}, NewBillableResources, 4},
 	}
 
 	for _, tc := range cases {
@@ -81,6 +87,7 @@ func TestOperationsReturnEmptyOnProviderError(t *testing.T) {
 		"alerts":    NewAlerts,
 		"storages":  NewStorages,
 		"resources": NewResources,
+		"billable":  NewBillableResources,
 	}
 
 	for name, newOp := range ops {

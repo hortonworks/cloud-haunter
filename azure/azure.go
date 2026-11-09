@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8"
@@ -50,6 +52,8 @@ type azureProvider struct {
 	storageAccountClient   armstorage.AccountsClient
 	storageContainerClient armstorage.BlobContainersClient
 	// resClient      resources.Client
+	resourceClient *armresources.Client
+	costClient     *costQueryClient
 }
 
 // Register wires the Azure provider into the cloud-provider registry with the
@@ -114,6 +118,12 @@ func (p *azureProvider) init(subscriptionID string,
 		return err
 	}
 	if p.subscriptionClient, err = armsubscription.NewSubscriptionsClient(credential, nil); err != nil {
+		return err
+	}
+	if p.resourceClient, err = armresources.NewClient(subscriptionID, credential, nil); err != nil {
+		return err
+	}
+	if p.costClient, err = newCostQueryClient(credential, &arm.ClientOptions{ClientOptions: policy.ClientOptions{Retry: throttledCostQueryRetry}}); err != nil {
 		return err
 	}
 	return nil
@@ -248,6 +258,10 @@ func (p azureProvider) GetInstances() ([]*types.Instance, error) {
 		}
 	}
 
+	ignoredGroups := p.getIgnoredResourceGroupsOrEmpty()
+	for _, instance := range instances {
+		markIgnoredResourceGroup(instance.Metadata, ignoredGroups)
+	}
 	return instances, nil
 }
 
@@ -509,6 +523,10 @@ func (p azureProvider) GetDatabases() ([]*types.Database, error) {
 		}
 	}
 
+	ignoredGroups := p.getIgnoredResourceGroupsOrEmpty()
+	for _, database := range databases {
+		markIgnoredResourceGroup(database.Metadata, ignoredGroups)
+	}
 	return databases, nil
 }
 

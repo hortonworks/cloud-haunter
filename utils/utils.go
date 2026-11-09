@@ -182,3 +182,9 @@ func GetHumanReadableFileSize(b int64) string {
 	return fmt.Sprintf("%.1f %cB",
 		float64(b)/float64(div), "kMGTPE"[exp])
 }
+
+// NormalizeOwner turns the owner label variants of the clouds (e-mail address, mixed case) into one comparable key
+func NormalizeOwner(owner string) string {
+	localPart, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(owner)), "@")
+	return localPart
+}
