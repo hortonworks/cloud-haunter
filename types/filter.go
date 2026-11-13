@@ -28,6 +28,9 @@ const (
 	// NoMatchFilter filters the items that do not match the include criteria of the filter config
 	NoMatchFilter = FilterType("nomatch")
 
+	// IgnoredFilter filters the items that carry the ignore label themselves or inherit it from their resource group
+	IgnoredFilter = FilterType("ignored")
+
 	// InclusiveFilter filter type that will return only the matching entries from the filter's inclusive configuration
 	InclusiveFilter = FilterConfigType("inclusive")
 

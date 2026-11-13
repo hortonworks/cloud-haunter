@@ -17,6 +17,7 @@ Operations retrieve various cloud resources (in the general sense of the word).
 | **getAlerts** | Retrieves alerts on AWS. |
 | **getStorages** | Retrieves S3 storage on AWS and functionally equivalent object storage on other cloud providers. |
 | **getResources** | Retrieves load balancers, EC2 instances and VPCs. |
+| **getBillableResources** | Retrieves the VM instances, databases and disks together (`getInstances`, `getDatabases` and `getDisks` in one run). |
 
 ## Filters
 A filter operates on the result of a operation.
@@ -36,6 +37,7 @@ Regarding details about configuring a filter using the config YAML (see here)[FI
 | **unused** | Filters the items that are not used. Only works on disks and alerts. |
 | **match** | Filters the items that match the include criteria of the filter config. |
 | **nomatch** | Filters the items that do not match the include criteria of the filter config. |
+| **ignored** | Filters the cloud items that carry the ignore label. On Azure an item also counts as ignored when its resource group carries the label. Works the same with and without `-i`. |
 
 ## Actions
 
@@ -55,3 +57,4 @@ Actions are executed on the filtered list of Cloud Items retrieved by the operat
 | **termination** | Terminates the cloud item if the item supports such operation. |
 | **cleanup** | Cleans up the cloud item if the item supports such operation. |
 | **report-cloud-items** | Generates a CSV report printing information about all the cloud items present as input to this action. Useful to test what The Haunter sees. Essentially similar to log and json. It's also WIP. |
+| **budget-notification** | Reminds the owners whose ignore-labelled resources cost more than `BUDGET_LIMIT` USD over the last `BUDGET_PERIOD`, listing their cloud items that reach this action. Never modifies cloud resources. See [the budget reminder](MANUAL.md#budget-reminder). |

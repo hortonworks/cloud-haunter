@@ -52,6 +52,7 @@ See below for the [complete description of cli options](#cli-options).
 | **Azure** | `AZURE_CLIENT_SECRET` | — |
 | **Google** | `GOOGLE_PROJECT_ID` | — |
 | **Google** | `GOOGLE_APPLICATION_CREDENTIALS` | Location of service account JSON |
+| **Google** | `GCP_BILLING_EXPORT_TABLE` | Billing export table as `project.dataset.table`, only needed by `budget-notification` |
 ### Others
 | - | Environment Variable | Description / Default |
 | --- | --- | --- |
@@ -62,6 +63,41 @@ See below for the [complete description of cli options](#cli-options).
 | **Long running** | `RUNNING_PERIOD` | Default: `24h` |
 | **Old access** | `ACCESS_AVAILABLE_PERIOD` | Default: `2880h` |
 | **Retention days for cleanup** | `RETENTION_DAYS` | Default: `90` |
+| **Slack** | `SLACK_OWNER_IDS_FILE` | YAML map of owner label values to Slack member IDs, used to @-mention owners in budget reminders |
+| **Budget reminder** | `BUDGET_PERIOD` | How far back owner spend is summed, rounded up to whole UTC days before today. Default: `168h`, at least `24h` |
+| **Budget reminder** | `BUDGET_LIMIT` | Owner spend in USD above which the owner is reminded. Must be finite and non-negative; `0` reminds for any positive spend. Default: `100` |
+
+## Budget reminder
+
+The `budget-notification` action reminds owners who keep ignore-labelled resources running for too long:
+an owner is reminded when their ignore-labelled spend over `BUDGET_PERIOD` exceeds `BUDGET_LIMIT`
+and at least one of their ignore-labelled cloud items reaches the action. The spend is summed across every selected cloud
+over the same whole UTC days, ending yesterday, with owners normalized (lower case, e-mail domain removed). Every account must
+bill in USD, because the amounts are added up without currency conversion. Owners on clouds that cannot report costs are not reminded.
+When a cloud fails to report its costs, the owners of the other clouds are still reminded, then the run fails.
+
+A daily run that reminds about resources running for more than a week:
+```
+RUNNING_PERIOD=168h BUDGET_PERIOD=168h BUDGET_LIMIT=100 \
+./ch -o getBillableResources -c AWS,AZURE,GCP -f ignored,longrunning,nomatch -fc exceptions.yml -i -a budget-notification
+```
+`-i` is required, otherwise `longrunning` and `nomatch` drop the ignore-labelled items. Owners listed under `excludeInstance` in the
+filter config are never reminded, which exempts infrastructure owners. The action applies that list itself too, so it also covers the
+Azure items that only inherit their owner from the resource group.
+
+Where the spend comes from, and the read permissions it needs:
+
+| Cloud | Source | Permission | Per-resource cost |
+| --- | --- | --- | --- |
+| **AWS** | Cost Explorer, grouped by the ignore and owner tags (both must be activated as cost allocation tags) | `ce:GetCostAndUsage`, `ce:GetCostAndUsageWithResources` | EC2 instances only, over `BUDGET_PERIOD` capped at the API's 14-day resource-level history limit; needs resource-level data enabled in Cost Explorer |
+| **Azure** | Cost Management query over the ignore-labelled resource groups and resources, by the owner tag or else the resource group's owner tag | Cost Management Reader on the subscription | Yes |
+| **Google** | Cloud Billing export to BigQuery (`GCP_BILLING_EXPORT_TABLE`) | BigQuery Job User on the project, Data Viewer on the export dataset | No |
+
+AWS owner totals always cover the full `BUDGET_PERIOD`, even when per-instance costs are capped at 14 days.
+Azure cost queries follow all result pages and sum their costs; a failed page fails the query rather than returning partial totals.
+
+Cost Explorer charges for each request. GovCloud is not supported. On AWS the ignore tag needs a value for its spend to count,
+because Cost Explorer reports a tag with an empty value as a missing tag. The action warns about every such item that reaches it.
 
 ## CLI Options
 

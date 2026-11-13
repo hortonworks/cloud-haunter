@@ -170,26 +170,28 @@ func registerComponents(cfg *config.Config) (
 	slack.Register(cfg)
 
 	actions := map[types.ActionType]types.Action{
-		types.LogAction:              action.NewLog(cfg),
-		types.Json:                   action.NewJSON(cfg),
-		types.StopAction:             action.NewStop(cfg),
-		types.TerminationAction:      action.NewTermination(cfg),
-		types.NotificationAction:     action.NewNotification(cfg),
-		types.CloudItemsReportAction: action.NewCloudItemsReport(),
-		types.CleanupAction:          action.NewCleanup(cfg),
+		types.LogAction:                action.NewLog(cfg),
+		types.Json:                     action.NewJSON(cfg),
+		types.StopAction:               action.NewStop(cfg),
+		types.TerminationAction:        action.NewTermination(cfg),
+		types.NotificationAction:       action.NewNotification(cfg),
+		types.CloudItemsReportAction:   action.NewCloudItemsReport(),
+		types.CleanupAction:            action.NewCleanup(cfg),
+		types.BudgetNotificationAction: action.NewBudgetNotification(cfg),
 	}
 
 	operations := map[types.OpType]types.Operation{
-		types.Instances:   operation.NewInstances(cfg),
-		types.CloudAccess: operation.NewAccess(cfg),
-		types.Databases:   operation.NewDatabases(cfg),
-		types.Disks:       operation.NewDisks(cfg),
-		types.Images:      operation.NewImages(cfg),
-		types.ReadImages:  operation.NewReadImages(),
-		types.Stacks:      operation.NewStacks(cfg),
-		types.Alerts:      operation.NewAlerts(cfg),
-		types.Storages:    operation.NewStorages(cfg),
-		types.Resources:   operation.NewResources(cfg),
+		types.Instances:         operation.NewInstances(cfg),
+		types.CloudAccess:       operation.NewAccess(cfg),
+		types.Databases:         operation.NewDatabases(cfg),
+		types.Disks:             operation.NewDisks(cfg),
+		types.Images:            operation.NewImages(cfg),
+		types.ReadImages:        operation.NewReadImages(),
+		types.Stacks:            operation.NewStacks(cfg),
+		types.Alerts:            operation.NewAlerts(cfg),
+		types.Storages:          operation.NewStorages(cfg),
+		types.Resources:         operation.NewResources(cfg),
+		types.BillableResources: operation.NewBillableResources(cfg),
 	}
 
 	filters := map[types.FilterType]types.Filter{
@@ -202,6 +204,7 @@ func registerComponents(cfg *config.Config) (
 		types.NoMatchFilter:     filter.NewNoMatch(cfg),
 		types.LongRunningFilter: filter.NewLongRunning(cfg),
 		types.OldAccessFilter:   filter.NewOldAccess(cfg),
+		types.IgnoredFilter:     filter.NewIgnored(cfg),
 	}
 
 	return operations, filters, actions

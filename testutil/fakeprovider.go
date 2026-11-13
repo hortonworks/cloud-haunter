@@ -10,6 +10,7 @@ package testutil
 
 import (
 	"sync"
+	"time"
 
 	"github.com/hortonworks/cloud-haunter/types"
 )
@@ -152,6 +153,40 @@ func (p *FakeProvider) CleanupStorages(c *types.StorageContainer, retentionDays 
 // Registry builds the CloudProviders factory map that config.Config expects,
 // returning the given fake for each cloud type.
 func Registry(providers map[types.CloudType]*FakeProvider) map[types.CloudType]func() types.CloudProvider {
+	registry := map[types.CloudType]func() types.CloudProvider{}
+	for cloud, p := range providers {
+		p := p
+		registry[cloud] = func() types.CloudProvider { return p }
+	}
+	return registry
+}
+
+// FakeCostProvider is a FakeProvider that also implements types.CostProvider:
+// GetIgnoredCosts returns IgnoredCosts (or CostErr) and records every requested window.
+type FakeCostProvider struct {
+	FakeProvider
+
+	IgnoredCosts *types.IgnoredCosts
+	CostErr      error
+
+	CostWindows []CostWindow
+}
+
+// CostWindow is the since and until of one GetIgnoredCosts call
+type CostWindow struct {
+	Since, Until time.Time
+}
+
+func (p *FakeCostProvider) GetIgnoredCosts(since, until time.Time) (*types.IgnoredCosts, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.CostWindows = append(p.CostWindows, CostWindow{Since: since, Until: until})
+	return p.IgnoredCosts, p.CostErr
+}
+
+// CostRegistry builds the CloudProviders factory map from fakes of either kind,
+// so a test can mix clouds that report costs with clouds that do not.
+func CostRegistry(providers map[types.CloudType]types.CloudProvider) map[types.CloudType]func() types.CloudProvider {
 	registry := map[types.CloudType]func() types.CloudProvider{}
 	for cloud, p := range providers {
 		p := p
