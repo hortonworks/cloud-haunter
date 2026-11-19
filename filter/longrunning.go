@@ -31,8 +31,10 @@ func (f longRunning) Execute(items []types.CloudItem) ([]types.CloudItem, error)
 				return false, nil
 			}
 		case types.Stack:
-			if item.GetItem().(types.Stack).State != types.Running {
-				log.Debugf("[LONGRUNNING] Filter stack, because it's not in RUNNING state: %s", item.GetName())
+			state := item.GetItem().(types.Stack).State
+			// AWS LB-only orphan groups have no running compute and are Unused.
+			if state != types.Running && state != types.Unused {
+				log.Debugf("[LONGRUNNING] Filter stack, because it's neither RUNNING nor UNUSED: %s", item.GetName())
 				return false, nil
 			}
 		case types.Database:

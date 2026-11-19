@@ -24,6 +24,7 @@ func TestLongRunningByType(t *testing.T) {
 	items := []types.CloudItem{
 		&types.Instance{Name: "inst", State: types.Running, Created: old},
 		&types.Stack{Name: "stack", State: types.Running, Created: old},
+		&types.Stack{Name: "orphan-lbs", State: types.Unused, Created: old},
 		&types.Database{Name: "db", State: types.Running, Created: old},
 		&types.Disk{Name: "disk", State: types.Unused, Created: old},
 		&types.Alert{Name: "alert", State: types.Unused, Created: old},
@@ -35,12 +36,14 @@ func TestLongRunningByType(t *testing.T) {
 		&types.Alert{Name: "alert-inuse", State: types.InUse, Created: old},
 		// correct state but created too recently -> dropped
 		&types.Instance{Name: "inst-recent", State: types.Running, Created: recent},
+		&types.Stack{Name: "orphan-lbs-recent", State: types.Unused, Created: recent},
+		&types.Stack{Name: "stack-unknown", State: types.Unknown, Created: old},
 	}
 
 	result, err := longRunning{cfg}.Execute(items)
 
 	assert.NoError(t, err)
-	assert.ElementsMatch(t, []string{"inst", "stack", "db", "disk", "alert"}, filterNames(result))
+	assert.ElementsMatch(t, []string{"inst", "stack", "orphan-lbs", "db", "disk", "alert"}, filterNames(result))
 }
 
 func TestLongRunningFilterOnResources(t *testing.T) {

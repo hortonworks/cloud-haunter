@@ -909,6 +909,11 @@ func (t mockCfClient) DescribeStackResources(input *cloudformation.DescribeStack
 	}, nil
 }
 
+func (t mockCfClient) ListStackResources(input *cloudformation.ListStackResourcesInput) (*cloudformation.ListStackResourcesOutput, error) {
+	t.operationChannel <- "ListStackResources"
+	return &cloudformation.ListStackResourcesOutput{}, nil
+}
+
 func (t mockCfClient) WaitUntilStackDeleteComplete(input *cloudformation.DescribeStacksInput) error {
 	t.operationChannel <- "WaitUntilStackDeleteComplete"
 	return nil
@@ -960,6 +965,16 @@ func (t mockElbClient) DescribeTags(input *elb.DescribeTagsInput) (*elb.Describe
 			},
 		},
 	}, nil
+}
+
+func (t mockElbClient) DescribeTargetGroups(input *elb.DescribeTargetGroupsInput) (*elb.DescribeTargetGroupsOutput, error) {
+	t.operationChannel <- "DescribeTargetGroups"
+	return &elb.DescribeTargetGroupsOutput{}, nil
+}
+
+func (t mockElbClient) DescribeTargetHealth(input *elb.DescribeTargetHealthInput) (*elb.DescribeTargetHealthOutput, error) {
+	t.operationChannel <- "DescribeTargetHealth"
+	return &elb.DescribeTargetHealthOutput{}, nil
 }
 
 func (t mockElbClient) DeleteLoadBalancer(input *elb.DeleteLoadBalancerInput) (*elb.DeleteLoadBalancerOutput, error) {
