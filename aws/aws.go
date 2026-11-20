@@ -34,10 +34,11 @@ import (
 )
 
 const (
-	TYPE_NATIVE = "Native"
-	TYPE_CF     = "CloudFormation"
-	CF_TAG      = "aws:cloudformation:stack-id"
-	MAX_RETRIES = 5
+	TYPE_NATIVE    = "Native"
+	TYPE_NATIVE_LB = "NativeLoadBalancers"
+	TYPE_CF        = "CloudFormation"
+	CF_TAG         = "aws:cloudformation:stack-id"
+	MAX_RETRIES    = 5
 
 	METADATA_TYPE            = "type"
 	METADATA_LOAD_BALANCERS  = "loadBalancers"
@@ -225,7 +226,7 @@ func (p awsProvider) GetStacks() ([]*types.Stack, error) {
 	elbClients := p.getElbClientsByRegion()
 	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
 	cloudWatchClients := p.getCloudWatchClientsByRegion()
-	nativeStacks, nativeError := getNativeStacks(p.cfg, p.GetCloudType(), ec2Clients, elbClients, cloudWatchClients, cfStacks)
+	nativeStacks, nativeError := getNativeStacks(p.cfg, p.GetCloudType(), ec2Clients, elbClients, cloudWatchClients, cfStacks, cfClients)
 	if nativeError != nil {
 		return nil, nativeError
 	}
@@ -842,13 +843,18 @@ func deleteStacks(cfg *config.Config, cfClients map[string]cfClient, rdsClients 
 	errChan := make(chan error)
 
 	for r, stacks := range regionStacks {
+		inventory := &orphanLBInventory{region: r, cfClient: cfClients[r], ec2Client: ec2Clients[r]}
 		wg.Add(len(stacks))
 
 		for _, s := range stacks {
 			go func(cfClient cfClient, rdsClient rdsClient, ec2Client ec2Client, elbClient elbClient, cloudWatchClient cloudWatchClient, region string, stack *types.Stack) {
 				defer wg.Done()
 
-				if cfg.DryRun {
+				if stack.Metadata[METADATA_TYPE] == TYPE_NATIVE_LB {
+					if err := deleteOrphanLoadBalancerStack(cfg, cfClient, ec2Client, elbClient, cloudWatchClient, region, stack, inventory); err != nil {
+						errChan <- err
+					}
+				} else if cfg.DryRun {
 					log.Infof("[AWS] Dry-run set, stack is not deleted: %s, region: %s", stack.Name, region)
 				} else {
 					switch stack.Metadata[METADATA_TYPE] {
@@ -887,20 +893,22 @@ func deleteNativeStack(ec2Client ec2Client, elbClient elbClient, cloudWatchClien
 
 	instanceIds := getResourceList(stack.Metadata[METADATA_INSTANCES])
 
-	_, err := ec2Client.TerminateInstances(&ec2.TerminateInstancesInput{
-		InstanceIds: aws.StringSlice(instanceIds),
-	})
-	if err != nil {
-		log.Errorf("[AWS] Failed to terminate instances: %s in stack: %s, err: %s", stack.Metadata[METADATA_INSTANCES], stack.ID, err)
-		return err
-	}
+	if len(instanceIds) > 0 {
+		_, err := ec2Client.TerminateInstances(&ec2.TerminateInstancesInput{
+			InstanceIds: aws.StringSlice(instanceIds),
+		})
+		if err != nil {
+			log.Errorf("[AWS] Failed to terminate instances: %s in stack: %s, err: %s", stack.Metadata[METADATA_INSTANCES], stack.ID, err)
+			return err
+		}
 
-	err = ec2Client.WaitUntilInstanceTerminated(&ec2.DescribeInstancesInput{
-		InstanceIds: aws.StringSlice(instanceIds),
-	})
-	if err != nil {
-		log.Errorf("[AWS] Failed to wait for terminated instances: %s in stack: %s, err: %s", stack.Metadata[METADATA_INSTANCES], stack.ID, err)
-		return err
+		err = ec2Client.WaitUntilInstanceTerminated(&ec2.DescribeInstancesInput{
+			InstanceIds: aws.StringSlice(instanceIds),
+		})
+		if err != nil {
+			log.Errorf("[AWS] Failed to wait for terminated instances: %s in stack: %s, err: %s", stack.Metadata[METADATA_INSTANCES], stack.ID, err)
+			return err
+		}
 	}
 
 	wg := sync.WaitGroup{}
@@ -977,28 +985,32 @@ func deleteNativeStack(ec2Client ec2Client, elbClient elbClient, cloudWatchClien
 	}
 
 	alarms := getResourceList(stack.Metadata[METADATA_ALARMS])
-	wg.Add(1)
+	if len(alarms) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-	go func() {
-		defer wg.Done()
-
-		_, err := cloudWatchClient.DeleteAlarms(&cloudwatch.DeleteAlarmsInput{
-			AlarmNames: aws.StringSlice(alarms),
-		})
-		if err != nil {
-			log.Errorf("[AWS] Failed to delete alarms: %s in stack: %s, err: %s", stack.Metadata[METADATA_ALARMS], stack.ID, err)
-			errChan <- err
-		}
-	}()
+			_, err := cloudWatchClient.DeleteAlarms(&cloudwatch.DeleteAlarmsInput{
+				AlarmNames: aws.StringSlice(alarms),
+			})
+			if err != nil {
+				log.Errorf("[AWS] Failed to delete alarms: %s in stack: %s, err: %s", stack.Metadata[METADATA_ALARMS], stack.ID, err)
+				errChan <- err
+			}
+		}()
+	}
 
 	go func() {
 		wg.Wait()
 		close(errChan)
 	}()
 
+	var errs []error
 	for err := range errChan {
-		close(errChan)
-		return err
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	log.Infof("[AWS] Delete Native stack: %s, region: %s was successful", stack.Name, region)
@@ -1740,6 +1752,7 @@ type ec2Client interface {
 
 type cfClient interface {
 	DescribeStacks(*cloudformation.DescribeStacksInput) (*cloudformation.DescribeStacksOutput, error)
+	ListStackResources(*cloudformation.ListStackResourcesInput) (*cloudformation.ListStackResourcesOutput, error)
 	DeleteStack(input *cloudformation.DeleteStackInput) (*cloudformation.DeleteStackOutput, error)
 	DescribeStackResource(input *cloudformation.DescribeStackResourceInput) (*cloudformation.DescribeStackResourceOutput, error)
 	DescribeStackResources(input *cloudformation.DescribeStackResourcesInput) (*cloudformation.DescribeStackResourcesOutput, error)
@@ -1764,6 +1777,8 @@ type rdsClient interface {
 type elbClient interface {
 	DescribeLoadBalancers(input *elb.DescribeLoadBalancersInput) (*elb.DescribeLoadBalancersOutput, error)
 	DescribeTags(input *elb.DescribeTagsInput) (*elb.DescribeTagsOutput, error)
+	DescribeTargetGroups(input *elb.DescribeTargetGroupsInput) (*elb.DescribeTargetGroupsOutput, error)
+	DescribeTargetHealth(input *elb.DescribeTargetHealthInput) (*elb.DescribeTargetHealthOutput, error)
 	DeleteLoadBalancer(input *elb.DeleteLoadBalancerInput) (*elb.DeleteLoadBalancerOutput, error)
 	ModifyLoadBalancerAttributes(input *elb.ModifyLoadBalancerAttributesInput) (*elb.ModifyLoadBalancerAttributesOutput, error)
 }
@@ -1836,6 +1851,7 @@ func getInstances(cfg *config.Config, cloudType types.CloudType, ec2Clients map[
 
 func getCFStacks(cfg *config.Config, cloudType types.CloudType, cfClients map[string]cfClient) ([]*types.Stack, error) {
 	cfChan := make(chan *types.Stack, 5)
+	errChan := make(chan error, len(cfClients))
 	wg := sync.WaitGroup{}
 	wg.Add(len(cfClients))
 
@@ -1853,6 +1869,7 @@ func getCFStacks(cfg *config.Config, cloudType types.CloudType, cfClients map[st
 				stackResult, e := cfClient.DescribeStacks(request)
 				if e != nil {
 					log.Errorf("[AWS] Failed to fetch the CloudFormation stacks in region: %s, err: %s", region, e)
+					errChan <- e
 					return
 				}
 				log.Debugf("[AWS] Processing stacks (%d) in region: %s: [%s]", len(stackResult.Stacks), region, stackResult.Stacks)
@@ -1872,11 +1889,19 @@ func getCFStacks(cfg *config.Config, cloudType types.CloudType, cfClients map[st
 	go func() {
 		wg.Wait()
 		close(cfChan)
+		close(errChan)
 	}()
 
 	var stacks []*types.Stack
 	for stack := range cfChan {
 		stacks = append(stacks, stack)
+	}
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
 	}
 	sort.Slice(stacks, func(p, q int) bool {
 		return stacks[p].Created.After(stacks[q].Created)
@@ -1885,6 +1910,7 @@ func getCFStacks(cfg *config.Config, cloudType types.CloudType, cfClients map[st
 }
 
 type AwsNativeStack struct {
+	Type           string
 	ID             string
 	Region         string
 	LoadBalancers  []string
@@ -1899,8 +1925,9 @@ type AwsNativeStack struct {
 	Tags           types.Tags
 }
 
-func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, cfStacks []*types.Stack) ([]*types.Stack, error) {
+func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients map[string]ec2Client, elbClients map[string]elbClient, cloudWatchClients map[string]cloudWatchClient, cfStacks []*types.Stack, cfClients ...map[string]cfClient) ([]*types.Stack, error) {
 	stackChan := make(chan AwsNativeStack, 5)
+	errChan := make(chan error, len(ec2Clients)) // One failure at most per region.
 	wg := sync.WaitGroup{}
 	wg.Add(len(ec2Clients))
 
@@ -1911,24 +1938,36 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 
 			elbRequest := &elb.DescribeLoadBalancersInput{}
 			loadBalancersByGroup := map[string][]*elb.LoadBalancer{}
+			loadBalancerTags := map[string]types.Tags{}
+			inventory := &orphanLBInventory{region: region, ec2Client: ec2Client, seeded: true, stacks: cfStacks}
+			if len(cfClients) > 0 {
+				inventory.cfClient = cfClients[0][region]
+			}
 			for {
 				loadBalancersOutput, err := elbClient.DescribeLoadBalancers(elbRequest)
 				if err != nil {
 					log.Errorf("[AWS] Failed to fetch load balancers in region %s, err: %s", region, err)
+					errChan <- err
 					return
 				}
 				for _, loadBalancer := range loadBalancersOutput.LoadBalancers {
 					tagsResponse, err := elbClient.DescribeTags(&elb.DescribeTagsInput{ResourceArns: []*string{loadBalancer.LoadBalancerArn}})
 					if err != nil {
-						log.Errorf("[AWS] Failed to fetch tags of load balancer %s in region %s", *loadBalancer.LoadBalancerName, region)
-						continue
+						if isMissingOrphanResource(err) {
+							log.Warnf("[AWS] Load balancer %s disappeared during discovery in %s", aws.StringValue(loadBalancer.LoadBalancerName), region)
+							continue
+						}
+						// Tags assign LBs to Native stacks, so incomplete reads are
+						// core inventory failures, not optional orphan-check failures.
+						log.Errorf("[AWS] Failed to fetch tags of load balancer %s in region %s: %s", aws.StringValue(loadBalancer.LoadBalancerName), region, err)
+						errChan <- err
+						return
 					}
 					for _, tagDescription := range tagsResponse.TagDescriptions {
-						for _, tag := range tagDescription.Tags {
-							if *tag.Key == cfg.ResourceGroupingLabel {
-								loadBalancersByGroup[*tag.Value] = append(loadBalancersByGroup[*tag.Value], loadBalancer)
-								break
-							}
+						tags := getElbTags(tagDescription.Tags)
+						loadBalancerTags[aws.StringValue(loadBalancer.LoadBalancerArn)] = tags
+						if group := tags[cfg.ResourceGroupingLabel]; group != "" {
+							loadBalancersByGroup[group] = append(loadBalancersByGroup[group], loadBalancer)
 						}
 					}
 				}
@@ -1943,6 +1982,7 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 			elasticIpsOutput, err := ec2Client.DescribeAddresses(&ec2.DescribeAddressesInput{})
 			if err != nil {
 				log.Errorf("[AWS] Failed to fetch elastic IPs in region %s, err: %s", region, err)
+				errChan <- err
 				return
 			}
 			for _, ip := range elasticIpsOutput.Addresses {
@@ -1962,6 +2002,7 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 				securityGroupsOutput, err := ec2Client.DescribeSecurityGroups(securityGroupsRequest)
 				if err != nil {
 					log.Errorf("[AWS] Failed to fetch security groups in region %s, err: %s", region, err)
+					errChan <- err
 					return
 				}
 				for _, sg := range securityGroupsOutput.SecurityGroups {
@@ -1987,6 +2028,7 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 				output, err := cloudWatchClient.DescribeAlarms(alarmRequest)
 				if err != nil {
 					log.Errorf("[AWS] Failed to fetch the CloudWatch alarms in region: %s, err: %s", region, err)
+					errChan <- err
 					return
 				}
 				for _, alarm := range output.MetricAlarms {
@@ -2009,6 +2051,7 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 				instancesOutput, err := ec2Client.DescribeInstances(ec2Request)
 				if err != nil {
 					log.Errorf("[AWS] Failed to fetch the instances in region: %s, err: %s", region, err)
+					errChan <- err
 					return
 				}
 				for _, r := range instancesOutput.Reservations {
@@ -2021,7 +2064,14 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 				}
 			}
 
+			groupsWithCompute := map[string]bool{}
+			for _, i := range awsInstances {
+				if !isTerminatedInstance(i) {
+					groupsWithCompute[getEc2Tags(i.Tags)[cfg.ResourceGroupingLabel]] = true
+				}
+			}
 			nativeStacks := map[string]*AwsNativeStack{}
+			orphanStacks := []*AwsNativeStack{}
 			for _, awsInstance := range awsInstances {
 				instance := newInstance(cfg, cloudType, awsInstance)
 				if _, ok := instance.Tags[CF_TAG]; ok {
@@ -2037,6 +2087,7 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 				if _, ok := nativeStacks[group]; !ok {
 					log.Debugf("[AWS] Creating stack for instance %s", instance.ID)
 					newStack := &AwsNativeStack{
+						Type:           TYPE_NATIVE,
 						ID:             group,
 						Region:         region,
 						LoadBalancers:  []string{},
@@ -2050,7 +2101,9 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 						Tags:           instance.Tags,
 					}
 
-					if loadBalancers, ok := loadBalancersByGroup[group]; ok {
+					// Keep terminated-only groups' LBs for separate reconciliation;
+					// preserve their existing native metadata/state and other resources.
+					if loadBalancers, ok := loadBalancersByGroup[group]; ok && groupsWithCompute[group] {
 						for _, loadBalancer := range loadBalancers {
 							newStack.LoadBalancers = append(newStack.LoadBalancers, *loadBalancer.LoadBalancerArn)
 						}
@@ -2111,6 +2164,23 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 			}
 			log.Debugf("[AWS] CF stack groups in region %s: %s", region, strings.Join(cfStackGroups, ","))
 
+			for group, lbs := range loadBalancersByGroup {
+				orphan, err := assembleOrphanLoadBalancerStack(cfg, region, group, lbs, loadBalancerTags, awsInstances, cfStacks, ec2Client, elbClient, inventory)
+				if err != nil {
+					log.Warnf("[AWS] Skipping unverifiable orphan LB group %s in region %s: %s", group, region, err)
+				}
+				if orphan != nil {
+					orphanStacks = append(orphanStacks, orphan)
+					delete(loadBalancersByGroup, group)
+				} else if native := nativeStacks[group]; native != nil {
+					// Rejected or unverifiable candidates retain legacy Native cleanup.
+					for _, lb := range lbs {
+						native.LoadBalancers = append(native.LoadBalancers, aws.StringValue(lb.LoadBalancerArn))
+					}
+					delete(loadBalancersByGroup, group)
+				}
+			}
+
 			if len(loadBalancersByGroup) != 0 {
 				for group, loadBalancers := range loadBalancersByGroup {
 					if !utils.IsAnyEquals(group, cfStackGroups...) {
@@ -2150,12 +2220,16 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 			for _, nativeStack := range nativeStacks {
 				stackChan <- *nativeStack
 			}
+			for _, orphan := range orphanStacks {
+				stackChan <- *orphan
+			}
 		}(r, c, elbClients[r], cloudWatchClients[r])
 	}
 
 	go func() {
 		wg.Wait()
 		close(stackChan)
+		close(errChan)
 	}()
 
 	var stacks []*types.Stack
@@ -2170,7 +2244,7 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 			Region:    awsStack.Region,
 			State:     awsStack.State,
 			Metadata: map[string]string{
-				METADATA_TYPE:            TYPE_NATIVE,
+				METADATA_TYPE:            awsStack.Type,
 				METADATA_LOAD_BALANCERS:  strings.Join(awsStack.LoadBalancers, ","),
 				METADATA_INSTANCES:       strings.Join(awsStack.Instances, ","),
 				METADATA_VOLUMES:         strings.Join(awsStack.Volumes, ","),
@@ -2179,6 +2253,13 @@ func getNativeStacks(cfg *config.Config, cloudType types.CloudType, ec2Clients m
 				METADATA_ALARMS:          strings.Join(awsStack.Alarms, ","),
 			},
 		})
+	}
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
 	}
 	return stacks, nil
 }
@@ -2873,7 +2954,9 @@ func getEc2Tags(ec2Tags []*ec2.Tag) types.Tags {
 func getElbTags(elbTags []*elb.Tag) types.Tags {
 	tags := make(types.Tags, 0)
 	for _, t := range elbTags {
-		tags[*t.Key] = *t.Value
+		if t != nil && aws.StringValue(t.Key) != "" {
+			tags[aws.StringValue(t.Key)] = aws.StringValue(t.Value)
+		}
 	}
 	return tags
 }
