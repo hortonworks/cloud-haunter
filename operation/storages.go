@@ -18,7 +18,7 @@ type storage struct {
 func (s storage) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("Collecting storage accounts on: [%s]", clouds)
 	storageChan, errChan := s.collect(clouds)
-	return wait(storageChan, errChan, "[ACCESS] Failed to collect storages"), nil
+	return wait(storageChan, errChan, "[GET_STORAGES] Failed to collect storages")
 }
 
 func (s storage) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {

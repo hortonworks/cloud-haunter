@@ -18,7 +18,7 @@ type disks struct {
 func (o disks) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("[GET_DISKS] Collecting disks on: [%s]", clouds)
 	itemsChan, errChan := o.collect(clouds)
-	return wait(itemsChan, errChan, "[GET_DISKS] Failed to collect disks"), nil
+	return wait(itemsChan, errChan, "[GET_DISKS] Failed to collect disks")
 }
 
 func (o disks) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {

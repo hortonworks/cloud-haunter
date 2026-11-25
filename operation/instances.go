@@ -18,5 +18,5 @@ type instances struct {
 func (o instances) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("[GET_INSTANCES] Collecting long instances instances on: [%s]", clouds)
 	itemsChan, errChan := collectInstances(o.cfg.CloudProviders, clouds)
-	return wait(itemsChan, errChan, "[GET_INSTANCES] Failed to collect instances"), nil
+	return wait(itemsChan, errChan, "[GET_INSTANCES] Failed to collect instances")
 }

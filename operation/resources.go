@@ -18,5 +18,5 @@ type resources struct {
 func (o resources) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("[GET_RESOURCES] Collecting resources on: [%s]", clouds)
 	itemsChan, errChan := collectResources(o.cfg.CloudProviders, clouds)
-	return wait(itemsChan, errChan, "[GET_RESOURCES] Failed to collect resources"), nil
+	return wait(itemsChan, errChan, "[GET_RESOURCES] Failed to collect resources")
 }

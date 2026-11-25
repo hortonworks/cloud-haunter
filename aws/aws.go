@@ -462,6 +462,14 @@ func (p awsProvider) getRdsClientsByRegion() map[string]rdsClient {
 	return rdsClients
 }
 
+func (p awsProvider) getAutoScalingClientsByRegion() map[string]autoScalingClient {
+	asgClients := map[string]autoScalingClient{}
+	for k := range p.autoScalingClients {
+		asgClients[k] = p.autoScalingClients[k]
+	}
+	return asgClients
+}
+
 func (p awsProvider) getCloudWatchClientsByRegion() map[string]cloudWatchClient {
 	cwClients := map[string]cloudWatchClient{}
 	for k := range p.cloudWatchClients {
@@ -480,8 +488,13 @@ func (p awsProvider) getCloudS3ClientsByRegion() map[string]s3Client {
 
 func (p awsProvider) TerminateInstances(instances *types.InstanceContainer) []error {
 	log.Debug("[AWS] Terminating instances")
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	return terminateInstances(p.cfg, ec2Clients, instances.Get(p.GetCloudType()))
+}
+
+func terminateInstances(cfg *config.Config, ec2Clients map[string]ec2Client, instances []*types.Instance) []error {
 	regionInstances := map[string][]string{}
-	for _, instance := range instances.Get(p.GetCloudType()) {
+	for _, instance := range instances {
 		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance.ID)
 	}
 	log.Debugf("[AWS] Terminating instances: %v", regionInstances)
@@ -494,7 +507,7 @@ func (p awsProvider) TerminateInstances(instances *types.InstanceContainer) []er
 		go func(region string, instanceIds []string) {
 			defer wg.Done()
 
-			ec2Client := p.ec2Clients[region]
+			ec2Client := ec2Clients[region]
 
 			for i := 0; i < len(instanceIds); i += awsBulkOperationSize {
 				log.Infof("[AWS] Round %d for terminate operation in region %s", (i/awsBulkOperationSize)+1, region)
@@ -504,6 +517,11 @@ func (p awsProvider) TerminateInstances(instances *types.InstanceContainer) []er
 				}
 
 				instanceIdsChunk := instanceIds[i:arrayEnd]
+
+				if cfg.DryRun {
+					log.Infof("[AWS] Dry-run set, instances are not terminated in region %s: %v", region, instanceIdsChunk)
+					continue
+				}
 
 				_, err := ec2Client.TerminateInstances(&ec2.TerminateInstancesInput{
 					InstanceIds: aws.StringSlice(instanceIdsChunk),
@@ -679,8 +697,13 @@ func (p awsProvider) DeleteImages(images *types.ImageContainer) []error {
 
 func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 	log.Debug("[AWS] Stopping instances")
+	ec2Clients, _ := p.getEc2AndCTClientsByRegion()
+	return stopInstances(p.cfg, ec2Clients, p.getAutoScalingClientsByRegion(), instances.Get(p.GetCloudType()))
+}
+
+func stopInstances(cfg *config.Config, ec2Clients map[string]ec2Client, asgClients map[string]autoScalingClient, instances []*types.Instance) []error {
 	regionInstances := map[string][]*types.Instance{}
-	for _, instance := range instances.Get(p.GetCloudType()) {
+	for _, instance := range instances {
 		regionInstances[instance.Region] = append(regionInstances[instance.Region], instance)
 	}
 	log.Debugf("[AWS] Stopping instances: %v", regionInstances)
@@ -706,7 +729,7 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 
 				// We need to suspend the ASGs as it will terminate the stopped instances
 				// Instances that are not part of an ASG are not returned
-				asgInstances, err := p.autoScalingClients[region].DescribeAutoScalingInstances(&autoscaling.DescribeAutoScalingInstancesInput{
+				asgInstances, err := asgClients[region].DescribeAutoScalingInstances(&autoscaling.DescribeAutoScalingInstancesInput{
 					InstanceIds: instanceIDs,
 				})
 				if err != nil {
@@ -719,7 +742,12 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 					compactInstanceName := fmt.Sprintf("%s:%s", *instanceId, instIDNames[*instanceId])
 					log.Debugf("[AWS] The following instance is in an ASG and will be suspended in region %s: %s", region, compactInstanceName)
 
-					if _, err := p.autoScalingClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{
+					if cfg.DryRun {
+						log.Infof("[AWS] Dry-run set, ASG %s is not suspended for instance %s", aws.StringValue(instance.AutoScalingGroupName), compactInstanceName)
+						continue
+					}
+
+					if _, err := asgClients[region].SuspendProcesses(&autoscaling.ScalingProcessQuery{
 						AutoScalingGroupName: instance.AutoScalingGroupName,
 						ScalingProcesses: []*string{
 							&(&types.S{S: "Launch"}).S,
@@ -756,9 +784,13 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 						name := instIDNames[*inst]
 						stopInstancesNames += fmt.Sprintf("\n%s:%s", *inst, name)
 					}
-					log.Infof("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), stopInstancesNames)
-					if _, err := p.ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
-						errChan <- err
+					if cfg.DryRun {
+						log.Infof("[AWS] Dry-run set, instances are not stopped in region %s (%d): %v", region, len(instanceIDs), stopInstancesNames)
+					} else {
+						log.Infof("[AWS] Sending request to stop instances in region %s (%d): %v", region, len(instanceIDs), stopInstancesNames)
+						if _, err := ec2Clients[region].StopInstances(&ec2.StopInstancesInput{InstanceIds: instanceIDs}); err != nil {
+							errChan <- err
+						}
 					}
 
 					if len(spotInstanceIDs) > 0 {
@@ -768,9 +800,13 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 							spotInstanceNames += fmt.Sprintf("\n%s:%s", *inst, name)
 						}
 
-						log.Infof("[AWS] Sending request to terminate spot instances in region %s (%d): %v", region, len(spotInstanceIDs), spotInstanceNames)
-						if _, err := p.ec2Clients[region].TerminateInstances(&ec2.TerminateInstancesInput{InstanceIds: spotInstanceIDs}); err != nil {
-							errChan <- err
+						if cfg.DryRun {
+							log.Infof("[AWS] Dry-run set, spot instances are not terminated in region %s (%d): %v", region, len(spotInstanceIDs), spotInstanceNames)
+						} else {
+							log.Infof("[AWS] Sending request to terminate spot instances in region %s (%d): %v", region, len(spotInstanceIDs), spotInstanceNames)
+							if _, err := ec2Clients[region].TerminateInstances(&ec2.TerminateInstancesInput{InstanceIds: spotInstanceIDs}); err != nil {
+								errChan <- err
+							}
 						}
 					} else {
 						log.Info("[AWS] There are not spot instances to terminate")
@@ -794,8 +830,12 @@ func (p awsProvider) StopInstances(instances *types.InstanceContainer) []error {
 
 func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
 	log.Debug("[AWS] Stopping databases")
+	return stopDatabases(p.cfg, p.getRdsClientsByRegion(), databases.Get(p.GetCloudType()))
+}
+
+func stopDatabases(cfg *config.Config, rdsClients map[string]rdsClient, databases []*types.Database) []error {
 	regionDatabases := map[string][]*types.Database{}
-	for _, database := range databases.Get(p.GetCloudType()) {
+	for _, database := range databases {
 		regionDatabases[database.Region] = append(regionDatabases[database.Region], database)
 	}
 	log.Debugf("[AWS] Stopping databases: %v", regionDatabases)
@@ -808,8 +848,12 @@ func (p awsProvider) StopDatabases(databases *types.DatabaseContainer) []error {
 		go func(region string, databases []*types.Database) {
 			defer wg.Done()
 			for _, db := range databases {
+				if cfg.DryRun {
+					log.Infof("[AWS] Dry-run set, database is not stopped: %s", db.Name)
+					continue
+				}
 				log.Infof("[AWS] Stop database: %s", db.Name)
-				if _, err := p.rdsClients[region].StopDBInstance(&rds.StopDBInstanceInput{
+				if _, err := rdsClients[region].StopDBInstance(&rds.StopDBInstanceInput{
 					DBInstanceIdentifier: &db.Name,
 				}); err != nil {
 					errChan <- err
@@ -1539,10 +1583,10 @@ func (p awsProvider) DeleteAlerts(alertContainer *types.AlertContainer) []error 
 func (p awsProvider) GetStorages() ([]*types.Storage, error) {
 	log.Debug("[AWS] Get storages")
 	s3Clients := p.getCloudS3ClientsByRegion()
-	return getStorages(s3Clients)
+	return getStorages(p.cfg, s3Clients)
 }
 
-func getStorages(s3Clients map[string]s3Client) ([]*types.Storage, error) {
+func getStorages(cfg *config.Config, s3Clients map[string]s3Client) ([]*types.Storage, error) {
 	storages := []*types.Storage{}
 	input := &s3.ListBucketsInput{}
 	listBucketsOutput, listBucketsErr := s3Clients[DEFAULT_REGION].(s3Client).ListBuckets(input)
@@ -1559,11 +1603,19 @@ func getStorages(s3Clients map[string]s3Client) ([]*types.Storage, error) {
 				log.Errorf("[AWS] Failed to fetch the location for S3 bucket: %s", locationErr)
 				return nil, locationErr
 			}
-			var bucketLocation string
-			if locationOutput.LocationConstraint == nil {
-				bucketLocation = DEFAULT_REGION
-			} else {
-				bucketLocation = *locationOutput.LocationConstraint
+			// An empty location means us-east-1, the legacy "EU" location means eu-west-1
+			bucketLocation := s3.NormalizeBucketLocation(aws.StringValue(locationOutput.LocationConstraint))
+
+			regionClient, ok := s3Clients[bucketLocation]
+			if !ok {
+				log.Infof("[AWS] Skipping S3 bucket %s, its region %s is excluded or not enabled", *bucket.Name, bucketLocation)
+				continue
+			}
+			// The tags carry the ignore label and the owner, so a bucket whose tags cannot be read must not be returned
+			tags, tagsErr := getBucketTags(regionClient, *bucket.Name)
+			if tagsErr != nil {
+				log.Errorf("[AWS] Failed to fetch the tags of S3 bucket %s: %s", *bucket.Name, tagsErr)
+				return nil, tagsErr
 			}
 
 			storage := &types.Storage{
@@ -1571,11 +1623,29 @@ func getStorages(s3Clients map[string]s3Client) ([]*types.Storage, error) {
 				Created:   *bucket.CreationDate,
 				CloudType: types.AWS,
 				Region:    bucketLocation,
+				Tags:      tags,
+				Owner:     tags[cfg.OwnerLabel],
 			}
 			storages = append(storages, storage)
 		}
 	}
 	return storages, nil
+}
+
+// getBucketTags returns the tags of the bucket, a bucket without tags has an empty tag set.
+func getBucketTags(s3Client s3Client, bucketName string) (types.Tags, error) {
+	tagging, err := s3Client.GetBucketTagging(&s3.GetBucketTaggingInput{Bucket: aws.String(bucketName)})
+	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NoSuchTagSet" {
+			return types.Tags{}, nil
+		}
+		return nil, err
+	}
+	tags := types.Tags{}
+	for _, tag := range tagging.TagSet {
+		tags[aws.StringValue(tag.Key)] = aws.StringValue(tag.Value)
+	}
+	return tags, nil
 }
 
 func (p awsProvider) CleanupStorages(storageContainer *types.StorageContainer, retentionDays int) []error {
@@ -1611,20 +1681,26 @@ func cleanupStorages(cfg *config.Config, s3Clients map[string]s3Client, storageC
 					Bucket: &bucketName,
 				}
 				var objects []*s3.Object
+				var listObjectsErr error
 				for {
-					listObjectsOutput, listObjectsErr := s3Client.ListObjectsV2(listObjectsInput)
+					var listObjectsOutput *s3.ListObjectsV2Output
+					listObjectsOutput, listObjectsErr = s3Client.ListObjectsV2(listObjectsInput)
 					if listObjectsErr != nil {
-						log.Errorf("[AWS] Failed to list objects of the bucket: %s", listObjectsErr)
-						errChan <- listObjectsErr
+						break
 					}
 
 					objects = append(objects, listObjectsOutput.Contents...)
 
-					if *listObjectsOutput.IsTruncated {
+					if aws.BoolValue(listObjectsOutput.IsTruncated) {
 						listObjectsInput.ContinuationToken = listObjectsOutput.NextContinuationToken
 					} else {
 						break
 					}
+				}
+				if listObjectsErr != nil {
+					log.Errorf("[AWS] Failed to list objects of the bucket %s, skipping its cleanup: %s", bucketName, listObjectsErr)
+					errChan <- listObjectsErr
+					continue
 				}
 				for _, object := range objects {
 					if object.LastModified.Before(retentionTime) {
@@ -1731,6 +1807,7 @@ type ec2Client interface {
 	DeleteSecurityGroup(input *ec2.DeleteSecurityGroupInput) (*ec2.DeleteSecurityGroupOutput, error)
 	DisassociateRouteTable(input *ec2.DisassociateRouteTableInput) (*ec2.DisassociateRouteTableOutput, error)
 	TerminateInstances(input *ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error)
+	StopInstances(input *ec2.StopInstancesInput) (*ec2.StopInstancesOutput, error)
 	WaitUntilInstanceTerminated(input *ec2.DescribeInstancesInput) error
 	DescribeAddresses(input *ec2.DescribeAddressesInput) (*ec2.DescribeAddressesOutput, error)
 	ReleaseAddress(input *ec2.ReleaseAddressInput) (*ec2.ReleaseAddressOutput, error)
@@ -1759,6 +1836,12 @@ type rdsClient interface {
 	DescribeDBInstances(input *rds.DescribeDBInstancesInput) (*rds.DescribeDBInstancesOutput, error)
 	ListTagsForResource(input *rds.ListTagsForResourceInput) (*rds.ListTagsForResourceOutput, error)
 	ModifyDBInstance(input *rds.ModifyDBInstanceInput) (*rds.ModifyDBInstanceOutput, error)
+	StopDBInstance(input *rds.StopDBInstanceInput) (*rds.StopDBInstanceOutput, error)
+}
+
+type autoScalingClient interface {
+	DescribeAutoScalingInstances(input *autoscaling.DescribeAutoScalingInstancesInput) (*autoscaling.DescribeAutoScalingInstancesOutput, error)
+	SuspendProcesses(input *autoscaling.ScalingProcessQuery) (*autoscaling.SuspendProcessesOutput, error)
 }
 
 type elbClient interface {

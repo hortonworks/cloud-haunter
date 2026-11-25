@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/cloudformation"
 	"github.com/aws/aws-sdk-go/service/cloudtrail"
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
@@ -109,6 +110,121 @@ func TestDeleteImages(t *testing.T) {
 
 	assert.Equal(t, "ami-id-1", <-region1Chan)
 	assert.Equal(t, "ami-id-2", <-region2Chan)
+}
+
+// recordOperations runs fn and returns the client calls recorded on operationChannel, in order.
+// The channel is drained while fn runs, so its buffer size does not matter.
+// fn must return only after every call it started has finished.
+func recordOperations(operationChannel chan string, fn func()) []string {
+	var operations []string
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for operation := range operationChannel {
+			operations = append(operations, operation)
+		}
+	}()
+	fn()
+	close(operationChannel)
+	<-drained
+	return operations
+}
+
+func TestTerminateInstances(t *testing.T) {
+	cases := []struct {
+		name     string
+		dryRun   bool
+		expected []string
+	}{
+		{"terminates and waits", false, []string{"TerminateInstances:i-1,i-2", "WaitUntilInstanceTerminated:i-1,i-2"}},
+		{"dry-run sends no request", true, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			operationChannel := make(chan string)
+			cfg := testCfg()
+			cfg.DryRun = tc.dryRun
+			ec2Clients := map[string]ec2Client{"region": mockEc2Client{operationChannel: operationChannel}}
+			instances := []*types.Instance{
+				{CloudType: types.AWS, ID: "i-1", Region: "region"},
+				{CloudType: types.AWS, ID: "i-2", Region: "region"},
+			}
+
+			var errs []error
+			operations := recordOperations(operationChannel, func() {
+				errs = terminateInstances(cfg, ec2Clients, instances)
+			})
+
+			assert.Empty(t, errs)
+			assert.Equal(t, tc.expected, operations)
+		})
+	}
+}
+
+func TestStopInstances(t *testing.T) {
+	describe := "DescribeAutoScalingInstances:i-asg,i-plain,i-spot"
+	cases := []struct {
+		name     string
+		dryRun   bool
+		expected []string
+	}{
+		{"suspends ASG, stops on-demand, terminates spot", false, []string{
+			describe, "SuspendProcesses:asg-1", "StopInstances:i-asg,i-plain", "TerminateInstances:i-spot"}},
+		{"dry-run only reads", true, []string{describe}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			operationChannel := make(chan string)
+			cfg := testCfg()
+			cfg.DryRun = tc.dryRun
+			ec2Clients := map[string]ec2Client{"region": mockEc2Client{operationChannel: operationChannel}}
+			asgClients := map[string]autoScalingClient{"region": mockAsgClient{
+				asgByInstanceID:  map[string]string{"i-asg": "asg-1"},
+				operationChannel: operationChannel,
+			}}
+			instances := []*types.Instance{
+				{CloudType: types.AWS, ID: "i-asg", Region: "region"},
+				{CloudType: types.AWS, ID: "i-plain", Region: "region"},
+				{CloudType: types.AWS, ID: "i-spot", Region: "region", Ephemeral: true},
+			}
+
+			var errs []error
+			operations := recordOperations(operationChannel, func() {
+				errs = stopInstances(cfg, ec2Clients, asgClients, instances)
+			})
+
+			assert.Empty(t, errs)
+			assert.Equal(t, tc.expected, operations)
+		})
+	}
+}
+
+func TestStopDatabases(t *testing.T) {
+	cases := []struct {
+		name     string
+		dryRun   bool
+		expected []string
+	}{
+		{"stops database", false, []string{"StopDBInstance:db-1"}},
+		{"dry-run sends no request", true, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			operationChannel := make(chan string)
+			cfg := testCfg()
+			cfg.DryRun = tc.dryRun
+			rdsClients := map[string]rdsClient{"region": mockRdsClient{operationChannel: operationChannel}}
+			databases := []*types.Database{{CloudType: types.AWS, Name: "db-1", Region: "region"}}
+
+			var errs []error
+			operations := recordOperations(operationChannel, func() {
+				errs = stopDatabases(cfg, rdsClients, databases)
+			})
+
+			assert.Empty(t, errs)
+			assert.Equal(t, tc.expected, operations)
+		})
+	}
 }
 
 func TestNewInstanceWithName(t *testing.T) {
@@ -772,6 +888,11 @@ func (t mockEc2Client) TerminateInstances(input *ec2.TerminateInstancesInput) (*
 	return nil, nil
 }
 
+func (t mockEc2Client) StopInstances(input *ec2.StopInstancesInput) (*ec2.StopInstancesOutput, error) {
+	t.operationChannel <- "StopInstances:" + strings.Join(aws.StringValueSlice(input.InstanceIds), ",")
+	return nil, nil
+}
+
 func (t mockEc2Client) WaitUntilInstanceTerminated(input *ec2.DescribeInstancesInput) error {
 	t.operationChannel <- "WaitUntilInstanceTerminated:" + strings.Join(aws.StringValueSlice(input.InstanceIds), ",")
 	return nil
@@ -930,6 +1051,33 @@ func (t mockRdsClient) ListTagsForResource(input *rds.ListTagsForResourceInput) 
 
 func (t mockRdsClient) ModifyDBInstance(input *rds.ModifyDBInstanceInput) (*rds.ModifyDBInstanceOutput, error) {
 	t.operationChannel <- "ModifyDBInstance"
+	return nil, nil
+}
+
+func (t mockRdsClient) StopDBInstance(input *rds.StopDBInstanceInput) (*rds.StopDBInstanceOutput, error) {
+	t.operationChannel <- "StopDBInstance:" + aws.StringValue(input.DBInstanceIdentifier)
+	return nil, nil
+}
+
+// mockAsgClient reports the instances in asgByInstanceID as members of the given auto scaling group.
+type mockAsgClient struct {
+	asgByInstanceID  map[string]string
+	operationChannel chan (string)
+}
+
+func (t mockAsgClient) DescribeAutoScalingInstances(input *autoscaling.DescribeAutoScalingInstancesInput) (*autoscaling.DescribeAutoScalingInstancesOutput, error) {
+	t.operationChannel <- "DescribeAutoScalingInstances:" + strings.Join(aws.StringValueSlice(input.InstanceIds), ",")
+	var asgInstances []*autoscaling.InstanceDetails
+	for _, id := range input.InstanceIds {
+		if asg, ok := t.asgByInstanceID[*id]; ok {
+			asgInstances = append(asgInstances, &autoscaling.InstanceDetails{InstanceId: id, AutoScalingGroupName: aws.String(asg)})
+		}
+	}
+	return &autoscaling.DescribeAutoScalingInstancesOutput{AutoScalingInstances: asgInstances}, nil
+}
+
+func (t mockAsgClient) SuspendProcesses(input *autoscaling.ScalingProcessQuery) (*autoscaling.SuspendProcessesOutput, error) {
+	t.operationChannel <- "SuspendProcesses:" + aws.StringValue(input.AutoScalingGroupName)
 	return nil, nil
 }
 

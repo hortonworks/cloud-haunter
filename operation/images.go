@@ -18,7 +18,7 @@ type images struct {
 func (o images) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("[GET_IMAGES] Collecting images on: [%s]", clouds)
 	itemsChan, errChan := o.collect(clouds)
-	return wait(itemsChan, errChan, "[GET_IMAGES] Failed to collect images"), nil
+	return wait(itemsChan, errChan, "[GET_IMAGES] Failed to collect images")
 }
 
 func (o images) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {

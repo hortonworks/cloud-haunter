@@ -20,6 +20,8 @@ type mockProvider struct {
 	storages  []*types.Storage
 	resources []*types.Resource
 	err       error
+	// disksErr, when set, is returned by GetDisks instead of err, e.g. to model a cloud that does not support disks.
+	disksErr error
 }
 
 func (p *mockProvider) GetAccountName() string { return "mock" }
@@ -27,7 +29,12 @@ func (p *mockProvider) GetAccountName() string { return "mock" }
 func (p *mockProvider) GetInstances() ([]*types.Instance, error) { return p.instances, p.err }
 func (p *mockProvider) GetAccesses() ([]*types.Access, error)    { return p.accesses, p.err }
 func (p *mockProvider) GetDatabases() ([]*types.Database, error) { return p.databases, p.err }
-func (p *mockProvider) GetDisks() ([]*types.Disk, error)         { return p.disks, p.err }
+func (p *mockProvider) GetDisks() ([]*types.Disk, error) {
+	if p.disksErr != nil {
+		return nil, p.disksErr
+	}
+	return p.disks, p.err
+}
 func (p *mockProvider) GetImages() ([]*types.Image, error)       { return p.images, p.err }
 func (p *mockProvider) GetStacks() ([]*types.Stack, error)       { return p.stacks, p.err }
 func (p *mockProvider) GetAlerts() ([]*types.Alert, error)       { return p.alerts, p.err }

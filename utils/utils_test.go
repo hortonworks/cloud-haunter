@@ -113,3 +113,28 @@ func TestNormalizeOwner(t *testing.T) {
 	assert.Equal(t, "j.doe", NormalizeOwner("J.Doe"))
 	assert.Equal(t, "", NormalizeOwner(""))
 }
+
+func TestIsStartsWithOrRegexp(t *testing.T) {
+	cases := []struct {
+		name     string
+		hay      string
+		needles  []string
+		expected bool
+	}{
+		{"no needles", "name", nil, false},
+		{"first prefix matches", "protected-a", []string{"protected-a", "other"}, true},
+		{"later prefix matches", "protected-b", []string{"protected-a", "protected-b"}, true},
+		{"first regexp matches", "protected-a", []string{"regexp:^protected-a$", "regexp:^other$"}, true},
+		{"later regexp matches", "protected-b", []string{"regexp:^protected-a$", "regexp:^protected-b$"}, true},
+		{"regexp after prefix matches", "protected-b", []string{"protected-a", "regexp:^protected-b$"}, true},
+		{"prefix after regexp matches", "protected-b", []string{"regexp:^protected-a$", "protected-b"}, true},
+		{"later needle matches after invalid regexp", "protected-b", []string{"regexp:(", "protected-b"}, true},
+		{"none matches", "unprotected", []string{"protected-a", "regexp:^protected-b$"}, false},
+		{"prefix is not a substring match", "my-protected-a", []string{"protected-a"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, IsStartsWithOrRegexp(tc.hay, tc.needles...))
+		})
+	}
+}

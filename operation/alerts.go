@@ -18,7 +18,7 @@ type alerts struct {
 func (a alerts) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("[ALERTS] Collecting alerts on: [%s]", clouds)
 	itemsChan, errChan := a.collect(clouds)
-	return wait(itemsChan, errChan, "[ALERTS] Failed to collect alerts"), nil
+	return wait(itemsChan, errChan, "[ALERTS] Failed to collect alerts")
 }
 
 func (a alerts) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {

@@ -18,5 +18,5 @@ type stacks struct {
 func (o stacks) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("[GET_STACKS] Collecting stacks on: [%s]", clouds)
 	itemsChan, errChan := collectStacks(o.cfg.CloudProviders, clouds)
-	return wait(itemsChan, errChan, "[GET_STACKS] Failed to collect stacks"), nil
+	return wait(itemsChan, errChan, "[GET_STACKS] Failed to collect stacks")
 }

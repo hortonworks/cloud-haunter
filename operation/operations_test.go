@@ -2,6 +2,7 @@ package operation
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/hortonworks/cloud-haunter/config"
@@ -73,9 +74,10 @@ func TestInstancesAggregatesAcrossClouds(t *testing.T) {
 	assert.ElementsMatch(t, []string{"aws-1", "gcp-1"}, names)
 }
 
-// TestOperationsReturnEmptyOnProviderError verifies that for every operation a
-// provider error is logged and yields an empty result rather than panicking.
-func TestOperationsReturnEmptyOnProviderError(t *testing.T) {
+// TestOperationsFailOnProviderError verifies that for every operation a provider
+// error fails the operation, even when another provider succeeds, so an action is
+// never run on an inventory with a provider silently missing from it.
+func TestOperationsFailOnProviderError(t *testing.T) {
 	t.Parallel()
 	ops := map[string]func(*config.Config) types.Operation{
 		"instances": NewInstances,
@@ -96,13 +98,89 @@ func TestOperationsReturnEmptyOnProviderError(t *testing.T) {
 			t.Parallel()
 			cfg := providerCfg(map[types.CloudType]types.CloudProvider{
 				types.DUMMY: &mockProvider{err: errors.New("boom")},
+				types.AWS:   &mockProvider{},
 			})
 
-			items, err := newOp(cfg).Execute([]types.CloudType{types.DUMMY})
-			assert.NoError(t, err)
+			items, err := newOp(cfg).Execute([]types.CloudType{types.DUMMY, types.AWS})
+			assert.ErrorContains(t, err, "[DUMMY] boom", "the error names the failing cloud")
 			assert.Empty(t, items)
 		})
 	}
+}
+
+// TestOperationsSkipUnsupportedProviders verifies that a provider which does not
+// support an operation does not fail it: its "not supported" error is skipped and
+// the other providers' items are returned.
+func TestOperationsSkipUnsupportedProviders(t *testing.T) {
+	t.Parallel()
+	ops := map[string]func(*config.Config) types.Operation{
+		"instances": NewInstances,
+		"accesses":  NewAccess,
+		"databases": NewDatabases,
+		"disks":     NewDisks,
+		"images":    NewImages,
+		"stacks":    NewStacks,
+		"alerts":    NewAlerts,
+		"storages":  NewStorages,
+		"resources": NewResources,
+		"billable":  NewBillableResources,
+	}
+
+	for name, newOp := range ops {
+		name, newOp := name, newOp
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cfg := providerCfg(map[types.CloudType]types.CloudProvider{
+				types.DUMMY: &mockProvider{err: fmt.Errorf("[DUMMY] getting %s: %w", name, types.ErrNotSupported)},
+				types.AWS: &mockProvider{
+					instances: []*types.Instance{{Name: "aws"}},
+					accesses:  []*types.Access{{Name: "aws"}},
+					databases: []*types.Database{{Name: "aws"}},
+					disks:     []*types.Disk{{Name: "aws"}},
+					images:    []*types.Image{{Name: "aws"}},
+					stacks:    []*types.Stack{{Name: "aws"}},
+					alerts:    []*types.Alert{{Name: "aws"}},
+					storages:  []*types.Storage{{Name: "aws"}},
+					resources: []*types.Resource{{Name: "aws"}},
+				},
+			})
+
+			items, err := newOp(cfg).Execute([]types.CloudType{types.DUMMY, types.AWS})
+
+			assert.NoError(t, err)
+			assert.NotEmpty(t, items, "the items of the other provider are kept")
+			for _, item := range items {
+				assert.Equal(t, "aws", item.GetName())
+			}
+		})
+	}
+}
+
+// TestBillableResourcesWithCloudNotSupportingDisks covers the documented budget
+// reminder run on every cloud, where one cloud (like Azure) supports instances
+// and databases, but not disks.
+func TestBillableResourcesWithCloudNotSupportingDisks(t *testing.T) {
+	t.Parallel()
+	cfg := providerCfg(map[types.CloudType]types.CloudProvider{
+		types.DUMMY: &mockProvider{
+			instances: []*types.Instance{{Name: "dummy-instance"}},
+			databases: []*types.Database{{Name: "dummy-database"}},
+			disksErr:  fmt.Errorf("[DUMMY] getting disks: %w", types.ErrNotSupported),
+		},
+		types.AWS: &mockProvider{
+			instances: []*types.Instance{{Name: "aws-instance"}},
+			disks:     []*types.Disk{{Name: "aws-disk"}},
+		},
+	})
+
+	items, err := NewBillableResources(cfg).Execute([]types.CloudType{types.DUMMY, types.AWS})
+
+	assert.NoError(t, err)
+	var names []string
+	for _, item := range items {
+		names = append(names, item.GetName())
+	}
+	assert.ElementsMatch(t, []string{"dummy-instance", "dummy-database", "aws-instance", "aws-disk"}, names)
 }
 
 func TestNewReadImages(t *testing.T) {
