@@ -298,3 +298,29 @@ func TestExclusiveFilter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(filtered))
 }
+
+// TestNoMatchEvaluatesEveryExcludedName verifies that every configured name alternative protects
+// its resource, not only the first one.
+func TestNoMatchEvaluatesEveryExcludedName(t *testing.T) {
+	t.Parallel()
+	filterConfig := &types.FilterConfigV2{Filters: []types.FilterConfigV2Filter{{
+		Types:      []types.FilterEntityType{types.ExcludeInstance},
+		CloudTypes: []types.CloudType{"aws"},
+		Properties: []types.FilterConfigProperty{types.Name},
+		Values:     []string{"protected-a", "regexp:^protected-b$"},
+	}}}
+	items := []types.CloudItem{
+		&types.Instance{CloudType: types.AWS, Name: "protected-a"},
+		&types.Instance{CloudType: types.AWS, Name: "protected-b"},
+		&types.Instance{CloudType: types.AWS, Name: "unprotected"},
+	}
+
+	filtered, err := NewNoMatch(testConfig(filterConfig)).Execute(items)
+
+	assert.NoError(t, err)
+	var names []string
+	for _, item := range filtered {
+		names = append(names, item.GetName())
+	}
+	assert.Equal(t, []string{"unprotected"}, names)
+}

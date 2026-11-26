@@ -18,7 +18,7 @@ type access struct {
 func (o access) Execute(clouds []types.CloudType) ([]types.CloudItem, error) {
 	log.Debugf("Collecting old accesses on: [%s]", clouds)
 	accessChan, errChan := o.collect(clouds)
-	return wait(accessChan, errChan, "[ACCESS] Failed to collect accesses"), nil
+	return wait(accessChan, errChan, "[ACCESS] Failed to collect accesses")
 }
 
 func (o access) collect(clouds []types.CloudType) (chan []types.CloudItem, chan error) {

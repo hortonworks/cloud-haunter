@@ -2,6 +2,8 @@ package azure
 
 import (
 	"context"
+	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -147,6 +149,59 @@ func TestDeleteImages(t *testing.T) {
 
 	assert.Equal(t, "hwxaustraliaeast", <-deleteRgChan)
 	assert.Equal(t, "cb-hdp--1801311614.vhd", <-deleteNameChan)
+}
+
+// deallocateRecorder records the deallocate calls of the fake VM clients. Calls arrive from
+// several goroutines, hence the mutex.
+type deallocateRecorder struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (r *deallocateRecorder) record(call string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, call)
+}
+
+type fakeVMDeallocateClient struct{ recorder *deallocateRecorder }
+
+func (c fakeVMDeallocateClient) BeginDeallocate(_ context.Context, resourceGroupName string, vmName string, _ *armcompute.VirtualMachinesClientBeginDeallocateOptions) (*runtime.Poller[armcompute.VirtualMachinesClientDeallocateResponse], error) {
+	c.recorder.record("vm:" + resourceGroupName + "/" + vmName)
+	return nil, nil
+}
+
+type fakeScaleSetVMDeallocateClient struct{ recorder *deallocateRecorder }
+
+func (c fakeScaleSetVMDeallocateClient) BeginDeallocate(_ context.Context, resourceGroupName string, vmScaleSetName string, instanceID string, _ *armcompute.VirtualMachineScaleSetVMsClientBeginDeallocateOptions) (*runtime.Poller[armcompute.VirtualMachineScaleSetVMsClientDeallocateResponse], error) {
+	c.recorder.record("scaleSetVM:" + resourceGroupName + "/" + vmScaleSetName + "/" + instanceID)
+	return nil, nil
+}
+
+func TestStopInstances(t *testing.T) {
+	cases := []struct {
+		name     string
+		dryRun   bool
+		expected []string
+	}{
+		{"deallocates standalone and scale-set VMs", false, []string{"scaleSetVM:rg/scale-set/0", "vm:rg/standalone"}},
+		{"dry-run sends no request", true, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := &deallocateRecorder{}
+			instances := []*types.Instance{
+				{CloudType: types.AZURE, Name: "standalone", Metadata: map[string]string{ResourceGroupName: "rg"}},
+				{CloudType: types.AZURE, Name: "scale-set_0", Metadata: map[string]string{ResourceGroupName: "rg", ScaleSetName: "scale-set"}},
+			}
+
+			errs := stopInstances(fakeVMDeallocateClient{recorder}, fakeScaleSetVMDeallocateClient{recorder}, instances, tc.dryRun)
+
+			assert.Empty(t, errs)
+			sort.Strings(recorder.calls)
+			assert.Equal(t, tc.expected, recorder.calls)
+		})
+	}
 }
 
 func getStubConvertTimeUnixByTime(timeAsTime time.Time) (*callInfo, func(string) time.Time) {

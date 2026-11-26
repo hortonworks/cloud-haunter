@@ -1,5 +1,7 @@
 package types
 
+import "errors"
+
 // CloudType type of the cloud
 type CloudType string
 
@@ -47,3 +49,7 @@ type CloudProvider interface {
 	GetResources() ([]*Resource, error)
 	TerminateResources(*ResourceContainer) []error
 }
+
+// ErrNotSupported is wrapped by the error a provider returns for an operation it does not implement.
+// It is not a failure of the provider, an operation skips it.
+var ErrNotSupported = errors.New("not supported")

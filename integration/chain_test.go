@@ -75,7 +75,6 @@ func TestChainOperationFilterAction(t *testing.T) {
 		name       string
 		clouds     []types.CloudType
 		seed       map[types.CloudType][]*types.Instance
-		getErr     bool
 		filterYAML string
 		filters    func(cfg *config.Config) ([]types.Filter, []types.FilterType)
 		wantNames  []string
@@ -137,16 +136,6 @@ func TestChainOperationFilterAction(t *testing.T) {
 			wantNames: []string{"keep-1"},
 		},
 		{
-			name:   "provider read error yields no items and no failure",
-			clouds: []types.CloudType{types.AWS},
-			seed:   map[types.CloudType][]*types.Instance{types.AWS: {inst("run-1", "alice", types.AWS, types.Running)}},
-			getErr: true,
-			filters: func(cfg *config.Config) ([]types.Filter, []types.FilterType) {
-				return nil, nil
-			},
-			wantNames: []string{},
-		},
-		{
 			name:   "running filter across multiple clouds",
 			clouds: []types.CloudType{types.AWS, types.AZURE},
 			seed: map[types.CloudType][]*types.Instance{
@@ -167,11 +156,7 @@ func TestChainOperationFilterAction(t *testing.T) {
 
 			fakes := map[types.CloudType]*testutil.FakeProvider{}
 			for cloud, instances := range c.seed {
-				f := &testutil.FakeProvider{Instances: instances}
-				if c.getErr {
-					f.GetErr = assert.AnError
-				}
-				fakes[cloud] = f
+				fakes[cloud] = &testutil.FakeProvider{Instances: instances}
 			}
 
 			cfg := &config.Config{CloudProviders: testutil.Registry(fakes)}
@@ -186,6 +171,22 @@ func TestChainOperationFilterAction(t *testing.T) {
 			assert.ElementsMatch(t, c.wantNames, names(capture.items))
 		})
 	}
+}
+
+// TestChainProviderReadErrorStopsBeforeAction verifies that a provider failing to read its inventory fails the
+// operation, even when another provider succeeds, so main exits before running the action on a partial inventory.
+func TestChainProviderReadErrorStopsBeforeAction(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{CloudProviders: testutil.Registry(map[types.CloudType]*testutil.FakeProvider{
+		types.AWS:   {Instances: []*types.Instance{inst("aws-run", "alice", types.AWS, types.Running)}, GetErr: assert.AnError},
+		types.AZURE: {Instances: []*types.Instance{inst("az-run", "bob", types.AZURE, types.Running)}},
+	})}
+
+	items, err := operation.NewInstances(cfg).Execute([]types.CloudType{types.AWS, types.AZURE})
+
+	assert.ErrorIs(t, err, assert.AnError)
+	assert.Empty(t, items)
 }
 
 // TestChainStopActionRoutesFilteredItems verifies the last stage of the chain:

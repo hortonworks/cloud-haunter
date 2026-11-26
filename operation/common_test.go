@@ -26,21 +26,42 @@ func TestCollect(t *testing.T) {
 	assert.Equal(t, "instance", items[0][0].GetName())
 }
 
-// TestWait drains both channels: items are collected and errors are logged (and
-// otherwise ignored). Pre-filling then closing the buffered channels lets wait
-// run synchronously and deterministically.
+// TestWait drains both channels and returns the collected items. Pre-filling then
+// closing the buffered channels lets wait run synchronously and deterministically.
 func TestWait(t *testing.T) {
 	t.Parallel()
 	itemsChan := make(chan []types.CloudItem, 10)
 	errChan := make(chan error, 5)
-	itemsChan <- []types.CloudItem{types.Instance{Name: "instance"}}
-	errChan <- errors.New("some error")
+	itemsChan <- []types.CloudItem{types.Instance{Name: "instance-1"}}
+	itemsChan <- []types.CloudItem{types.Instance{Name: "instance-2"}}
 	close(itemsChan)
 	close(errChan)
 
-	items := wait(itemsChan, errChan, "error message")
+	items, err := wait(itemsChan, errChan, "error message")
 
-	assert.Equal(t, "instance", items[0].GetName())
+	assert.NoError(t, err)
+	assert.Len(t, items, 2)
+}
+
+// TestWaitReturnsEveryProviderError verifies that wait drains both channels and
+// returns every provider error, and no items, so the caller cannot act on a partial
+// inventory.
+func TestWaitReturnsEveryProviderError(t *testing.T) {
+	t.Parallel()
+	itemsChan := make(chan []types.CloudItem, 10)
+	errChan := make(chan error, 5)
+	itemsChan <- []types.CloudItem{types.Instance{Name: "instance"}}
+	errChan <- errors.New("first error")
+	errChan <- errors.New("second error")
+	close(itemsChan)
+	close(errChan)
+
+	items, err := wait(itemsChan, errChan, "error message")
+
+	assert.ErrorContains(t, err, "error message")
+	assert.ErrorContains(t, err, "first error")
+	assert.ErrorContains(t, err, "second error")
+	assert.Nil(t, items)
 }
 
 func TestConvertInstancesToCloudItems(t *testing.T) {
@@ -50,4 +71,11 @@ func TestConvertInstancesToCloudItems(t *testing.T) {
 	items := convertInstancesToCloudItems(instances)
 
 	assert.Equal(t, len(instances), len(items))
+}
+
+func TestWithCloudPrefix(t *testing.T) {
+	t.Parallel()
+	assert.EqualError(t, withCloudPrefix(types.AWS, errors.New("AccessDenied")), "[AWS] AccessDenied")
+	assert.EqualError(t, withCloudPrefix(types.AZURE, errors.New("[AZURE] Getting disks: not supported")), "[AZURE] Getting disks: not supported")
+	assert.ErrorIs(t, withCloudPrefix(types.AWS, types.ErrNotSupported), types.ErrNotSupported)
 }

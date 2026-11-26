@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -100,14 +101,9 @@ func main() {
 		panic("Operation is not found.")
 	}
 
-	var matchedFilters []types.Filter
-	var filterNames []types.FilterType
-	selectedFilters := utils.SplitListToMap(*filterTypes)
-	for f := range filters {
-		if _, ok := selectedFilters[f.String()]; ok {
-			matchedFilters = append(matchedFilters, filters[f])
-			filterNames = append(filterNames, f)
-		}
+	matchedFilters, filterNames, err := selectFilters(filters, *filterTypes)
+	if err != nil {
+		panic(err.Error())
 	}
 
 	action := func() types.Action {
@@ -150,6 +146,35 @@ func main() {
 		log.Fatalf("[MAIN] Action %s failed: %s", *actionType, err.Error())
 	}
 	log.Info("Action completed.")
+}
+
+// selectFilters returns the filters named in the comma separated list, in the given order. Names are trimmed and
+// case-insensitive. An unknown name is an error, so a typo cannot silently drop a restriction.
+func selectFilters(filters map[types.FilterType]types.Filter, list string) ([]types.Filter, []types.FilterType, error) {
+	var matchedFilters []types.Filter
+	var filterNames []types.FilterType
+	var unknownNames []string
+	selected := map[types.FilterType]bool{}
+	for _, name := range strings.Split(list, ",") {
+		name = strings.TrimSpace(name)
+		if len(name) == 0 {
+			continue
+		}
+		filterType := types.FilterType(strings.ToLower(name))
+		filter, ok := filters[filterType]
+		switch {
+		case !ok:
+			unknownNames = append(unknownNames, name)
+		case !selected[filterType]:
+			selected[filterType] = true
+			matchedFilters = append(matchedFilters, filter)
+			filterNames = append(filterNames, filterType)
+		}
+	}
+	if len(unknownNames) > 0 {
+		return nil, nil, fmt.Errorf("filter is not found: %s", strings.Join(unknownNames, ", "))
+	}
+	return matchedFilters, filterNames, nil
 }
 
 // registerComponents wires the available cloud providers, dispatchers, actions,

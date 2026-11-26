@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -308,7 +309,7 @@ type GcpStack struct {
 }
 
 func (p gcpProvider) GetResources() ([]*types.Resource, error) {
-	return nil, errors.New("[GCP] Getting resources is not supported yet")
+	return nil, fmt.Errorf("[GCP] Getting resources: %w", types.ErrNotSupported)
 }
 
 func (p gcpProvider) getNetworksBySelfLink() (map[string]*compute.Network, error) {
@@ -407,71 +408,201 @@ func (p gcpProvider) DeleteImages(images *types.ImageContainer) []error {
 func (p gcpProvider) TerminateInstances(instances *types.InstanceContainer) []error {
 	log.Debug("[GCP] Terminating instances")
 
-	gcpInstances := instances.Get(types.GCP)
-	instanceGroups, err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectID).Do()
+	groups, err := p.listInstanceGroups()
 	if err != nil {
-		log.Errorf("[GCP] Failed to fetch instance groups, err: %s", err.Error())
+		log.Errorf("[GCP] Failed to fetch instance groups, no instance is terminated, err: %s", err.Error())
 		return []error{err}
 	}
 
-	instancesToDelete := []*types.Instance{}
-	instanceGroupsToDelete := map[*compute.InstanceGroupManager]bool{}
-
-	for _, inst := range gcpInstances {
-		groupFound := false
-		for _, i := range instanceGroups.Items {
-			for _, group := range i.InstanceGroupManagers {
-				if _, ok := instanceGroupsToDelete[group]; !ok && strings.Index(inst.Name, group.BaseInstanceName+"-") == 0 {
-					log.Debugf("[GCP] Found instance group for instance %s : %s", inst.GetName(), group.Name)
-					instanceGroupsToDelete[group], groupFound = true, true
-				}
+	var errs []error
+	var standaloneInstances []*types.Instance
+	selectedMembers := map[*instanceGroup]map[string]bool{}
+	for _, inst := range instances.Get(types.GCP) {
+		group, memberURL, err := p.findInstanceGroup(groups, inst)
+		switch {
+		case err != nil:
+			log.Errorf("[GCP] Instance %s is not terminated, its instance group membership could not be verified, err: %s", inst.Name, err.Error())
+			errs = append(errs, fmt.Errorf("[GCP] instance %s is not terminated: %w", inst.Name, err))
+		case group == nil:
+			log.Debugf("[GCP] Not found instance group for instance: %s", inst.Name)
+			standaloneInstances = append(standaloneInstances, inst)
+		default:
+			log.Debugf("[GCP] Found instance group for instance %s : %s", inst.Name, group.manager.Name)
+			if selectedMembers[group] == nil {
+				selectedMembers[group] = map[string]bool{}
 			}
-		}
-		if !groupFound {
-			log.Debugf("[GCP] Not found instance group for instance: %s", inst.GetName())
-			instancesToDelete = append(instancesToDelete, inst)
+			selectedMembers[group][memberURL] = true
 		}
 	}
 
-	log.Debugf("[GCP] Instance groups to terminate (%d) : [%v]", len(instanceGroupsToDelete), instanceGroupsToDelete)
+	var deletions []func() error
+	for group, memberURLs := range selectedMembers {
+		deletions = append(deletions, p.membersDeletion(group, memberURLs))
+	}
+	for _, inst := range standaloneInstances {
+		deletions = append(deletions, p.instanceDeletion(inst))
+	}
+	return append(errs, runConcurrently(deletions)...)
+}
+
+// instanceGroup is a zonal or regional managed instance group with its members, listed on first use.
+type instanceGroup struct {
+	manager       *compute.InstanceGroupManager
+	regional      bool
+	location      string // zone of a zonal group, region of a regional group
+	memberURLs    []string
+	membersListed bool
+	listErr       error
+}
+
+// covers tells whether the group can have the instance as a member, i.e. the instance is in the group's zone or region.
+func (g *instanceGroup) covers(inst *types.Instance) bool {
+	zone := inst.Metadata["zone"]
+	if g.regional {
+		return g.location == getRegionFromZoneURL(&zone)
+	}
+	return g.location == zone
+}
+
+// listInstanceGroups returns the managed instance groups of the project.
+func (p gcpProvider) listInstanceGroups() ([]*instanceGroup, error) {
+	var groups []*instanceGroup
+	err := p.computeClient.InstanceGroupManagers.AggregatedList(p.projectID).Pages(context.Background(), func(page *compute.InstanceGroupManagerAggregatedList) error {
+		for _, scopedList := range page.Items {
+			for _, manager := range scopedList.InstanceGroupManagers {
+				if len(manager.Zone) == 0 {
+					// getZone returns the last segment of the URL, which is the region name for a region URL
+					groups = append(groups, &instanceGroup{manager: manager, regional: true, location: getZone(manager.Region)})
+				} else {
+					groups = append(groups, &instanceGroup{manager: manager, location: getZone(manager.Zone)})
+				}
+			}
+		}
+		return nil
+	})
+	return groups, err
+}
+
+// findInstanceGroup returns the group the instance is a member of, and the instance URL the group knows it by.
+// Membership is verified by listing the members of every group in the instance's zone or region.
+// It returns a nil group for a standalone instance, and an error if a group that could contain the instance failed
+// to list its members.
+func (p gcpProvider) findInstanceGroup(groups []*instanceGroup, inst *types.Instance) (*instanceGroup, string, error) {
+	instancePath := "/zones/" + inst.Metadata["zone"] + "/instances/" + inst.Name
+	var listErrs []error
+	for _, group := range groups {
+		if !group.covers(inst) {
+			continue
+		}
+		if !group.membersListed {
+			group.memberURLs, group.listErr = p.listGroupMembers(group)
+			group.membersListed = true
+		}
+		if group.listErr != nil {
+			listErrs = append(listErrs, fmt.Errorf("failed to list the members of instance group %s in %s: %w", group.manager.Name, group.location, group.listErr))
+			continue
+		}
+		for _, memberURL := range group.memberURLs {
+			if strings.HasSuffix(memberURL, instancePath) {
+				return group, memberURL, nil
+			}
+		}
+	}
+	return nil, "", errors.Join(listErrs...)
+}
+
+// membersDeletion deletes the selected members through their group, which also reduces the group's target size, so the
+// group does not recreate them (an autoscaler can still scale it up again). The group itself is never deleted, not even
+// when all of its members are selected: it could create a new, unselected member after its members were listed, and
+// deleting the group would delete that one too.
+func (p gcpProvider) membersDeletion(group *instanceGroup, selectedMemberURLs map[string]bool) func() error {
+	name, location := group.manager.Name, group.location
+	var memberURLs []string
+	for memberURL := range selectedMemberURLs {
+		memberURLs = append(memberURLs, memberURL)
+	}
+	sort.Strings(memberURLs)
+	return func() error {
+		if p.cfg.DryRun {
+			log.Infof("[GCP] Dry-run set, members of instance group %s in %s are not deleted: %v", name, location, memberURLs)
+			return nil
+		}
+		log.Infof("[GCP] Deleting members of instance group %s in %s: %v", name, location, memberURLs)
+		if err := p.deleteGroupMembers(group, memberURLs); err != nil {
+			log.Errorf("[GCP] Failed to delete members of instance group %s, err: %s", name, err.Error())
+			return fmt.Errorf("[GCP] failed to delete members of instance group %s in %s: %w", name, location, err)
+		}
+		return nil
+	}
+}
+
+// listGroupMembers returns the instance URLs of the group members, using the zonal or the regional API.
+func (p gcpProvider) listGroupMembers(group *instanceGroup) ([]string, error) {
+	var memberURLs []string
+	addMembers := func(members []*compute.ManagedInstance) {
+		for _, member := range members {
+			memberURLs = append(memberURLs, member.Instance)
+		}
+	}
+	ctx := context.Background()
+	if group.regional {
+		err := p.computeClient.RegionInstanceGroupManagers.ListManagedInstances(p.projectID, group.location, group.manager.Name).Pages(ctx, func(page *compute.RegionInstanceGroupManagersListInstancesResponse) error {
+			addMembers(page.ManagedInstances)
+			return nil
+		})
+		return memberURLs, err
+	}
+	err := p.computeClient.InstanceGroupManagers.ListManagedInstances(p.projectID, group.location, group.manager.Name).Pages(ctx, func(page *compute.InstanceGroupManagersListManagedInstancesResponse) error {
+		addMembers(page.ManagedInstances)
+		return nil
+	})
+	return memberURLs, err
+}
+
+// deleteGroupMembers deletes the given members and reduces the group size accordingly, using the zonal or the regional API.
+func (p gcpProvider) deleteGroupMembers(group *instanceGroup, memberURLs []string) error {
+	if group.regional {
+		request := &compute.RegionInstanceGroupManagersDeleteInstancesRequest{Instances: memberURLs}
+		return p.doAndPollComputeCall(p.computeClient.RegionInstanceGroupManagers.DeleteInstances(p.projectID, group.location, group.manager.Name, request))
+	}
+	request := &compute.InstanceGroupManagersDeleteInstancesRequest{Instances: memberURLs}
+	return p.doAndPollComputeCall(p.computeClient.InstanceGroupManagers.DeleteInstances(p.projectID, group.location, group.manager.Name, request))
+}
+
+func (p gcpProvider) instanceDeletion(inst *types.Instance) func() error {
+	return func() error {
+		zone := inst.Metadata["zone"]
+		if p.cfg.DryRun {
+			log.Infof("[GCP] Dry-run set, instance is not deleted: %s in zone %s", inst.Name, zone)
+			return nil
+		}
+		log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
+		if err := p.doAndPollComputeCall(p.computeClient.Instances.Delete(p.projectID, zone, inst.Name)); err != nil {
+			log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
+			return fmt.Errorf("[GCP] failed to delete instance %s in zone %s: %w", inst.Name, zone, err)
+		}
+		return nil
+	}
+}
+
+// runConcurrently runs the tasks in parallel and returns the errors they produced.
+func runConcurrently(tasks []func() error) []error {
+	var mu sync.Mutex
+	var errs []error
 	wg := sync.WaitGroup{}
-	wg.Add(len(instanceGroupsToDelete))
-	for g := range instanceGroupsToDelete {
-		go func(group *compute.InstanceGroupManager) {
+	wg.Add(len(tasks))
+	for _, task := range tasks {
+		go func(task func() error) {
 			defer wg.Done()
-
-			zone := getZone(group.Zone)
-			log.Infof("[GCP] Deleting instance group %s in zone %s", group.Name, zone)
-			if p.cfg.DryRun {
-				log.Info("[GCP] Skipping group termination on dry run session")
-			} else {
-				_, err := p.computeClient.InstanceGroupManagers.Delete(p.projectID, zone, group.Name).Do()
-				if err != nil {
-					log.Errorf("[GCP] Failed to delete instance group %s, err: %s", group.Name, err.Error())
-				}
+			if err := task(); err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
 			}
-		}(g)
-	}
-	log.Debugf("[GCP] Instances to terminate (%d): [%v]", len(instancesToDelete), instancesToDelete)
-	wg.Add(len(instancesToDelete))
-	for _, i := range instancesToDelete {
-		go func(inst *types.Instance) {
-			defer wg.Done()
-
-			zone := inst.Metadata["zone"]
-			log.Infof("[GCP] Deleting instance %s in zone %s", inst.Name, zone)
-			if p.cfg.DryRun {
-				log.Info("[GCP] Skipping instance termination on dry run session")
-			} else {
-				_, err := p.computeClient.Instances.Delete(p.projectID, zone, inst.Name).Do()
-				if err != nil {
-					log.Errorf("[GCP] Failed to delete instance %s, err: %s", inst.Name, err.Error())
-				}
-			}
-		}(i)
+		}(task)
 	}
 	wg.Wait()
-	return nil
+	return errs
 }
 
 func (p gcpProvider) TerminateStacks(stacks *types.StackContainer) []error {
@@ -685,13 +816,15 @@ type ComputeCall interface {
 	Do(opts ...googleapi.CallOption) (*compute.Operation, error)
 }
 
+// doAndPollComputeCall sends the request and waits until its operation is finished. A request can be accepted and
+// still fail later, the failure is only reported in the finished operation.
 func (p gcpProvider) doAndPollComputeCall(call ComputeCall) error {
 	operation, err := call.Do()
 	if err != nil {
 		return err
 	}
 
-	for {
+	for operation.Status != "DONE" {
 		time.Sleep(3 * time.Second)
 		log.Debugf("[GCP] Polling compute %s (region='%s', zone='%s')", operation.Name, operation.Region, operation.Zone)
 
@@ -709,18 +842,18 @@ func (p gcpProvider) doAndPollComputeCall(call ComputeCall) error {
 
 		if err != nil {
 			return err
-		} else if operation.Status == "DONE" {
-			if operation.Error == nil {
-				log.Debugf("[GCP] Polling of compute %s successfully finished", operation.Name)
-				return nil
-			}
-			var errorMessages []string
-			for _, operationError := range operation.Error.Errors {
-				errorMessages = append(errorMessages, operationError.Code+": "+operationError.Message)
-			}
-			return fmt.Errorf("[GCP] Polling of compute %s failed: %s", operation.Name, strings.Join(errorMessages, ", "))
 		}
 	}
+
+	if operation.Error == nil {
+		log.Debugf("[GCP] Polling of compute %s successfully finished", operation.Name)
+		return nil
+	}
+	var errorMessages []string
+	for _, operationError := range operation.Error.Errors {
+		errorMessages = append(errorMessages, operationError.Code+": "+operationError.Message)
+	}
+	return fmt.Errorf("[GCP] Polling of compute %s failed: %s", operation.Name, strings.Join(errorMessages, ", "))
 }
 
 func (p gcpProvider) StopInstances(instances *types.InstanceContainer) []error {
@@ -1154,7 +1287,7 @@ func (p gcpProvider) getDatabases(aggregator *sqladmin.InstancesListCall) ([]*ty
 }
 
 func (p gcpProvider) GetAlerts() ([]*types.Alert, error) {
-	return nil, errors.New("[GCP] Getting alerts is not supported yet")
+	return nil, fmt.Errorf("[GCP] Getting alerts: %w", types.ErrNotSupported)
 }
 
 func (p gcpProvider) DeleteAlerts(*types.AlertContainer) []error {

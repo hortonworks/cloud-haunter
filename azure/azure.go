@@ -162,7 +162,7 @@ func (p azureProvider) GetStacks() ([]*types.Stack, error) {
 }
 
 func (p azureProvider) GetResources() ([]*types.Resource, error) {
-	return nil, errors.New("[AZURE] Cleanup storages is not supported yet")
+	return nil, fmt.Errorf("[AZURE] Getting resources: %w", types.ErrNotSupported)
 }
 
 func (p azureProvider) GetInstances() ([]*types.Instance, error) {
@@ -280,7 +280,7 @@ type azureScaleSetInstance struct {
 }
 
 func (p azureProvider) GetDisks() ([]*types.Disk, error) {
-	return nil, errors.New("[AZURE] Disk operations are not supported")
+	return nil, fmt.Errorf("[AZURE] Getting disks: %w", types.ErrNotSupported)
 }
 
 func (p azureProvider) DeleteDisks(*types.DiskContainer) []error {
@@ -424,8 +424,22 @@ func (p azureProvider) TerminateResources(*types.ResourceContainer) []error {
 	return []error{errors.New("[AZURE] Terminate resources is not supported yet")}
 }
 
+// vmDeallocateClient and scaleSetVMDeallocateClient are the narrow slices of the VM and
+// scale-set VM SDK clients that the stop path uses, so tests can supply fakes.
+type vmDeallocateClient interface {
+	BeginDeallocate(ctx context.Context, resourceGroupName string, vmName string, options *armcompute.VirtualMachinesClientBeginDeallocateOptions) (*runtime.Poller[armcompute.VirtualMachinesClientDeallocateResponse], error)
+}
+
+type scaleSetVMDeallocateClient interface {
+	BeginDeallocate(ctx context.Context, resourceGroupName string, vmScaleSetName string, instanceID string, options *armcompute.VirtualMachineScaleSetVMsClientBeginDeallocateOptions) (*runtime.Poller[armcompute.VirtualMachineScaleSetVMsClientDeallocateResponse], error)
+}
+
 func (p azureProvider) StopInstances(instances *types.InstanceContainer) []error {
-	azureInstances := instances.Get(types.AZURE)
+	return stopInstances(p.vmClient, p.vmScaleSetVMClient, instances.Get(types.AZURE), p.cfg.DryRun)
+}
+
+// stopInstances deallocates standalone and scale-set VMs, honouring dry-run and aggregating any errors.
+func stopInstances(vmClient vmDeallocateClient, scaleSetVMClient scaleSetVMDeallocateClient, azureInstances []*types.Instance, dryRun bool) []error {
 	log.Debugf("[AZURE] Stopping instances (%d): %v", len(azureInstances), azureInstances)
 	wg := sync.WaitGroup{}
 	wg.Add(len(azureInstances))
@@ -440,12 +454,17 @@ func (p azureProvider) StopInstances(instances *types.InstanceContainer) []error
 				<-sem
 			}()
 
+			if dryRun {
+				log.Infof("[AZURE] Dry-run set, instance is not stopped: %s", instance.Name)
+				return
+			}
+
 			log.Debugf("[AZURE] Stopping instance: %s", instance.Name)
 			var err error
 			if _, ok := instance.Metadata[ScaleSetName]; ok {
-				_, err = p.vmScaleSetVMClient.BeginDeallocate(context.Background(), instance.Metadata[ResourceGroupName], instance.Metadata[ScaleSetName], getScaleSetVMInstanceID(instance.Name), nil)
+				_, err = scaleSetVMClient.BeginDeallocate(context.Background(), instance.Metadata[ResourceGroupName], instance.Metadata[ScaleSetName], getScaleSetVMInstanceID(instance.Name), nil)
 			} else {
-				_, err = p.vmClient.BeginDeallocate(context.Background(), instance.Metadata[ResourceGroupName], instance.Name, nil)
+				_, err = vmClient.BeginDeallocate(context.Background(), instance.Metadata[ResourceGroupName], instance.Name, nil)
 			}
 			if err != nil {
 				errChan <- err
@@ -487,7 +506,7 @@ func (p azureProvider) StopDatabases(databases *types.DatabaseContainer) (errs [
 }
 
 func (p azureProvider) GetAccesses() ([]*types.Access, error) {
-	return nil, errors.New("[AZURE] Access not supported")
+	return nil, fmt.Errorf("[AZURE] Getting accesses: %w", types.ErrNotSupported)
 }
 
 func (p azureProvider) GetDatabases() ([]*types.Database, error) {
@@ -568,7 +587,7 @@ func (p azureProvider) DeleteDatabases(databases *types.DatabaseContainer) []err
 }
 
 func (p azureProvider) GetAlerts() ([]*types.Alert, error) {
-	return nil, errors.New("[AZURE] Getting alerts is not supported yet")
+	return nil, fmt.Errorf("[AZURE] Getting alerts: %w", types.ErrNotSupported)
 }
 
 func (p azureProvider) DeleteAlerts(*types.AlertContainer) []error {
